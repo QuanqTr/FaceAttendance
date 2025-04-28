@@ -1,0 +1,74 @@
+Warning: validateDOMNesting(...): <a> cannot appear as a descendant of &lt;a&gt;.
+    at a
+    at a
+    at https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:337:18
+    at div
+    at div
+    at _c3 (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/ui/card.tsx:45:12)
+    at div
+    at _c (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/ui/card.tsx:20:11)
+    at EmployeeTable (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/dashboard/employee-table.tsx:27:27)
+    at main
+    at div
+    at Dashboard (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/pages/dashboard.tsx?t=1745829567764:28:63)
+    at Route (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:323:16)
+    at ProtectedRoute (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/lib/protected-route.tsx:22:3)
+    at Switch (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:379:17)
+    at div
+    at div
+    at Router
+    at Provider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-2M7HY3UG.js?v=2c688b51:38:15)
+    at TooltipProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=2c688b51:62:5)
+    at AuthProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/hooks/use-auth.tsx:31:32)
+    at QueryClientProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=2c688b51:2805:3)
+    at App
+at a
+at a
+at https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:337:18
+at div
+at div
+at _c3 (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/ui/card.tsx:45:12)
+at div
+at _c (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/ui/card.tsx:20:11)
+at EmployeeTable (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/components/dashboard/employee-table.tsx:27:27)
+at main
+at div
+at Dashboard (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/pages/dashboard.tsx?t=1745829567764:28:63)
+at Route (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:323:16)
+at ProtectedRoute (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/lib/protected-route.tsx:22:3)
+at Switch (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2c688b51:379:17)
+at div
+at div
+at Router
+at Provider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-2M7HY3UG.js?v=2c688b51:38:15)
+at TooltipProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=2c688b51:62:5)
+at AuthProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/src/hooks/use-auth.tsx:31:32)
+at QueryClientProvider (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=2c688b51:2805:3)
+at App
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:17465)
+at new t (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:12630)
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:32766)
+at https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:34400
+Failed to load tinyFaceDetector: 
+SyntaxError {}
+
+Error fetching activities: 
+SyntaxError {}
+
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:17465)
+at new t (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:12630)
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:32766)
+at https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:34400
+Failed to load faceLandmark68Net: 
+SyntaxError {}
+
+Failed to load faceRecognitionNet: 
+SyntaxError {}
+
+Failed to load faceExpressionNet: 
+SyntaxError {}
+
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:17465)
+at new t (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:12630)
+at t.value (https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eruda.js:2:32766)
+at https://43796f8b-e99b-49b8-aca6-61c07fc25980-00-2h0gogwq84grw.spock.replit.dev/__replco/static/devtools/eruda/3.2.3/eru

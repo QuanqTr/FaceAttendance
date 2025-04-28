@@ -92,8 +92,8 @@ export function EmployeeTable() {
       <CardHeader className="pb-3">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg font-medium">Recent Employees</CardTitle>
-          <Link href="/employees">
-            <a className="text-sm text-primary hover:underline">Manage Employees</a>
+          <Link href="/employees" className="text-sm text-primary hover:underline">
+            Manage Employees
           </Link>
         </div>
       </CardHeader>
