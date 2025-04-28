@@ -7,10 +7,16 @@ import {
   type InsertEmployee,
   type AttendanceRecord,
   type InsertAttendanceRecord,
+  type LeaveRequest,
+  type InsertLeaveRequest,
+  type SalaryRecord,
+  type InsertSalaryRecord,
   users,
   departments,
   employees,
-  attendanceRecords
+  attendanceRecords,
+  leaveRequests,
+  salaryRecords
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lt, sql, count } from "drizzle-orm";
@@ -47,6 +53,23 @@ export interface IStorage {
   createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord>;
   getLatestAttendanceRecord(employeeId: number, date: Date): Promise<AttendanceRecord | undefined>;
   getDailyAttendance(date: Date): Promise<{ employee: Employee; attendance?: AttendanceRecord }[]>;
+  
+  // Leave Request methods
+  getLeaveRequest(id: number): Promise<LeaveRequest | undefined>;
+  getEmployeeLeaveRequests(employeeId: number, status?: string): Promise<LeaveRequest[]>;
+  getAllLeaveRequests(page?: number, limit?: number, status?: string): Promise<LeaveRequest[]>;
+  createLeaveRequest(leaveRequest: InsertLeaveRequest): Promise<LeaveRequest>;
+  updateLeaveRequest(id: number, leaveRequest: Partial<LeaveRequest>): Promise<LeaveRequest | undefined>;
+  deleteLeaveRequest(id: number): Promise<boolean>;
+  
+  // Salary methods
+  getSalaryRecord(id: number): Promise<SalaryRecord | undefined>;
+  getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]>;
+  getAllSalaryRecords(page?: number, limit?: number, year?: number, month?: number): Promise<SalaryRecord[]>;
+  createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord>;
+  updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined>;
+  deleteSalaryRecord(id: number): Promise<boolean>;
+  getSalaryStats(year: number): Promise<{ month: number; totalSalary: number; totalEmployees: number }[]>;
   
   // Statistics methods
   getDepartmentAttendanceStats(date: Date): Promise<{ departmentId: number; departmentName: string; presentPercentage: number }[]>;
@@ -390,10 +413,184 @@ export class DatabaseStorage implements IStorage {
     `);
     
     return results.rows.map(row => ({
-      date: row.date,
-      present: row.present,
-      absent: row.absent,
-      late: row.late
+      date: row.date as string,
+      present: Number(row.present) || 0,
+      absent: Number(row.absent) || 0,
+      late: Number(row.late) || 0
+    }));
+  }
+
+  // Leave Request Methods
+  async getLeaveRequest(id: number): Promise<LeaveRequest | undefined> {
+    const [leaveRequest] = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id));
+    return leaveRequest;
+  }
+
+  async getEmployeeLeaveRequests(employeeId: number, status?: string): Promise<LeaveRequest[]> {
+    let query = db.select().from(leaveRequests).where(eq(leaveRequests.employeeId, employeeId));
+    
+    if (status) {
+      query = query.where(eq(leaveRequests.status, status as any));
+    }
+    
+    return await query.orderBy(desc(leaveRequests.createdAt));
+  }
+
+  async getAllLeaveRequests(page: number = 1, limit: number = 10, status?: string): Promise<LeaveRequest[]> {
+    const offset = (page - 1) * limit;
+    let query = db.select().from(leaveRequests);
+    
+    if (status) {
+      query = query.where(eq(leaveRequests.status, status as any));
+    }
+    
+    return await query
+      .limit(limit)
+      .offset(offset)
+      .orderBy(desc(leaveRequests.createdAt));
+  }
+
+  async createLeaveRequest(leaveRequest: InsertLeaveRequest): Promise<LeaveRequest> {
+    const [newLeaveRequest] = await db
+      .insert(leaveRequests)
+      .values({
+        ...leaveRequest,
+        status: 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return newLeaveRequest;
+  }
+
+  async updateLeaveRequest(id: number, leaveRequest: Partial<LeaveRequest>): Promise<LeaveRequest | undefined> {
+    const [updatedLeaveRequest] = await db
+      .update(leaveRequests)
+      .set({ ...leaveRequest, updatedAt: new Date() })
+      .where(eq(leaveRequests.id, id))
+      .returning();
+    return updatedLeaveRequest;
+  }
+
+  async deleteLeaveRequest(id: number): Promise<boolean> {
+    await db
+      .delete(leaveRequests)
+      .where(eq(leaveRequests.id, id));
+    return true;
+  }
+
+  // Salary Methods
+  async getSalaryRecord(id: number): Promise<SalaryRecord | undefined> {
+    const [salaryRecord] = await db.select().from(salaryRecords).where(eq(salaryRecords.id, id));
+    return salaryRecord;
+  }
+
+  async getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]> {
+    let query = db.select().from(salaryRecords).where(eq(salaryRecords.employeeId, employeeId));
+    
+    if (year) {
+      query = query.where(eq(salaryRecords.year, year));
+    }
+    
+    return await query.orderBy(desc(salaryRecords.year), desc(salaryRecords.month));
+  }
+
+  async getAllSalaryRecords(page: number = 1, limit: number = 10, year?: number, month?: number): Promise<SalaryRecord[]> {
+    const offset = (page - 1) * limit;
+    let query = db.select().from(salaryRecords);
+    
+    if (year) {
+      query = query.where(eq(salaryRecords.year, year));
+    }
+    
+    if (month) {
+      query = query.where(eq(salaryRecords.month, month));
+    }
+    
+    return await query
+      .limit(limit)
+      .offset(offset)
+      .orderBy(desc(salaryRecords.year), desc(salaryRecords.month), desc(salaryRecords.createdAt));
+  }
+
+  async createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord> {
+    // Calculate total salary
+    const totalSalary = 
+      Number(salaryRecord.basicSalary) + 
+      Number(salaryRecord.bonus || 0) - 
+      Number(salaryRecord.deduction || 0);
+    
+    const [newSalaryRecord] = await db
+      .insert(salaryRecords)
+      .values({
+        ...salaryRecord,
+        totalSalary,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return newSalaryRecord;
+  }
+
+  async updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined> {
+    // If salary components are changed, recalculate total
+    let totalSalary = undefined;
+    
+    if (salaryRecord.basicSalary !== undefined || 
+        salaryRecord.bonus !== undefined || 
+        salaryRecord.deduction !== undefined) {
+      
+      // Get current record
+      const currentRecord = await this.getSalaryRecord(id);
+      if (!currentRecord) {
+        return undefined;
+      }
+      
+      // Calculate new total
+      totalSalary = 
+        Number(salaryRecord.basicSalary || currentRecord.basicSalary) + 
+        Number(salaryRecord.bonus || currentRecord.bonus) - 
+        Number(salaryRecord.deduction || currentRecord.deduction);
+    }
+    
+    const [updatedSalaryRecord] = await db
+      .update(salaryRecords)
+      .set({ 
+        ...salaryRecord, 
+        ...(totalSalary !== undefined ? { totalSalary } : {}),
+        updatedAt: new Date() 
+      })
+      .where(eq(salaryRecords.id, id))
+      .returning();
+    return updatedSalaryRecord;
+  }
+
+  async deleteSalaryRecord(id: number): Promise<boolean> {
+    await db
+      .delete(salaryRecords)
+      .where(eq(salaryRecords.id, id));
+    return true;
+  }
+
+  async getSalaryStats(year: number): Promise<{ month: number; totalSalary: number; totalEmployees: number }[]> {
+    const results = await db.execute(sql`
+      WITH month_range AS (
+        SELECT generate_series(1, 12) AS month
+      )
+      SELECT 
+        mr.month,
+        COALESCE(SUM(sr.total_salary), 0) AS total_salary,
+        COUNT(DISTINCT sr.employee_id) AS total_employees
+      FROM month_range mr
+      LEFT JOIN ${salaryRecords} sr ON mr.month = sr.month AND sr.year = ${year}
+      GROUP BY mr.month
+      ORDER BY mr.month
+    `);
+    
+    return results.rows.map(row => ({
+      month: Number(row.month),
+      totalSalary: Number(row.total_salary) || 0,
+      totalEmployees: Number(row.total_employees) || 0
     }));
   }
 }
