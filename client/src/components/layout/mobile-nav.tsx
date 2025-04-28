@@ -5,7 +5,9 @@ import {
   LayoutDashboard, 
   Menu, 
   Settings, 
-  Users2 
+  Users2,
+  Calendar,
+  DollarSign
 } from "lucide-react";
 
 type MobileNavLinkProps = {
@@ -40,7 +42,7 @@ export function MobileNav() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-background border-t z-10 md:hidden">
-      <div className="flex justify-around">
+      <div className="grid grid-cols-5">
         <MobileNavLink 
           href="/"
           icon={<LayoutDashboard className="h-5 w-5" />}
@@ -66,19 +68,19 @@ export function MobileNav() {
         </MobileNavLink>
         
         <MobileNavLink 
-          href="/reports"
-          icon={<ClipboardList className="h-5 w-5" />}
-          isActive={isActive('/reports')}
+          href="/leave-requests"
+          icon={<Calendar className="h-5 w-5" />}
+          isActive={isActive('/leave-requests')}
         >
-          Reports
+          Leave
         </MobileNavLink>
         
         <MobileNavLink 
-          href="/settings"
-          icon={<Settings className="h-5 w-5" />}
-          isActive={isActive('/settings')}
+          href="/salary"
+          icon={<DollarSign className="h-5 w-5" />}
+          isActive={isActive('/salary')}
         >
-          Settings
+          Salary
         </MobileNavLink>
       </div>
     </div>

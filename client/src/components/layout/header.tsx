@@ -1,63 +1,58 @@
-import { useState } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Bell, Search, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Sidebar } from "./sidebar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
-type HeaderProps = {
+interface HeaderProps {
   title: string;
-  onSearch?: (query: string) => void;
-};
+  showSearch?: boolean;
+  onSearch?: (value: string) => void;
+}
 
-export function Header({ title, onSearch }: HeaderProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (onSearch) {
-      onSearch(searchQuery);
-    }
-  };
+export function Header({ title, showSearch = false, onSearch }: HeaderProps) {
+  const { user } = useAuth();
+  
+  const initials = user?.fullName
+    ? user.fullName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+    : 'U';
 
   return (
-    <header className="bg-background sticky top-0 border-b z-10">
-      <div className="flex items-center justify-between h-16 px-4">
-        <div className="flex items-center">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden mr-2">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64">
-              <Sidebar />
-            </SheetContent>
-          </Sheet>
-          <h1 className="text-xl font-medium">{title}</h1>
+    <div className="border-b bg-background sticky top-0 z-10">
+      <div className="flex h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-2 md:hidden">
+          <Menu className="h-5 w-5" />
+          <h1 className="text-xl font-bold">{title}</h1>
         </div>
+        <h1 className="text-xl font-bold hidden md:block">{title}</h1>
         
-        <div className="flex items-center">
-          <form onSubmit={handleSearch} className="relative mr-4">
-            <Input
-              type="text"
-              placeholder="Search..."
-              className="bg-background/80 w-40 md:w-64"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <Search className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-          </form>
+        <div className="flex items-center gap-4">
+          {showSearch && (
+            <div className="relative hidden md:block">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search..."
+                className="w-[200px] md:w-[300px] pl-8"
+                onChange={(e) => onSearch && onSearch(e.target.value)}
+              />
+            </div>
+          )}
           
-          <div className="relative">
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 bg-destructive text-destructive-foreground text-xs w-4 h-4 flex items-center justify-center rounded-full">3</span>
-            </Button>
-          </div>
+          <Button variant="outline" size="icon" className="rounded-full">
+            <Bell className="h-5 w-5" />
+          </Button>
+          
+          <Avatar>
+            <AvatarImage src="" alt={user?.fullName || "User"} />
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
         </div>
       </div>
-    </header>
+    </div>
   );
 }

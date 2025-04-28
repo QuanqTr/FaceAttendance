@@ -7,7 +7,9 @@ import {
   LogOut, 
   Settings, 
   User, 
-  Users2 
+  Users2,
+  Calendar,
+  DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -91,6 +93,22 @@ export function Sidebar() {
               isActive={isActive('/employees')}
             >
               Employees
+            </SidebarLink>
+            
+            <SidebarLink 
+              href="/leave-requests" 
+              icon={<Calendar className="h-5 w-5" />}
+              isActive={isActive('/leave-requests')}
+            >
+              Leave Requests
+            </SidebarLink>
+            
+            <SidebarLink 
+              href="/salary" 
+              icon={<DollarSign className="h-5 w-5" />}
+              isActive={isActive('/salary')}
+            >
+              Salary
             </SidebarLink>
             
             <SidebarLink 
