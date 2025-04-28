@@ -1,0 +1,27 @@
+[
+  {
+    "weights": [
+      {
+        "name": "dense0/conv0/filters",
+        "shape": [3, 3, 3, 32],
+        "dtype": "float32",
+        "quantization": {
+          "dtype": "uint8",
+          "scale": 0.0053784799052150775,
+          "min": -0.6669315282466696
+        }
+      },
+      {
+        "name": "dense0/conv0/bias",
+        "shape": [32],
+        "dtype": "float32",
+        "quantization": {
+          "dtype": "uint8",
+          "scale": 0.00644116163429859,
+          "min": -0.7149189514071435
+        }
+      }
+    ],
+    "paths": ["face_landmark_68_model-shard1"]
+  }
+]

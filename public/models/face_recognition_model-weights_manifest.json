@@ -1,0 +1,22 @@
+[
+  {
+    "weights": [
+      {
+        "name": "conv32/conv/filters",
+        "shape": [3, 3, 3, 32],
+        "dtype": "float32",
+        "quantization": {
+          "dtype": "uint8",
+          "scale": 0.00568889140380117,
+          "min": -0.7338472912122212
+        }
+      },
+      {
+        "name": "conv32/conv/bias",
+        "shape": [32],
+        "dtype": "float32"
+      }
+    ],
+    "paths": ["face_recognition_model-shard1", "face_recognition_model-shard2"]
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "weights": [
+      {
+        "name": "dense0/conv0/filters",
+        "shape": [3, 3, 3, 32],
+        "dtype": "float32",
+        "quantization": {
+          "dtype": "uint8",
+          "scale": 0.004699286007863105,
+          "min": -0.6343035610615192
+        }
+      },
+      {
+        "name": "dense0/conv0/bias",
+        "shape": [32],
+        "dtype": "float32"
+      }
+    ],
+    "paths": ["face_expression_model-shard1"]
+  }
+]

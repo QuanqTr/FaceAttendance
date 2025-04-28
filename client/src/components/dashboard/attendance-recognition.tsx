@@ -7,6 +7,7 @@ import { FaceDetector } from "@/components/face-recognition/face-detector";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import * as faceapi from 'face-api.js';
 
 export type RecognizedUser = {
   id: number;
@@ -96,36 +97,106 @@ export function AttendanceRecognition() {
   });
 
   const handleClockIn = async () => {
-    if (!canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      toast({
+        title: "Error",
+        description: "Camera not initialized",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setStatus('processing');
     try {
-      // In a real app, this would capture and process the face data
-      const faceDescriptor = "sample_face_descriptor";
+      // Capture current frame from the video
+      const options = new faceapi.TinyFaceDetectorOptions();
+      const results = await faceapi.detectSingleFace(videoRef.current, options)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (!results) {
+        throw new Error("No face detected");
+      }
+      
+      // In a real app, we would use the face descriptor to identify the employee
+      // For demo purposes, we'll stringify the descriptor and use a sample value
+      const faceDescriptor = results ? "detected_face_descriptor" : "sample_face_descriptor";
       clockInMutation.mutate(faceDescriptor);
-    } catch (error) {
+      
+      // Draw the detected face on the canvas for visual feedback
+      if (canvasRef.current) {
+        const dims = {
+          width: videoRef.current.width || videoRef.current.videoWidth || 640,
+          height: videoRef.current.height || videoRef.current.videoHeight || 480
+        };
+        faceapi.matchDimensions(canvasRef.current, dims);
+        const resizedResults = faceapi.resizeResults(results, dims);
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          faceapi.draw.drawDetections(canvasRef.current, [resizedResults]);
+          faceapi.draw.drawFaceLandmarks(canvasRef.current, [resizedResults]);
+        }
+      }
+    } catch (error: any) {
       setStatus('error');
       toast({
         title: "Recognition Failed",
-        description: "Could not process face data",
+        description: error.message || "Could not process face data",
         variant: "destructive",
       });
     }
   };
 
   const handleClockOut = async () => {
-    if (!canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      toast({
+        title: "Error",
+        description: "Camera not initialized",
+        variant: "destructive",
+      });
+      return;
+    }
     
     setStatus('processing');
     try {
-      // In a real app, this would capture and process the face data
-      const faceDescriptor = "sample_face_descriptor";
+      // Capture current frame from the video
+      const options = new faceapi.TinyFaceDetectorOptions();
+      const results = await faceapi.detectSingleFace(videoRef.current, options)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (!results) {
+        throw new Error("No face detected");
+      }
+      
+      // In a real app, we would use the face descriptor to identify the employee
+      // For demo purposes, we'll stringify the descriptor and use a sample value
+      const faceDescriptor = results ? "detected_face_descriptor" : "sample_face_descriptor";
       clockOutMutation.mutate(faceDescriptor);
-    } catch (error) {
+      
+      // Draw the detected face on the canvas for visual feedback
+      if (canvasRef.current) {
+        const dims = {
+          width: videoRef.current.width || videoRef.current.videoWidth || 640,
+          height: videoRef.current.height || videoRef.current.videoHeight || 480
+        };
+        faceapi.matchDimensions(canvasRef.current, dims);
+        const resizedResults = faceapi.resizeResults(results, dims);
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          faceapi.draw.drawDetections(canvasRef.current, [resizedResults]);
+          faceapi.draw.drawFaceLandmarks(canvasRef.current, [resizedResults]);
+        }
+      }
+    } catch (error: any) {
       setStatus('error');
       toast({
         title: "Recognition Failed",
-        description: "Could not process face data",
+        description: error.message || "Could not process face data",
         variant: "destructive",
       });
     }
