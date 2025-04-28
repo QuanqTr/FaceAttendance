@@ -11,7 +11,15 @@ import { fromZodError } from "zod-validation-error";
 
 declare global {
   namespace Express {
-    interface User extends User {}
+    // Define User interface for Express
+    interface User {
+      id: number;
+      username: string;
+      password: string;
+      fullName: string;
+      role: string;
+      createdAt: Date;
+    }
   }
 }
 

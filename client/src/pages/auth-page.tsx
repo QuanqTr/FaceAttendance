@@ -36,6 +36,7 @@ const registerSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(1, "Full name is required"),
+  role: z.string().default("admin"),
 });
 
 export default function AuthPage() {
@@ -60,6 +61,7 @@ export default function AuthPage() {
       username: "",
       password: "",
       fullName: "",
+      role: "admin",
     },
   });
 
