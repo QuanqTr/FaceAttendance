@@ -18,13 +18,13 @@ type MobileNavLinkProps = {
 const MobileNavLink = ({ href, icon, children, isActive }: MobileNavLinkProps) => {
   return (
     <Link href={href}>
-      <a className={cn(
-        "flex flex-col items-center py-2",
+      <div className={cn(
+        "flex flex-col items-center py-2 cursor-pointer",
         isActive ? "text-primary" : "text-muted-foreground"
       )}>
         {icon}
         <span className="text-xs mt-1">{children}</span>
-      </a>
+      </div>
     </Link>
   );
 };

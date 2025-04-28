@@ -22,9 +22,9 @@ const SidebarLink = ({ href, icon, children, isActive }: SidebarLinkProps) => {
   return (
     <li className="mb-1">
       <Link href={href}>
-        <a 
+        <div 
           className={cn(
-            "flex items-center px-4 py-3 rounded-lg transition-colors",
+            "flex items-center px-4 py-3 rounded-lg transition-colors cursor-pointer",
             isActive
               ? "bg-primary text-white"
               : "text-foreground hover:bg-primary/10"
@@ -32,7 +32,7 @@ const SidebarLink = ({ href, icon, children, isActive }: SidebarLinkProps) => {
         >
           {icon}
           <span className="ml-3">{children}</span>
-        </a>
+        </div>
       </Link>
     </li>
   );
