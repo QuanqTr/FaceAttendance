@@ -1,7 +1,7 @@
-import { 
-  type User, 
-  type InsertUser, 
-  type Department, 
+import {
+  type User,
+  type InsertUser,
+  type Department,
   type InsertDepartment,
   type Employee,
   type InsertEmployee,
@@ -31,62 +31,62 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
+
   // Department methods
   getDepartment(id: number): Promise<Department | undefined>;
   getAllDepartments(): Promise<Department[]>;
   createDepartment(department: InsertDepartment): Promise<Department>;
   updateDepartment(id: number, department: Partial<InsertDepartment>): Promise<Department | undefined>;
   deleteDepartment(id: number): Promise<boolean>;
-  
+
   // Employee methods
   getEmployee(id: number): Promise<Employee | undefined>;
   getEmployeeByEmployeeId(employeeId: string): Promise<Employee | undefined>;
-  getAllEmployees(page?: number, limit?: number): Promise<Employee[]>;
+  getAllEmployees(page: number, limit: number, filters?: object): Promise<{ employees: Employee[], total: number }>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee | undefined>;
   deleteEmployee(id: number): Promise<boolean>;
-  
+
   // Attendance methods
   getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined>;
   getEmployeeAttendance(employeeId: number, startDate?: Date, endDate?: Date): Promise<AttendanceRecord[]>;
   createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord>;
   getLatestAttendanceRecord(employeeId: number, date: Date): Promise<AttendanceRecord | undefined>;
   getDailyAttendance(date: Date): Promise<{ employee: Employee; attendance?: AttendanceRecord }[]>;
-  
+
   // Leave Request methods
   getLeaveRequest(id: number): Promise<LeaveRequest | undefined>;
   getEmployeeLeaveRequests(employeeId: number, status?: string): Promise<LeaveRequest[]>;
-  getAllLeaveRequests(page?: number, limit?: number, status?: string): Promise<LeaveRequest[]>;
+  getAllLeaveRequests(page: number, limit: number, status?: string): Promise<LeaveRequest[]>;
   createLeaveRequest(leaveRequest: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequest(id: number, leaveRequest: Partial<LeaveRequest>): Promise<LeaveRequest | undefined>;
   deleteLeaveRequest(id: number): Promise<boolean>;
-  
+
   // Salary methods
   getSalaryRecord(id: number): Promise<SalaryRecord | undefined>;
   getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]>;
-  getAllSalaryRecords(page?: number, limit?: number, year?: number, month?: number): Promise<SalaryRecord[]>;
+  getAllSalaryRecords(page: number, limit: number, year?: number, month?: number): Promise<SalaryRecord[]>;
   createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord>;
   updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined>;
   deleteSalaryRecord(id: number): Promise<boolean>;
   getSalaryStats(year: number): Promise<{ month: number; totalSalary: number; totalEmployees: number }[]>;
-  
+
   // Statistics methods
   getDepartmentAttendanceStats(date: Date): Promise<{ departmentId: number; departmentName: string; presentPercentage: number }[]>;
   getDailyAttendanceSummary(date: Date): Promise<{ present: number; absent: number; late: number; total: number }>;
   getWeeklyAttendance(startDate: Date, endDate: Date): Promise<{ date: string; present: number; absent: number; late: number }[]>;
-  
+
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: any;
 }
 
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.SessionStore;
+  sessionStore: any;
 
   constructor() {
-    this.sessionStore = new PostgresSessionStore({ 
-      pool, 
-      createTableIfMissing: true 
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true
     });
   }
 
@@ -111,12 +111,26 @@ export class DatabaseStorage implements IStorage {
 
   // Department methods
   async getDepartment(id: number): Promise<Department | undefined> {
-    const [department] = await db.select().from(departments).where(eq(departments.id, id));
-    return department;
+    try {
+      const [department] = await db.select().from(departments).where(eq(departments.id, id));
+      return department;
+    } catch (error) {
+      console.error("Error fetching department:", error);
+      return undefined;
+    }
   }
 
   async getAllDepartments(): Promise<Department[]> {
-    return await db.select().from(departments);
+    try {
+      console.log("Fetching departments from database");
+      // Use ORM to fetch departments
+      const result = await db.select().from(departments);
+      console.log("Departments fetched:", JSON.stringify(result));
+      return result;
+    } catch (error) {
+      console.error("Error fetching all departments:", error);
+      return [];
+    }
   }
 
   async createDepartment(department: InsertDepartment): Promise<Department> {
@@ -154,28 +168,183 @@ export class DatabaseStorage implements IStorage {
     return employee;
   }
 
-  async getAllEmployees(page: number = 1, limit: number = 10): Promise<Employee[]> {
+  async getAllEmployees(page: number = 1, limit: number = 10, filters?: object): Promise<{ employees: Employee[], total: number }> {
     const offset = (page - 1) * limit;
-    return await db
-      .select()
-      .from(employees)
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(employees.createdAt));
+
+    // Ép kiểu filters để sử dụng đúng kiểu dữ liệu
+    const filterOptions = filters as {
+      search?: string;
+      departmentId?: number;
+      status?: string;
+      position?: string;
+      joinDate?: Date;
+      sortBy?: string;
+    } || {};
+
+    // Lấy tất cả employees và xử lý bộ lọc trong memory để tránh lỗi SQL
+    const allEmployees = await db.select().from(employees);
+
+    // Lọc nhân viên theo các tiêu chí
+    let filteredEmployees = [...allEmployees];
+
+    // Áp dụng bộ lọc search
+    if (filterOptions.search) {
+      const searchTerm = filterOptions.search.toLowerCase();
+      filteredEmployees = filteredEmployees.filter(emp =>
+        emp.firstName.toLowerCase().includes(searchTerm) ||
+        emp.lastName.toLowerCase().includes(searchTerm) ||
+        emp.email.toLowerCase().includes(searchTerm) ||
+        emp.employeeId.toLowerCase().includes(searchTerm) ||
+        (emp.position && emp.position.toLowerCase().includes(searchTerm))
+      );
+    }
+
+    // Lọc theo department
+    if (filterOptions.departmentId) {
+      filteredEmployees = filteredEmployees.filter(emp =>
+        emp.departmentId === filterOptions.departmentId
+      );
+    }
+
+    // Lọc theo status
+    if (filterOptions.status) {
+      filteredEmployees = filteredEmployees.filter(emp =>
+        emp.status === filterOptions.status
+      );
+    }
+
+    // Lọc theo position
+    if (filterOptions.position) {
+      const positionTerm = filterOptions.position.toLowerCase();
+      filteredEmployees = filteredEmployees.filter(emp =>
+        emp.position && emp.position.toLowerCase().includes(positionTerm)
+      );
+    }
+
+    // Lọc theo joinDate
+    if (filterOptions.joinDate) {
+      const filterDate = new Date(filterOptions.joinDate);
+      filterDate.setHours(0, 0, 0, 0);
+
+      filteredEmployees = filteredEmployees.filter(emp => {
+        const empJoinDate = new Date(emp.joinDate);
+        empJoinDate.setHours(0, 0, 0, 0);
+        return empJoinDate.getTime() === filterDate.getTime();
+      });
+    }
+
+    // Sắp xếp kết quả
+    if (filterOptions.sortBy) {
+      switch (filterOptions.sortBy) {
+        case 'newest':
+          filteredEmployees.sort((a, b) =>
+            new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime()
+          );
+          break;
+        case 'oldest':
+          filteredEmployees.sort((a, b) =>
+            new Date(a.joinDate).getTime() - new Date(b.joinDate).getTime()
+          );
+          break;
+        case 'name_asc':
+          filteredEmployees.sort((a, b) =>
+            `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+          );
+          break;
+        case 'name_desc':
+          filteredEmployees.sort((a, b) =>
+            `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`)
+          );
+          break;
+        default:
+          filteredEmployees.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+      }
+    } else {
+      // Mặc định sắp xếp theo thời gian tạo giảm dần
+      filteredEmployees.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    }
+
+    // Tính tổng số kết quả
+    const total = filteredEmployees.length;
+
+    // Phân trang kết quả
+    const paginatedEmployees = filteredEmployees.slice(offset, offset + limit);
+
+    return {
+      employees: paginatedEmployees,
+      total
+    };
   }
 
   async createEmployee(employee: InsertEmployee): Promise<Employee> {
+    // Convert joinDate from string to Date if needed
+    const employeeData: any = { ...employee };
+
+    // Format joinDate to date string without time component
+    if (employee.joinDate) {
+      const dateObj = new Date(employee.joinDate);
+      if (!isNaN(dateObj.getTime())) {
+        // Format as YYYY-MM-DD
+        const dateStr = dateObj.toISOString().split('T')[0];
+        employeeData.joinDate = dateStr;
+      } else {
+        // Default to today if invalid
+        employeeData.joinDate = new Date().toISOString().split('T')[0];
+      }
+    } else {
+      // Default to today if not provided
+      employeeData.joinDate = new Date().toISOString().split('T')[0];
+    }
+
     const [newEmployee] = await db
       .insert(employees)
-      .values(employee)
+      .values(employeeData)
       .returning();
     return newEmployee;
   }
 
   async updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee | undefined> {
+    // Tạo bản sao dữ liệu để tránh thay đổi object gốc
+    const employeeData: any = { ...employee };
+
+    // Xử lý đặc biệt cho joinDate để đảm bảo nó được lưu đúng là date không phải timestamp
+    if (employee.joinDate) {
+      try {
+        // Lấy đối tượng Date
+        let dateObj: Date;
+        if (typeof employee.joinDate === 'string') {
+          dateObj = new Date(employee.joinDate);
+        } else {
+          // Nếu không phải string, gán nó là any để tránh lỗi kiểu dữ liệu
+          dateObj = (employee.joinDate as any) instanceof Date
+            ? (employee.joinDate as any)
+            : new Date();
+        }
+
+        // Kiểm tra tính hợp lệ của ngày
+        if (isNaN(dateObj.getTime())) {
+          console.error("Invalid join date:", employee.joinDate);
+        } else {
+          // Chỉ lấy phần date và bỏ qua phần time
+          const dateStr = dateObj.toISOString().split('T')[0]; // Format YYYY-MM-DD
+          employeeData.joinDate = dateStr;
+          console.log("Formatted join date for database:", dateStr);
+        }
+      } catch (error) {
+        console.error("Error processing join date:", error);
+      }
+    }
+
+    // Luôn cập nhật timestamp updated
+    employeeData.updatedAt = new Date();
+
     const [updatedEmployee] = await db
       .update(employees)
-      .set({ ...employee, updatedAt: new Date() })
+      .set(employeeData)
       .where(eq(employees.id, id))
       .returning();
     return updatedEmployee;
@@ -195,17 +364,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getEmployeeAttendance(employeeId: number, startDate?: Date, endDate?: Date): Promise<AttendanceRecord[]> {
-    let query = db.select().from(attendanceRecords).where(eq(attendanceRecords.employeeId, employeeId));
-    
-    if (startDate) {
-      query = query.where(gte(attendanceRecords.date, startDate));
-    }
-    
-    if (endDate) {
-      query = query.where(lt(attendanceRecords.date, endDate));
-    }
-    
-    return await query.orderBy(desc(attendanceRecords.date));
+    // Instead of building the query, use a more direct approach
+    const allRecords = await db
+      .select()
+      .from(attendanceRecords)
+      .where(eq(attendanceRecords.employeeId, employeeId));
+
+    // Filter records by date in memory
+    return allRecords.filter(record => {
+      const recordDate = new Date(record.date);
+
+      if (startDate && recordDate < startDate) {
+        return false;
+      }
+
+      if (endDate && recordDate >= endDate) {
+        return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
   }
 
   async createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord> {
@@ -220,10 +400,10 @@ export class DatabaseStorage implements IStorage {
     // Create start and end of the given date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     const [record] = await db
       .select()
       .from(attendanceRecords)
@@ -236,7 +416,7 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(desc(attendanceRecords.time))
       .limit(1);
-    
+
     return record;
   }
 
@@ -244,13 +424,13 @@ export class DatabaseStorage implements IStorage {
     // Create start and end of the given date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     // Get all employees
     const allEmployees = await db.select().from(employees);
-    
+
     // Get attendance records for the day
     const dailyAttendance = await db
       .select()
@@ -261,14 +441,14 @@ export class DatabaseStorage implements IStorage {
           lt(attendanceRecords.date, endOfDay)
         )
       );
-    
+
     // Map employees with their attendance records
     return allEmployees.map(employee => {
-      const attendance = dailyAttendance.find(record => 
-        record.employeeId === employee.id && 
+      const attendance = dailyAttendance.find(record =>
+        record.employeeId === employee.id &&
         record.type === 'in'
       );
-      
+
       return { employee, attendance };
     });
   }
@@ -278,10 +458,10 @@ export class DatabaseStorage implements IStorage {
     // Create start and end of the given date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     const stats = await db.execute(sql`
       WITH department_employee_counts AS (
         SELECT 
@@ -315,7 +495,7 @@ export class DatabaseStorage implements IStorage {
       LEFT JOIN department_present_counts p ON c.department_id = p.department_id
       ORDER BY present_percentage DESC
     `);
-    
+
     return stats.rows.map(row => ({
       departmentId: row.department_id,
       departmentName: row.department_name,
@@ -327,17 +507,17 @@ export class DatabaseStorage implements IStorage {
     // Create start and end of the given date
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
-    
+
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     // Get total employees
     const [totalResult] = await db
       .select({ count: count() })
       .from(employees);
-    
+
     const total = totalResult?.count || 0;
-    
+
     // Get present employees
     const [presentResult] = await db
       .select({ count: count() })
@@ -350,9 +530,9 @@ export class DatabaseStorage implements IStorage {
           eq(attendanceRecords.type, 'in')
         )
       );
-    
+
     const present = presentResult?.count || 0;
-    
+
     // Get late employees
     const [lateResult] = await db
       .select({ count: count() })
@@ -365,12 +545,12 @@ export class DatabaseStorage implements IStorage {
           eq(attendanceRecords.type, 'in')
         )
       );
-    
+
     const late = lateResult?.count || 0;
-    
+
     // Calculate absent (total - present - late)
     const absent = total - present - late;
-    
+
     return {
       present,
       absent: absent < 0 ? 0 : absent, // Ensure we don't get negative absences
@@ -411,7 +591,7 @@ export class DatabaseStorage implements IStorage {
       GROUP BY dr.day
       ORDER BY dr.day
     `);
-    
+
     return results.rows.map(row => ({
       date: row.date as string,
       present: Number(row.present) || 0,
@@ -428,26 +608,32 @@ export class DatabaseStorage implements IStorage {
 
   async getEmployeeLeaveRequests(employeeId: number, status?: string): Promise<LeaveRequest[]> {
     let query = db.select().from(leaveRequests).where(eq(leaveRequests.employeeId, employeeId));
-    
+
     if (status) {
       query = query.where(eq(leaveRequests.status, status as any));
     }
-    
+
     return await query.orderBy(desc(leaveRequests.createdAt));
   }
 
   async getAllLeaveRequests(page: number = 1, limit: number = 10, status?: string): Promise<LeaveRequest[]> {
     const offset = (page - 1) * limit;
-    let query = db.select().from(leaveRequests);
-    
+
+    // Lấy tất cả leave requests và lọc trong memory thay vì SQL
+    let allLeaveRequests = await db.select().from(leaveRequests);
+
+    // Lọc theo status nếu có
     if (status) {
-      query = query.where(eq(leaveRequests.status, status as any));
+      allLeaveRequests = allLeaveRequests.filter(req => req.status === status);
     }
-    
-    return await query
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(leaveRequests.createdAt));
+
+    // Sắp xếp theo thứ tự tạo mới nhất
+    allLeaveRequests.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Phân trang
+    return allLeaveRequests.slice(offset, offset + limit);
   }
 
   async createLeaveRequest(leaveRequest: InsertLeaveRequest): Promise<LeaveRequest> {
@@ -487,81 +673,125 @@ export class DatabaseStorage implements IStorage {
 
   async getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]> {
     let query = db.select().from(salaryRecords).where(eq(salaryRecords.employeeId, employeeId));
-    
+
     if (year) {
       query = query.where(eq(salaryRecords.year, year));
     }
-    
+
     return await query.orderBy(desc(salaryRecords.year), desc(salaryRecords.month));
   }
 
   async getAllSalaryRecords(page: number = 1, limit: number = 10, year?: number, month?: number): Promise<SalaryRecord[]> {
     const offset = (page - 1) * limit;
-    let query = db.select().from(salaryRecords);
-    
+
+    // Lấy tất cả salary records và lọc trong memory
+    let allSalaryRecords = await db.select().from(salaryRecords);
+
+    // Lọc theo năm nếu có
     if (year) {
-      query = query.where(eq(salaryRecords.year, year));
+      allSalaryRecords = allSalaryRecords.filter(record => record.year === year);
     }
-    
+
+    // Lọc theo tháng nếu có
     if (month) {
-      query = query.where(eq(salaryRecords.month, month));
+      allSalaryRecords = allSalaryRecords.filter(record => record.month === month);
     }
-    
-    return await query
-      .limit(limit)
-      .offset(offset)
-      .orderBy(desc(salaryRecords.year), desc(salaryRecords.month), desc(salaryRecords.createdAt));
+
+    // Sắp xếp theo năm, tháng và thời gian tạo (giảm dần)
+    allSalaryRecords.sort((a, b) => {
+      // So sánh năm trước
+      if (b.year !== a.year) {
+        return b.year - a.year;
+      }
+      // Nếu cùng năm, so sánh tháng
+      if (b.month !== a.month) {
+        return b.month - a.month;
+      }
+      // Nếu cùng năm và tháng, so sánh thời gian tạo
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Phân trang
+    return allSalaryRecords.slice(offset, offset + limit);
   }
 
   async createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord> {
     // Calculate total salary
-    const totalSalary = 
-      Number(salaryRecord.basicSalary) + 
-      Number(salaryRecord.bonus || 0) - 
+    const totalSalaryValue =
+      Number(salaryRecord.basicSalary) +
+      Number(salaryRecord.bonus || 0) -
       Number(salaryRecord.deduction || 0);
-    
+
+    // Tạo một bản sao của dữ liệu để tránh mutate object gốc
+    const recordToInsert = {
+      ...salaryRecord,
+      // Chuyển totalSalary thành string để phù hợp với kiểu dữ liệu yêu cầu
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
     const [newSalaryRecord] = await db
       .insert(salaryRecords)
-      .values({
-        ...salaryRecord,
-        totalSalary,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      })
+      .values(recordToInsert)
       .returning();
-    return newSalaryRecord;
+
+    // Cập nhật thủ công totalSalary
+    const [updatedRecord] = await db
+      .update(salaryRecords)
+      .set({ totalSalary: String(totalSalaryValue) })
+      .where(eq(salaryRecords.id, newSalaryRecord.id))
+      .returning();
+
+    return updatedRecord;
   }
 
   async updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined> {
-    // If salary components are changed, recalculate total
-    let totalSalary = undefined;
-    
-    if (salaryRecord.basicSalary !== undefined || 
-        salaryRecord.bonus !== undefined || 
-        salaryRecord.deduction !== undefined) {
-      
-      // Get current record
+    // Tính toán totalSalary nếu cần
+    let totalSalaryValue: string | undefined = undefined;
+
+    if (salaryRecord.basicSalary !== undefined ||
+      salaryRecord.bonus !== undefined ||
+      salaryRecord.deduction !== undefined) {
+
+      // Lấy bản ghi hiện tại
       const currentRecord = await this.getSalaryRecord(id);
       if (!currentRecord) {
         return undefined;
       }
-      
-      // Calculate new total
-      totalSalary = 
-        Number(salaryRecord.basicSalary || currentRecord.basicSalary) + 
-        Number(salaryRecord.bonus || currentRecord.bonus) - 
+
+      // Tính toán giá trị mới
+      const newTotalSalary =
+        Number(salaryRecord.basicSalary || currentRecord.basicSalary) +
+        Number(salaryRecord.bonus || currentRecord.bonus) -
         Number(salaryRecord.deduction || currentRecord.deduction);
+
+      totalSalaryValue = String(newTotalSalary);
     }
-    
+
+    // Chuẩn bị dữ liệu cập nhật
+    const updateData = {
+      ...salaryRecord,
+      updatedAt: new Date()
+    };
+
+    // Thực hiện cập nhật
     const [updatedSalaryRecord] = await db
       .update(salaryRecords)
-      .set({ 
-        ...salaryRecord, 
-        ...(totalSalary !== undefined ? { totalSalary } : {}),
-        updatedAt: new Date() 
-      })
+      .set(updateData)
       .where(eq(salaryRecords.id, id))
       .returning();
+
+    // Cập nhật totalSalary nếu cần
+    if (totalSalaryValue !== undefined) {
+      const [recordWithTotalSalary] = await db
+        .update(salaryRecords)
+        .set({ totalSalary: totalSalaryValue })
+        .where(eq(salaryRecords.id, id))
+        .returning();
+
+      return recordWithTotalSalary;
+    }
+
     return updatedSalaryRecord;
   }
 
@@ -586,7 +816,7 @@ export class DatabaseStorage implements IStorage {
       GROUP BY mr.month
       ORDER BY mr.month
     `);
-    
+
     return results.rows.map(row => ({
       month: Number(row.month),
       totalSalary: Number(row.total_salary) || 0,

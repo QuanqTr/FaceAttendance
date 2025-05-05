@@ -57,7 +57,7 @@ type FormValues = z.infer<typeof formSchema>;
 export default function SalaryForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [selectedEmployee, setSelectedEmployee] = useState<{id: number; name: string} | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
 
   // Get list of employees for dropdown
   const { data: employees = [], isLoading: employeesLoading } = useQuery({
@@ -72,7 +72,7 @@ export default function SalaryForm() {
   // Create year options
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i));
-  
+
   // Month options
   const monthOptions = [
     { value: 1, label: "January" },
@@ -115,7 +115,7 @@ export default function SalaryForm() {
     const bonus = parseFloat(values.bonus) || 0;
     const deduction = parseFloat(values.deduction) || 0;
     const taxAmount = parseFloat(values.taxAmount) || 0;
-    
+
     return (basicSalary + allowance + overtime + bonus) - (deduction + taxAmount);
   };
 
@@ -124,7 +124,7 @@ export default function SalaryForm() {
     mutationFn: async (data: FormValues) => {
       // Calculate total salary
       const totalSalary = calculateTotalSalary();
-      
+
       // Convert string values to numbers
       const formattedData = {
         ...data,
@@ -135,8 +135,9 @@ export default function SalaryForm() {
         deduction: parseFloat(data.deduction),
         taxAmount: parseFloat(data.taxAmount),
         totalSalary,
+        paymentDate: data.paymentDate instanceof Date ? data.paymentDate.toISOString().split('T')[0] : data.paymentDate,
       };
-      
+
       const response = await apiRequest("POST", "/api/salary-records", formattedData);
       return response.json();
     },
@@ -167,7 +168,7 @@ export default function SalaryForm() {
   // Handle employee selection
   const handleEmployeeSelect = (employeeId: string) => {
     const id = parseInt(employeeId);
-    const employee = employees.find(e => e.id === id);
+    const employee = employees.find((e: any) => e.id === id);
     if (employee) {
       form.setValue("employeeId", id);
       setSelectedEmployee({
@@ -222,7 +223,7 @@ export default function SalaryForm() {
                               No employees found
                             </div>
                           ) : (
-                            employees.map((employee) => (
+                            employees.map((employee: any) => (
                               <SelectItem
                                 key={employee.id}
                                 value={employee.id.toString()}
@@ -389,7 +390,7 @@ export default function SalaryForm() {
                     )}
                   />
                 </div>
-                
+
                 {/* Deductions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField

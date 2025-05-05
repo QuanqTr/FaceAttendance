@@ -50,7 +50,7 @@ type FormValues = z.infer<typeof formSchema>;
 export default function LeaveRequestForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [selectedEmployee, setSelectedEmployee] = useState<{id: number; name: string} | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
 
   // Get list of employees for dropdown
   const { data: employees = [], isLoading: employeesLoading } = useQuery({
@@ -103,17 +103,18 @@ export default function LeaveRequestForm() {
     // Format dates to ISO string and keep only the date part
     const formattedData = {
       ...data,
-      startDate: data.startDate.toISOString().split('T')[0],
-      endDate: data.endDate.toISOString().split('T')[0],
+      startDate: data.startDate instanceof Date ? data.startDate.toISOString().split('T')[0] : data.startDate,
+      endDate: data.endDate instanceof Date ? data.endDate.toISOString().split('T')[0] : data.endDate,
     };
-    
+
+    // Use create mutation with the original data that has Date objects
     createMutation.mutate(data);
   };
 
   // Handle employee selection
   const handleEmployeeSelect = (employeeId: string) => {
     const id = parseInt(employeeId);
-    const employee = employees.find(e => e.id === id);
+    const employee = employees.find((e: any) => e.id === id);
     if (employee) {
       form.setValue("employeeId", id);
       setSelectedEmployee({
@@ -168,7 +169,7 @@ export default function LeaveRequestForm() {
                               No employees found
                             </div>
                           ) : (
-                            employees.map((employee) => (
+                            employees.map((employee: any) => (
                               <SelectItem
                                 key={employee.id}
                                 value={employee.id.toString()}

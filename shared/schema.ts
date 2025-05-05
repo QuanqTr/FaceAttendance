@@ -7,7 +7,7 @@ import { relations } from "drizzle-orm";
 export const employeeStatusEnum = pgEnum('employee_status', ['active', 'inactive', 'on_leave']);
 
 // Enum for attendance status
-export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late']);
+export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'late', 'absent']);
 
 // Enum for attendance type
 export const attendanceTypeEnum = pgEnum('attendance_type', ['in', 'out']);
@@ -39,6 +39,7 @@ export const departments = pgTable("departments", {
   description: text("description"),
   managerId: integer("manager_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
@@ -61,9 +62,20 @@ export const employees = pgTable("employees", {
   position: text("position"),
   status: employeeStatusEnum("status").default("active").notNull(),
   faceDescriptor: text("face_descriptor"),
-  joinDate: timestamp("join_date").defaultNow().notNull(),
+  joinDate: date("join_date").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Face data table for storing face recognition data
+export const faceData = pgTable("face_data", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  descriptor: text("descriptor").notNull(),
+  quality: decimal("quality", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
 });
 
 // Attendance records table
@@ -119,6 +131,14 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   attendanceRecords: many(attendanceRecords),
   leaveRequests: many(leaveRequests),
   salaryRecords: many(salaryRecords),
+  faceData: many(faceData),
+}));
+
+export const faceDataRelations = relations(faceData, ({ one }) => ({
+  employee: one(employees, {
+    fields: [faceData.employeeId],
+    references: [employees.id],
+  }),
 }));
 
 export const attendanceRecordsRelations = relations(attendanceRecords, ({ one }) => ({
@@ -148,24 +168,31 @@ export const salaryRecordsRelations = relations(salaryRecords, ({ one }) => ({
 
 // Create insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
-export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
-export const insertEmployeeSchema = createInsertSchema(employees).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEmployeeSchema = createInsertSchema(employees).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  joinDate: z.string().date()
 });
-export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords).omit({ 
-  id: true, 
+export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords).omit({
+  id: true,
   createdAt: true
 });
 export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
+  approvedById: true,
   approvedAt: true,
-  status: true
+  createdAt: true,
+  updatedAt: true
 });
 export const insertSalaryRecordSchema = createInsertSchema(salaryRecords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export const insertFaceDataSchema = createInsertSchema(faceData).omit({
   id: true,
   createdAt: true,
   updatedAt: true

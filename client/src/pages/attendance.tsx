@@ -45,12 +45,13 @@ export default function Attendance() {
     queryFn: async () => {
       const res = await fetch(`/api/attendance/daily?date=${formattedDate}`);
       if (!res.ok) throw new Error("Failed to fetch attendance records");
-      
+
       const data = await res.json();
-      
+
       // Transform the data to match the AttendanceRecord type
-      return data.map((item: any) => ({
-        id: item.attendance?.id || 0,
+      return data.map((item: any, index: number) => ({
+        // Ensure each record has a unique ID by combining employee ID with index
+        id: item.attendance?.id || (item.employee.id * 1000 + index),
         employeeId: item.employee.id,
         employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
         departmentName: item.employee.departmentId, // In a real app, this would fetch the department name
@@ -74,7 +75,7 @@ export default function Attendance() {
     setSearchQuery(query);
   };
 
-  const filteredRecords = attendanceRecords?.filter(record => 
+  const filteredRecords = attendanceRecords?.filter(record =>
     record.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     record.departmentName.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
@@ -87,7 +88,7 @@ export default function Attendance() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title="Attendance" onSearch={handleSearch} />
-      
+
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <Tabs defaultValue="today" className="space-y-4" onValueChange={setActiveTab}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
@@ -95,7 +96,7 @@ export default function Attendance() {
               <TabsTrigger value="today">Today's Attendance</TabsTrigger>
               <TabsTrigger value="record">Record Attendance</TabsTrigger>
             </TabsList>
-            
+
             <div className="flex items-center mt-4 sm:mt-0 space-x-2">
               {activeTab === "today" && (
                 <>
@@ -130,15 +131,15 @@ export default function Attendance() {
               )}
             </div>
           </div>
-          
+
           <TabsContent value="today" className="space-y-4">
-            <AttendanceLog 
-              records={filteredRecords} 
-              isLoading={isLoading} 
+            <AttendanceLog
+              records={filteredRecords}
+              isLoading={isLoading}
               date={date}
             />
           </TabsContent>
-          
+
           <TabsContent value="record">
             <Card>
               <CardHeader>

@@ -13,14 +13,14 @@ import { AttendanceLog } from "@/components/attendance/attendance-log";
 import { Calendar } from "@/components/ui/calendar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  AlertCircle, 
-  ArrowLeft, 
+import {
+  AlertCircle,
+  ArrowLeft,
   Calendar as CalendarIcon,
-  Edit2, 
-  Mail, 
-  Phone, 
-  Trash2, 
+  Edit2,
+  Mail,
+  Phone,
+  Trash2,
   User
 } from "lucide-react";
 import { format } from "date-fns";
@@ -41,6 +41,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Employee } from "@shared/schema";
+import { FaceRegistration } from "@/components/face-recognition/face-registration";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function EmployeeDetail() {
   const [, params] = useRoute<{ id: string }>("/employees/:id");
@@ -48,7 +50,7 @@ export default function EmployeeDetail() {
   const [date, setDate] = useState<Date>(new Date());
   const employeeId = params?.id ? parseInt(params.id) : 0;
 
-  const { data: employee, isLoading } = useQuery<Employee>({
+  const { data: employee, isLoading, refetch } = useQuery<Employee>({
     queryKey: [`/api/employees/${employeeId}`],
     queryFn: async () => {
       if (!employeeId) return null;
@@ -63,13 +65,13 @@ export default function EmployeeDetail() {
     queryKey: [`/api/attendance/employee/${employeeId}`, format(date, 'yyyy-MM')],
     queryFn: async () => {
       if (!employeeId) return [];
-      
+
       const startDate = new Date(date.getFullYear(), date.getMonth(), 1);
       const endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-      
+
       const res = await fetch(`/api/attendance/employee/${employeeId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
       if (!res.ok) throw new Error("Failed to fetch attendance records");
-      
+
       return await res.json();
     },
     enabled: !!employeeId,
@@ -151,7 +153,7 @@ export default function EmployeeDetail() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title="Employee Details" />
-      
+
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
           <div className="flex items-center">
@@ -162,7 +164,7 @@ export default function EmployeeDetail() {
             </Link>
             <h1 className="text-2xl font-bold">Employee Profile</h1>
           </div>
-          
+
           <div className="flex items-center mt-4 md:mt-0 space-x-2">
             <Link href={`/employees/${employeeId}/edit`}>
               <Button variant="outline">
@@ -170,7 +172,7 @@ export default function EmployeeDetail() {
                 Edit
               </Button>
             </Link>
-            
+
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive">
@@ -199,7 +201,7 @@ export default function EmployeeDetail() {
             </AlertDialog>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-1">
             <CardHeader className="text-center">
@@ -222,9 +224,9 @@ export default function EmployeeDetail() {
                   <Label className="text-sm text-muted-foreground">Employee ID</Label>
                   <p className="font-medium">{employee.employeeId}</p>
                 </div>
-                
+
                 <Separator />
-                
+
                 <div className="space-y-1">
                   <Label className="text-sm text-muted-foreground">Email</Label>
                   <div className="flex items-center">
@@ -232,7 +234,7 @@ export default function EmployeeDetail() {
                     <p className="font-medium">{employee.email}</p>
                   </div>
                 </div>
-                
+
                 {employee.phone && (
                   <>
                     <Separator />
@@ -245,31 +247,41 @@ export default function EmployeeDetail() {
                     </div>
                   </>
                 )}
-                
+
                 <Separator />
-                
+
                 <div className="space-y-1">
                   <Label className="text-sm text-muted-foreground">Department</Label>
                   <p className="font-medium">{employee.departmentId}</p>
                 </div>
-                
+
                 <Separator />
-                
+
                 <div className="space-y-1">
                   <Label className="text-sm text-muted-foreground">Join Date</Label>
-                  <p className="font-medium">{format(new Date(employee.joinDate), 'PPP')}</p>
+                  <p className="font-medium">
+                    {employee.joinDate ?
+                      format(
+                        typeof employee.joinDate === 'string' ?
+                          new Date(employee.joinDate) :
+                          employee.joinDate,
+                        'PPP'
+                      ) :
+                      'Not specified'
+                    }
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          
+
           <div className="lg:col-span-2">
             <Tabs defaultValue="attendance" className="space-y-4">
               <TabsList>
                 <TabsTrigger value="attendance">Attendance History</TabsTrigger>
                 <TabsTrigger value="profile">Face Profile</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="attendance">
                 <Card>
                   <CardHeader>
@@ -300,7 +312,7 @@ export default function EmployeeDetail() {
                   </CardHeader>
                   <CardContent>
                     {attendanceRecords && attendanceRecords.length > 0 ? (
-                      <AttendanceLog 
+                      <AttendanceLog
                         records={attendanceRecords.map((record: any) => ({
                           id: record.id,
                           employeeId: employee.id,
@@ -310,7 +322,7 @@ export default function EmployeeDetail() {
                           timeIn: record.type === 'in' ? format(new Date(record.time), 'HH:mm') : undefined,
                           timeOut: record.type === 'out' ? format(new Date(record.time), 'HH:mm') : undefined,
                           status: record.status,
-                        }))} 
+                        }))}
                         isLoading={false}
                         date={date}
                         showSearch={false}
@@ -327,7 +339,7 @@ export default function EmployeeDetail() {
                   </CardContent>
                 </Card>
               </TabsContent>
-              
+
               <TabsContent value="profile">
                 <Card>
                   <CardHeader>
@@ -350,14 +362,59 @@ export default function EmployeeDetail() {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="space-y-4 w-full max-w-md">
-                      <Button className="w-full" disabled={!!employee.faceDescriptor}>
-                        Register Face Data
-                      </Button>
-                      
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button className="w-full" disabled={isLoading}>
+                            {employee.faceDescriptor ? "Update Face Data" : "Register Face Data"}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Face Registration</DialogTitle>
+                          </DialogHeader>
+                          <FaceRegistration
+                            employeeId={employee.id}
+                            onComplete={() => refetch()}
+                          />
+                        </DialogContent>
+                      </Dialog>
+
                       {employee.faceDescriptor && (
-                        <Button variant="destructive" className="w-full">
+                        <Button
+                          variant="destructive"
+                          className="w-full"
+                          onClick={async () => {
+                            if (confirm("Are you sure you want to reset this employee's face data? This action cannot be undone.")) {
+                              try {
+                                // Delete face data using the simplified endpoint
+                                const res = await fetch(`/api/employees/${employee.id}/face-data`, {
+                                  method: 'DELETE',
+                                  headers: { 'Content-Type': 'application/json' }
+                                });
+
+                                if (!res.ok) {
+                                  throw new Error("Failed to reset face data");
+                                }
+
+                                toast({
+                                  title: "Face Data Reset",
+                                  description: "Employee's face data has been reset successfully.",
+                                });
+
+                                refetch();
+                              } catch (error) {
+                                console.error("Error resetting face data:", error);
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to reset face data. Please try again.",
+                                  variant: "destructive"
+                                });
+                              }
+                            }
+                          }}
+                        >
                           Reset Face Data
                         </Button>
                       )}

@@ -1,19 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { EmployeeCard } from "@/components/employees/employee-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Pagination, 
-  PaginationContent, 
-  PaginationItem, 
-  PaginationLink, 
-  PaginationNext, 
-  PaginationPrevious 
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious
 } from "@/components/ui/pagination";
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -29,6 +29,7 @@ import { Employee } from "@shared/schema";
 import { CalendarIcon, Check, Filter, Loader2, Plus, Search, SlidersHorizontal, Users2, X } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
 
 export default function Employees() {
   const [_, navigate] = useLocation();
@@ -43,6 +44,9 @@ export default function Employees() {
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
 
+  // Add debounced search
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   const { data: departments } = useQuery({
     queryKey: ["/api/departments"],
     queryFn: async () => {
@@ -52,18 +56,61 @@ export default function Employees() {
     }
   });
 
-  const { data: employees, isLoading } = useQuery<Employee[]>({
-    queryKey: ["/api/employees", page, limit],
+  // Construct query parameters for API request
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('limit', limit.toString());
+
+    if (debouncedSearchQuery) {
+      params.append('search', debouncedSearchQuery);
+    }
+
+    if (departmentFilter !== "all") {
+      params.append('departmentId', departmentFilter);
+    }
+
+    if (statusFilter !== "all") {
+      params.append('status', statusFilter);
+    }
+
+    if (positionFilter) {
+      params.append('position', positionFilter);
+    }
+
+    if (joinDateFilter) {
+      params.append('joinDate', format(joinDateFilter, 'yyyy-MM-dd'));
+    }
+
+    if (sortBy) {
+      params.append('sortBy', sortBy);
+    }
+
+    return params.toString();
+  };
+
+  const queryParams = buildQueryParams();
+
+  const { data, isLoading, refetch } = useQuery<{ employees: Employee[], total: number }>({
+    queryKey: ["/api/employees", queryParams],
     queryFn: async () => {
-      const res = await fetch(`/api/employees?page=${page}&limit=${limit}`);
+      const res = await fetch(`/api/employees?${queryParams}`);
       if (!res.ok) throw new Error("Failed to fetch employees");
       return await res.json();
     }
   });
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery, departmentFilter, statusFilter, positionFilter, joinDateFilter, sortBy]);
+
+  const employees = data?.employees || [];
+  const totalCount = data?.total || 0;
+  const totalPages = Math.ceil(totalCount / limit);
+
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    setPage(1); // Reset to first page when searching
   };
 
   const clearAllFilters = () => {
@@ -75,58 +122,10 @@ export default function Employees() {
     setSortBy("newest");
   };
 
-  // Filter employees based on all filter criteria
-  const filteredEmployees = employees?.filter(employee => {
-    // Basic search query
-    const matchesSearch = searchQuery === "" || 
-      employee.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      employee.employeeId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (employee.email && employee.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (employee.position && employee.position.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    // Department filter
-    const matchesDepartment = departmentFilter === "all" || 
-      employee.departmentId === parseInt(departmentFilter);
-    
-    // Status filter
-    const matchesStatus = statusFilter === "all" || 
-      employee.status === statusFilter;
-    
-    // Position filter
-    const matchesPosition = positionFilter === "" ||
-      (employee.position && employee.position.toLowerCase().includes(positionFilter.toLowerCase()));
-    
-    // Join date filter
-    const matchesJoinDate = !joinDateFilter ||
-      new Date(employee.joinDate).toDateString() === joinDateFilter.toDateString();
-    
-    return matchesSearch && matchesDepartment && matchesStatus && matchesPosition && matchesJoinDate;
-  }) || [];
-
-  // Sort the filtered employees
-  const sortedEmployees = [...filteredEmployees].sort((a, b) => {
-    switch (sortBy) {
-      case "newest":
-        return new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime();
-      case "oldest":
-        return new Date(a.joinDate).getTime() - new Date(b.joinDate).getTime();
-      case "name_asc":
-        return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
-      case "name_desc":
-        return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
-      default:
-        return 0;
-    }
-  });
-
-  const totalPages = Math.ceil((sortedEmployees.length || 0) / limit);
-  const paginatedEmployees = sortedEmployees.slice((page - 1) * limit, page * limit);
-
   const handleAddEmployee = () => {
     navigate("/employees/new");
   };
-  
+
   const activeFiltersCount = [
     departmentFilter !== "all",
     statusFilter !== "all",
@@ -137,18 +136,18 @@ export default function Employees() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title="Employees" onSearch={handleSearch} />
-      
+
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
           <h1 className="text-2xl font-bold">Employee Directory</h1>
-          
+
           <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               className="relative"
             >
-              <Filter className="mr-2 h-4 w-4" /> 
+              <Filter className="mr-2 h-4 w-4" />
               Filters
               {activeFiltersCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
@@ -156,7 +155,7 @@ export default function Employees() {
                 </span>
               )}
             </Button>
-            
+
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Sort by" />
@@ -168,13 +167,13 @@ export default function Employees() {
                 <SelectItem value="name_desc">Name (Z-A)</SelectItem>
               </SelectContent>
             </Select>
-            
+
             <Button onClick={handleAddEmployee}>
               <Plus className="mr-2 h-4 w-4" /> Add Employee
             </Button>
           </div>
         </div>
-        
+
         {showAdvancedFilters && (
           <Card className="mb-6">
             <CardHeader className="pb-3">
@@ -202,7 +201,7 @@ export default function Employees() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -217,17 +216,17 @@ export default function Employees() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="position">Position</Label>
-                <Input 
-                  id="position" 
-                  placeholder="Any position" 
+                <Input
+                  id="position"
+                  placeholder="Any position"
                   value={positionFilter}
                   onChange={(e) => setPositionFilter(e.target.value)}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="joinDate">Join Date</Label>
                 <Popover>
@@ -253,9 +252,9 @@ export default function Employees() {
                     />
                     {joinDateFilter && (
                       <div className="p-3 border-t border-border">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setJoinDateFilter(undefined)}
                           className="w-full"
                         >
@@ -269,27 +268,27 @@ export default function Employees() {
             </CardContent>
           </Card>
         )}
-        
+
         {isLoading ? (
           <div className="flex justify-center items-center min-h-[400px]">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : paginatedEmployees.length > 0 ? (
+        ) : employees.length > 0 ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {paginatedEmployees.map(employee => (
-                <EmployeeCard 
+              {employees.map(employee => (
+                <EmployeeCard
                   key={employee.id}
                   employee={employee}
                 />
               ))}
             </div>
-            
+
             {totalPages > 1 && (
               <Pagination className="mt-8">
                 <PaginationContent>
                   <PaginationItem>
-                    <Button 
+                    <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -298,21 +297,33 @@ export default function Employees() {
                       Previous
                     </Button>
                   </PaginationItem>
-                  
-                  {Array.from({ length: totalPages }).map((_, i) => (
-                    <PaginationItem key={i}>
-                      <Button
-                        variant={page === i + 1 ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPage(i + 1)}
-                      >
-                        {i + 1}
-                      </Button>
-                    </PaginationItem>
-                  ))}
-                  
+
+                  {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                    // Show pages around current page for large number of pages
+                    let pageToShow = i + 1;
+                    if (totalPages > 5) {
+                      if (page > 3 && page <= totalPages - 2) {
+                        pageToShow = page - 2 + i;
+                      } else if (page > totalPages - 2) {
+                        pageToShow = totalPages - 4 + i;
+                      }
+                    }
+
+                    return (
+                      <PaginationItem key={i}>
+                        <Button
+                          variant={page === pageToShow ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(pageToShow)}
+                        >
+                          {pageToShow}
+                        </Button>
+                      </PaginationItem>
+                    );
+                  })}
+
                   <PaginationItem>
-                    <Button 
+                    <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setPage(p => Math.min(totalPages, p + 1))}
@@ -331,7 +342,7 @@ export default function Employees() {
             <h3 className="text-xl font-medium mb-2">No employees found</h3>
             <p className="text-muted-foreground mb-4">
               {searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter
-                ? "Try adjusting your filters or search query" 
+                ? "Try adjusting your filters or search query"
                 : "Get started by adding your first employee"}
             </p>
             {(searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter) && (

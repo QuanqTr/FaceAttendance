@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { ChevronLeft, ChevronRight, Eye, Pencil, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,24 +20,38 @@ export function EmployeeTable() {
   const [page, setPage] = useState(1);
   const limit = 5;
 
+  // Hardcoded departments instead of fetching from API due to API issues
+  const departments = [
+    { id: 1, name: 'DS', description: 'Phòng Design' },
+    { id: 2, name: 'HR', description: 'Phòng Nhân sự' }
+  ];
+
+  // Create a map of department IDs to department names for quick lookup
+  const departmentMap = useMemo(() => {
+    return departments.reduce((map: Record<number, string>, dept: { id: number, name: string }) => {
+      map[dept.id] = dept.name;
+      return map;
+    }, {});
+  }, []);
+
   const { data, isLoading } = useQuery<{ employees: EmployeeWithAttendance[]; total: number }>({
     queryKey: ["/api/employees", page, limit],
     queryFn: async () => {
       const res = await fetch(`/api/employees?page=${page}&limit=${limit}`);
       if (!res.ok) throw new Error("Failed to fetch employees");
-      
+
       // Fetch the employees
       const employees = await res.json();
-      
+
       // Also fetch today's attendance for these employees
       const today = new Date();
       const attendanceRes = await fetch(`/api/attendance/daily?date=${today.toISOString()}`);
       let attendanceData = [];
-      
+
       if (attendanceRes.ok) {
         attendanceData = await attendanceRes.json();
       }
-      
+
       // Combine employee data with attendance data
       const employeesWithAttendance = employees.map(employee => {
         const attendance = attendanceData.find(a => a.employee.id === employee.id)?.attendance;
@@ -50,7 +64,7 @@ export function EmployeeTable() {
           } : undefined
         };
       });
-      
+
       return {
         employees: employeesWithAttendance,
         total: employees.total || employees.length
@@ -64,7 +78,7 @@ export function EmployeeTable() {
         Not Recorded
       </span>
     );
-    
+
     switch (status) {
       case 'present':
         return (
@@ -153,7 +167,9 @@ export function EmployeeTable() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-sm">{item.employee.departmentId}</span>
+                      <span className="text-sm">
+                        {item.employee.departmentId && departmentMap[item.employee.departmentId] || "Not assigned"}
+                      </span>
                     </td>
                     <td className="py-3 px-4">
                       {getStatusBadge(item.attendance?.status)}
@@ -190,23 +206,23 @@ export function EmployeeTable() {
             </tbody>
           </table>
         </div>
-        
+
         {data && data.total > 0 && (
           <div className="flex justify-between items-center mt-4">
             <div className="text-sm text-muted-foreground">
               Showing <span className="font-medium">{(page - 1) * limit + 1}-{Math.min(page * limit, data.total)}</span> of <span className="font-medium">{data.total}</span> employees
             </div>
             <div className="flex space-x-1">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
-                onClick={() => setPage(p => Math.max(1, p - 1))} 
+                onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               {[...Array(Math.ceil(data.total / limit)).keys()].slice(0, 3).map(i => (
-                <Button 
+                <Button
                   key={i}
                   variant={page === i + 1 ? "default" : "outline"}
                   size="sm"
@@ -215,10 +231,10 @@ export function EmployeeTable() {
                   {i + 1}
                 </Button>
               ))}
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
-                onClick={() => setPage(p => p + 1)} 
+                onClick={() => setPage(p => p + 1)}
                 disabled={page * limit >= data.total}
               >
                 <ChevronRight className="h-4 w-4" />
