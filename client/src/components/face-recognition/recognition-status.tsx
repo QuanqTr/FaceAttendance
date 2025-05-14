@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, Frown, X } from "lucide-react";
+import { Check, Frown, X, Clock, LogIn, LogOut } from "lucide-react";
 import {
   RecognitionStatusType,
   RecognizedUser
@@ -10,9 +10,10 @@ type RecognitionStatusProps = {
   status: RecognitionStatusType;
   recognizedUser: RecognizedUser | null;
   onRetry: () => void;
+  attendanceType?: 'checkin' | 'checkout';
 };
 
-export function RecognitionStatus({ status, recognizedUser, onRetry }: RecognitionStatusProps) {
+export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceType = 'checkin' }: RecognitionStatusProps) {
   return (
     <div className="bg-muted/50 rounded-lg p-4 h-full">
       <h3 className="text-md font-medium mb-3">Recognition Status</h3>
@@ -80,9 +81,25 @@ export function RecognitionStatus({ status, recognizedUser, onRetry }: Recogniti
             <span className="text-xs text-muted-foreground">Department</span>
             <span className="text-xs font-medium">{recognizedUser?.department || 'Unknown'}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between mb-1">
             <span className="text-xs text-muted-foreground">Time</span>
             <span className="text-xs font-medium">{recognizedUser?.time || 'Unknown'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-muted-foreground">Status</span>
+            <span className="text-xs font-medium flex items-center">
+              {recognizedUser?.attendanceType === 'checkout' ? (
+                <>
+                  <LogOut className="h-3 w-3 mr-1 text-red-500" />
+                  <span className="text-red-500">Checked Out</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-3 w-3 mr-1 text-green-500" />
+                  <span className="text-green-500">Checked In</span>
+                </>
+              )}
+            </span>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,16 +25,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { User, KeyRound } from "lucide-react";
 
-// Login form schema
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-});
-
 export default function AuthPage() {
   const { toast } = useToast();
   const { user, loginMutation } = useAuth();
+  const { t } = useTranslation();
   const [_, navigate] = useLocation();
+
+  // Login form schema with translations
+  const loginSchema = z.object({
+    username: z.string().min(1, t('auth.username') + " " + t('common.required')),
+    password: z.string().min(1, t('auth.password') + " " + t('common.required')),
+  });
 
   // Login form
   const loginForm = useForm<z.infer<typeof loginSchema>>({
@@ -74,10 +76,10 @@ export default function AuthPage() {
           <Card className="w-full max-w-md">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl font-bold">
-                Login to FaceAttend
+                {t('auth.login')} - FaceAttend
               </CardTitle>
               <CardDescription>
-                Enter your credentials to access your account
+                {t('auth.loginDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -88,9 +90,9 @@ export default function AuthPage() {
                     name="username"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Username</FormLabel>
+                        <FormLabel>{t('auth.username')}</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter your username" {...field} />
+                          <Input placeholder={t('auth.enterUsername')} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -101,9 +103,9 @@ export default function AuthPage() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel>{t('auth.password')}</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="Enter your password" {...field} />
+                          <Input type="password" placeholder={t('auth.enterPassword')} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -120,12 +122,12 @@ export default function AuthPage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Signing In...
+                        {t('auth.signingIn')}
                       </span>
                     ) : (
                       <span className="flex items-center">
                         <KeyRound className="mr-2 h-4 w-4" />
-                        Sign In
+                        {t('auth.loginButton')}
                       </span>
                     )}
                   </Button>
@@ -142,11 +144,9 @@ export default function AuthPage() {
               <User className="h-12 w-12 mr-4" />
               <h1 className="text-3xl font-bold">FaceAttend</h1>
             </div>
-            <h2 className="text-2xl font-bold mb-4">Face Recognition Attendance System</h2>
+            <h2 className="text-2xl font-bold mb-4">{t('auth.appTitle')}</h2>
             <p className="mb-6">
-              Streamline your attendance tracking with advanced facial recognition technology.
-              Track employee attendance, generate reports, and gain valuable insights with our
-              comprehensive dashboard.
+              {t('auth.appDescription')}
             </p>
             <div className="space-y-3">
               <div className="flex items-center">
@@ -155,7 +155,7 @@ export default function AuthPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span>Fast and accurate facial recognition</span>
+                <span>{t('auth.feature1')}</span>
               </div>
               <div className="flex items-center">
                 <div className="bg-white/20 p-2 rounded-full mr-4">
@@ -163,7 +163,7 @@ export default function AuthPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span>Advanced reporting and analytics</span>
+                <span>{t('auth.feature2')}</span>
               </div>
               <div className="flex items-center">
                 <div className="bg-white/20 p-2 rounded-full mr-4">
@@ -171,7 +171,7 @@ export default function AuthPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span>Secure and easy to manage</span>
+                <span>{t('auth.feature3')}</span>
               </div>
             </div>
           </div>

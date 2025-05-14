@@ -11,15 +11,18 @@ import {
   type InsertLeaveRequest,
   type SalaryRecord,
   type InsertSalaryRecord,
+  type TimeLog,
+  type InsertTimeLog,
   users,
   departments,
   employees,
   attendanceRecords,
   leaveRequests,
-  salaryRecords
+  salaryRecords,
+  timeLogs
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gte, lt, sql, count } from "drizzle-orm";
+import { eq, and, desc, gte, lt, sql, count, isNotNull, asc, lte } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -43,6 +46,7 @@ export interface IStorage {
   getEmployee(id: number): Promise<Employee | undefined>;
   getEmployeeByEmployeeId(employeeId: string): Promise<Employee | undefined>;
   getAllEmployees(page: number, limit: number, filters?: object): Promise<{ employees: Employee[], total: number }>;
+  getEmployeesWithFaceDescriptor(): Promise<Employee[]>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee | undefined>;
   deleteEmployee(id: number): Promise<boolean>;
@@ -53,6 +57,24 @@ export interface IStorage {
   createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord>;
   getLatestAttendanceRecord(employeeId: number, date: Date): Promise<AttendanceRecord | undefined>;
   getDailyAttendance(date: Date): Promise<{ employee: Employee; attendance?: AttendanceRecord }[]>;
+
+  // Time Log methods
+  createTimeLog(timeLog: InsertTimeLog): Promise<TimeLog>;
+  getEmployeeTimeLogs(employeeId: number, date: Date): Promise<TimeLog[]>;
+  getEmployeeWorkHours(employeeId: number, date: Date): Promise<{
+    regularHours: number;
+    overtimeHours: number;
+    checkinTime?: Date;
+    checkoutTime?: Date;
+  }>;
+  getDailyWorkHours(date: Date): Promise<{
+    employeeId: number;
+    employeeName: string;
+    regularHours: number;
+    overtimeHours: number;
+    checkinTime?: Date;
+    checkoutTime?: Date;
+  }[]>;
 
   // Leave Request methods
   getLeaveRequest(id: number): Promise<LeaveRequest | undefined>;
@@ -168,6 +190,25 @@ export class DatabaseStorage implements IStorage {
     return employee;
   }
 
+  async getEmployeesWithFaceDescriptor(): Promise<Employee[]> {
+    try {
+      // Lấy tất cả nhân viên có trường faceDescriptor không null và không rỗng
+      const allEmployees = await db.select().from(employees);
+
+      // Lọc trong memory thay vì SQL để tránh các vấn đề với điều kiện phức tạp
+      const employeesWithFace = allEmployees.filter(employee =>
+        employee.faceDescriptor !== null &&
+        employee.faceDescriptor !== ''
+      );
+
+      console.log(`Found ${employeesWithFace.length} employees with face descriptors`);
+      return employeesWithFace;
+    } catch (error) {
+      console.error("Error fetching employees with face descriptors:", error);
+      return [];
+    }
+  }
+
   async getAllEmployees(page: number = 1, limit: number = 10, filters?: object): Promise<{ employees: Employee[], total: number }> {
     const offset = (page - 1) * limit;
 
@@ -190,13 +231,28 @@ export class DatabaseStorage implements IStorage {
     // Áp dụng bộ lọc search
     if (filterOptions.search) {
       const searchTerm = filterOptions.search.toLowerCase();
-      filteredEmployees = filteredEmployees.filter(emp =>
-        emp.firstName.toLowerCase().includes(searchTerm) ||
-        emp.lastName.toLowerCase().includes(searchTerm) ||
-        emp.email.toLowerCase().includes(searchTerm) ||
-        emp.employeeId.toLowerCase().includes(searchTerm) ||
-        (emp.position && emp.position.toLowerCase().includes(searchTerm))
-      );
+      filteredEmployees = filteredEmployees.filter(emp => {
+        // Prioritize name matches first
+        const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+        const reverseName = `${emp.lastName} ${emp.firstName}`.toLowerCase();
+
+        // Check if search term matches full name or parts of the name
+        if (
+          fullName.includes(searchTerm) ||
+          reverseName.includes(searchTerm) ||
+          emp.firstName.toLowerCase().includes(searchTerm) ||
+          emp.lastName.toLowerCase().includes(searchTerm)
+        ) {
+          return true;
+        }
+
+        // Then check other fields
+        return (
+          emp.email.toLowerCase().includes(searchTerm) ||
+          emp.employeeId.toLowerCase().includes(searchTerm) ||
+          (emp.position && emp.position.toLowerCase().includes(searchTerm))
+        );
+      });
     }
 
     // Lọc theo department
@@ -248,12 +304,12 @@ export class DatabaseStorage implements IStorage {
           break;
         case 'name_asc':
           filteredEmployees.sort((a, b) =>
-            `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+            `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
           );
           break;
         case 'name_desc':
           filteredEmployees.sort((a, b) =>
-            `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`)
+            `${b.lastName} ${b.firstName}`.localeCompare(`${a.lastName} ${a.firstName}`)
           );
           break;
         default:
@@ -337,6 +393,7 @@ export class DatabaseStorage implements IStorage {
       } catch (error) {
         console.error("Error processing join date:", error);
       }
+
     }
 
     // Luôn cập nhật timestamp updated
@@ -451,6 +508,212 @@ export class DatabaseStorage implements IStorage {
 
       return { employee, attendance };
     });
+  }
+
+  // Time Log methods
+  async createTimeLog(timeLog: InsertTimeLog): Promise<TimeLog> {
+    const [record] = await db
+      .insert(timeLogs)
+      .values({
+        employeeId: timeLog.employeeId,
+        type: timeLog.type,
+        logTime: timeLog.logTime || new Date(),
+        source: timeLog.source || 'face'
+      })
+      .returning();
+    return record;
+  }
+
+  async getEmployeeTimeLogs(employeeId: number, date: Date): Promise<TimeLog[]> {
+    // Create start and end of the given date
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const records = await db
+      .select()
+      .from(timeLogs)
+      .where(
+        and(
+          eq(timeLogs.employeeId, employeeId),
+          gte(timeLogs.logTime, startOfDay),
+          lte(timeLogs.logTime, endOfDay)
+        )
+      )
+      .orderBy(asc(timeLogs.logTime));
+
+    return records;
+  }
+
+  async getEmployeeWorkHours(employeeId: number, date: Date): Promise<{
+    regularHours: number;
+    overtimeHours: number;
+    checkinTime?: Date;
+    checkoutTime?: Date;
+  }> {
+    // Get employee time logs for the day
+    const logs = await this.getEmployeeTimeLogs(employeeId, date);
+
+    // If no logs, return zero hours
+    if (logs.length === 0) {
+      return { regularHours: 0, overtimeHours: 0 };
+    }
+
+    // Sắp xếp logs theo thời gian
+    const sortedLogs = [...logs].sort((a, b) => a.logTime.getTime() - b.logTime.getTime());
+
+    // Tạo các cặp checkin/checkout
+    const pairedLogs: { checkin: Date; checkout: Date }[] = [];
+
+    // Lọc ra các logs theo loại
+    const checkins = sortedLogs.filter(log => log.type === 'checkin');
+    const checkouts = sortedLogs.filter(log => log.type === 'checkout');
+
+    // Ghép cặp checkin với checkout tương ứng
+    for (let i = 0; i < checkins.length; i++) {
+      // Tìm checkout gần nhất sau checkin này
+      const matchingCheckout = checkouts.find(checkout =>
+        checkout.logTime.getTime() > checkins[i].logTime.getTime()
+      );
+
+      if (matchingCheckout) {
+        pairedLogs.push({
+          checkin: checkins[i].logTime,
+          checkout: matchingCheckout.logTime
+        });
+
+        // Loại bỏ checkout đã sử dụng khỏi danh sách
+        const index = checkouts.indexOf(matchingCheckout);
+        if (index > -1) {
+          checkouts.splice(index, 1);
+        }
+      }
+    }
+
+    // Tính toán giờ làm việc và giờ OT
+    let regularHours = 0;
+    let overtimeHours = 0;
+
+    // First and last timestamps for reporting
+    let firstCheckin: Date | undefined;
+    let lastCheckout: Date | undefined;
+
+    // Xác định các mốc thời gian làm việc
+    const workStartHour = 8; // 8:00 AM
+    const lunchStartHour = 12; // 12:00 PM
+    const lunchEndHour = 13; // 1:00 PM
+    const workEndHour = 17; // 5:00 PM
+    const otStartHour = 18; // 6:00 PM
+    const otEndHour = 21; // 9:00 PM
+
+    // Xử lý từng cặp checkin/checkout
+    for (const pair of pairedLogs) {
+      // Cập nhật thời gian checkin/checkout đầu tiên và cuối cùng
+      if (!firstCheckin || pair.checkin < firstCheckin) {
+        firstCheckin = pair.checkin;
+      }
+      if (!lastCheckout || pair.checkout > lastCheckout) {
+        lastCheckout = pair.checkout;
+      }
+
+      // Tính toán giờ làm việc chính thức (8:00-17:00, trừ 12:00-13:00)
+      const checkinDate = new Date(pair.checkin);
+      const checkoutDate = new Date(pair.checkout);
+
+      // Tạo các mốc thời gian chuẩn cho ngày hiện tại
+      const workStartTime = new Date(checkinDate);
+      workStartTime.setHours(workStartHour, 0, 0, 0);
+
+      const lunchStartTime = new Date(checkinDate);
+      lunchStartTime.setHours(lunchStartHour, 0, 0, 0);
+
+      const lunchEndTime = new Date(checkinDate);
+      lunchEndTime.setHours(lunchEndHour, 0, 0, 0);
+
+      const workEndTime = new Date(checkinDate);
+      workEndTime.setHours(workEndHour, 0, 0, 0);
+
+      const otStartTime = new Date(checkinDate);
+      otStartTime.setHours(otStartHour, 0, 0, 0);
+
+      const otEndTime = new Date(checkinDate);
+      otEndTime.setHours(otEndHour, 0, 0, 0);
+
+      // Tính giờ làm việc chính thức
+      if (checkoutDate > workStartTime && checkinDate < workEndTime) {
+        // Thời gian bắt đầu và kết thúc làm việc chính thức
+        const effectiveStartTime = checkinDate > workStartTime ? checkinDate : workStartTime;
+        const effectiveEndTime = checkoutDate < workEndTime ? checkoutDate : workEndTime;
+
+        // Tính tổng thời gian
+        let workDuration = (effectiveEndTime.getTime() - effectiveStartTime.getTime()) / (1000 * 60 * 60);
+
+        // Trừ thời gian nghỉ trưa nếu khoảng thời gian làm việc bao gồm giờ nghỉ trưa
+        if (effectiveEndTime > lunchStartTime && effectiveStartTime < lunchEndTime) {
+          const lunchOverlapStart = effectiveStartTime > lunchStartTime ? effectiveStartTime : lunchStartTime;
+          const lunchOverlapEnd = effectiveEndTime < lunchEndTime ? effectiveEndTime : lunchEndTime;
+
+          // Trừ thời gian nghỉ trưa
+          const lunchDuration = (lunchOverlapEnd.getTime() - lunchOverlapStart.getTime()) / (1000 * 60 * 60);
+          workDuration -= lunchDuration;
+        }
+
+        regularHours += workDuration;
+      }
+
+      // Tính giờ OT (18:00-21:00)
+      if (checkoutDate > otStartTime && checkinDate < otEndTime) {
+        // Thời gian bắt đầu và kết thúc OT
+        const effectiveOtStart = checkinDate > otStartTime ? checkinDate : otStartTime;
+        const effectiveOtEnd = checkoutDate < otEndTime ? checkoutDate : otEndTime;
+
+        // Tính thời gian OT
+        const otDuration = (effectiveOtEnd.getTime() - effectiveOtStart.getTime()) / (1000 * 60 * 60);
+        overtimeHours += otDuration;
+      }
+    }
+
+    // Giới hạn giờ làm việc chính thức tối đa là 8 giờ
+    regularHours = Math.min(regularHours, 8);
+
+    return {
+      regularHours,
+      overtimeHours,
+      checkinTime: firstCheckin,
+      checkoutTime: lastCheckout
+    };
+  }
+
+  async getDailyWorkHours(date: Date): Promise<{
+    employeeId: number;
+    employeeName: string;
+    regularHours: number;
+    overtimeHours: number;
+    checkinTime?: Date;
+    checkoutTime?: Date;
+  }[]> {
+    // Get all employees
+    const allEmployees = await db.select().from(employees);
+
+    // Calculate work hours for each employee
+    const results = [];
+
+    for (const employee of allEmployees) {
+      const workHours = await this.getEmployeeWorkHours(employee.id, date);
+
+      results.push({
+        employeeId: employee.id,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        regularHours: parseFloat(workHours.regularHours.toFixed(2)),
+        overtimeHours: parseFloat(workHours.overtimeHours.toFixed(2)),
+        checkinTime: workHours.checkinTime,
+        checkoutTime: workHours.checkoutTime
+      });
+    }
+
+    return results;
   }
 
   // Statistics methods
@@ -826,3 +1089,4 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+

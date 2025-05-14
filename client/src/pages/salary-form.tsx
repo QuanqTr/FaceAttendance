@@ -218,12 +218,16 @@ export default function SalaryForm() {
                             <div className="flex items-center justify-center p-4">
                               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                             </div>
+                          ) : !employees || !Array.isArray(employees) ? (
+                            <div className="p-2 text-center text-muted-foreground">
+                              Error loading employees data
+                            </div>
                           ) : employees.length === 0 ? (
                             <div className="p-2 text-center text-muted-foreground">
                               No employees found
                             </div>
                           ) : (
-                            employees.map((employee: any) => (
+                            employees.map((employee) => (
                               <SelectItem
                                 key={employee.id}
                                 value={employee.id.toString()}

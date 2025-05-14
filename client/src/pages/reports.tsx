@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -27,12 +28,13 @@ import { useQuery } from "@tanstack/react-query";
 const COLORS = ['#1E88E5', '#E53935', '#FFC107', '#26A69A'];
 
 export default function Reports() {
+  const { t } = useTranslation();
   const [date, setDate] = useState<Date>(new Date());
   const [reportType, setReportType] = useState("attendance");
-  
+
   const startDate = startOfMonth(date);
   const endDate = endOfMonth(date);
-  
+
   const { data: weeklyData } = useQuery({
     queryKey: ["/api/stats/weekly", startDate.toISOString(), endDate.toISOString()],
     queryFn: async () => {
@@ -75,12 +77,12 @@ export default function Reports() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title="Reports" />
-      
+      <Header title={t('reports.title')} />
+
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl font-bold">Reports & Analytics</h1>
-          
+          <h1 className="text-2xl font-bold">{t('reports.reportsAndAnalytics')}</h1>
+
           <div className="flex items-center space-x-2 mt-4 md:mt-0">
             <div className="flex items-center space-x-1">
               <Button variant="outline" size="icon" onClick={previousMonth}>
@@ -108,20 +110,20 @@ export default function Reports() {
             </div>
           </div>
         </div>
-        
+
         <Tabs defaultValue="charts" className="space-y-6">
           <TabsList className="mb-2">
-            <TabsTrigger value="charts">Charts & Analytics</TabsTrigger>
-            <TabsTrigger value="export">Generate Reports</TabsTrigger>
+            <TabsTrigger value="charts">{t('reports.chartsAndAnalytics')}</TabsTrigger>
+            <TabsTrigger value="export">{t('reports.generateReports')}</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="charts" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Monthly Attendance Overview</CardTitle>
+                  <CardTitle>{t('reports.monthlyAttendanceOverview')}</CardTitle>
                   <CardDescription>
-                    Daily attendance for {format(date, "MMMM yyyy")}
+                    {t('reports.dailyAttendanceFor')} {format(date, "MMMM yyyy")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -136,20 +138,20 @@ export default function Reports() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="present" fill="#1E88E5" name="Present" />
-                        <Bar dataKey="late" fill="#FFC107" name="Late" />
-                        <Bar dataKey="absent" fill="#E53935" name="Absent" />
+                        <Bar dataKey="present" fill="#1E88E5" name={t('attendance.present')} />
+                        <Bar dataKey="late" fill="#FFC107" name={t('attendance.late')} />
+                        <Bar dataKey="absent" fill="#E53935" name={t('attendance.absent')} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
-              
+
               <Card>
                 <CardHeader>
-                  <CardTitle>Department Attendance</CardTitle>
+                  <CardTitle>{t('reports.departmentAttendance')}</CardTitle>
                   <CardDescription>
-                    Percentage of present employees by department
+                    {t('reports.percentagePresent')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -170,8 +172,8 @@ export default function Reports() {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip 
-                          formatter={(value: any) => [`${value}%`, 'Attendance Rate']}
+                        <Tooltip
+                          formatter={(value: any) => [`${value}%`, t('reports.attendanceRate')]}
                         />
                       </PieChart>
                     </ResponsiveContainer>
@@ -179,12 +181,12 @@ export default function Reports() {
                 </CardContent>
               </Card>
             </div>
-            
+
             <Card>
               <CardHeader>
-                <CardTitle>Attendance Trends</CardTitle>
+                <CardTitle>{t('reports.attendanceTrends')}</CardTitle>
                 <CardDescription>
-                  Monthly attendance patterns
+                  {t('reports.monthlyPatterns')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -199,18 +201,18 @@ export default function Reports() {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="present" fill="#1E88E5" name="Present" />
-                      <Bar dataKey="late" fill="#FFC107" name="Late" />
-                      <Bar dataKey="absent" fill="#E53935" name="Absent" />
+                      <Bar dataKey="present" fill="#1E88E5" name={t('attendance.present')} />
+                      <Bar dataKey="late" fill="#FFC107" name={t('attendance.late')} />
+                      <Bar dataKey="absent" fill="#E53935" name={t('attendance.absent')} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="export">
-            <ReportGenerator 
+            <ReportGenerator
               startDate={startDate}
               endDate={endDate}
               reportType={reportType}

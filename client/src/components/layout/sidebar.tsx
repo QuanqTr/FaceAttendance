@@ -1,15 +1,17 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { 
-  ClipboardList, 
-  LayoutDashboard, 
-  LogOut, 
-  Settings, 
-  User, 
+import { useTranslation } from "react-i18next";
+import {
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  User,
   Users2,
   Calendar,
-  DollarSign
+  DollarSign,
+  UserCog
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -24,7 +26,7 @@ const SidebarLink = ({ href, icon, children, isActive }: SidebarLinkProps) => {
   return (
     <li className="mb-1">
       <Link href={href}>
-        <div 
+        <div
           className={cn(
             "flex items-center px-4 py-3 rounded-lg transition-colors cursor-pointer",
             isActive
@@ -43,6 +45,7 @@ const SidebarLink = ({ href, icon, children, isActive }: SidebarLinkProps) => {
 export function Sidebar() {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
+  const { t } = useTranslation();
 
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -56,10 +59,10 @@ export function Sidebar() {
 
   return (
     <div className="hidden md:flex flex-col w-64 bg-background border-r">
-      <div className="flex items-center justify-center h-16 border-b">
+      <div className="flex items-center justify-center h-16 border-b px-4">
         <span className="text-primary text-xl font-bold">FaceAttend</span>
       </div>
-      
+
       <div className="px-4 py-6">
         <div className="flex flex-col items-center mb-6">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-2">
@@ -68,77 +71,87 @@ export function Sidebar() {
           <h3 className="font-medium text-foreground">{user?.fullName || 'Admin User'}</h3>
           <p className="text-sm text-muted-foreground">{user?.role || 'Administrator'}</p>
         </div>
-        
+
         <nav>
           <ul>
-            <SidebarLink 
-              href="/" 
-              icon={<LayoutDashboard className="h-5 w-5" />} 
+            <SidebarLink
+              href="/"
+              icon={<LayoutDashboard className="h-5 w-5" />}
               isActive={isActive('/')}
             >
-              Dashboard
+              {t('common.dashboard')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/attendance" 
+
+            <SidebarLink
+              href="/attendance"
               icon={<ClipboardList className="h-5 w-5" />}
               isActive={isActive('/attendance')}
             >
-              Attendance
+              {t('common.attendance')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/employees" 
+
+            <SidebarLink
+              href="/employees"
               icon={<Users2 className="h-5 w-5" />}
               isActive={isActive('/employees')}
             >
-              Employees
+              {t('common.employees')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/leave-requests" 
+
+            {user?.role === 'admin' && (
+              <SidebarLink
+                href="/accounts"
+                icon={<UserCog className="h-5 w-5" />}
+                isActive={isActive('/accounts')}
+              >
+                {t('common.accounts') || 'Account Management'}
+              </SidebarLink>
+            )}
+
+            <SidebarLink
+              href="/leave-requests"
               icon={<Calendar className="h-5 w-5" />}
               isActive={isActive('/leave-requests')}
             >
-              Leave Requests
+              {t('common.leaveRequests')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/salary" 
+
+            <SidebarLink
+              href="/salary"
               icon={<DollarSign className="h-5 w-5" />}
               isActive={isActive('/salary')}
             >
-              Salary
+              {t('common.salary')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/reports" 
+
+            <SidebarLink
+              href="/reports"
               icon={<ClipboardList className="h-5 w-5" />}
               isActive={isActive('/reports')}
             >
-              Reports
+              {t('common.reports')}
             </SidebarLink>
-            
-            <SidebarLink 
-              href="/settings" 
+
+            <SidebarLink
+              href="/settings"
               icon={<Settings className="h-5 w-5" />}
               isActive={isActive('/settings')}
             >
-              Settings
+              {t('common.settings')}
             </SidebarLink>
           </ul>
         </nav>
       </div>
-      
+
       <div className="mt-auto border-t p-4">
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           className="w-full flex items-center justify-start text-foreground hover:bg-primary/10"
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
         >
           <LogOut className="h-5 w-5 mr-3" />
-          <span>Logout</span>
+          <span>{t('common.logout')}</span>
         </Button>
       </div>
     </div>

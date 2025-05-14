@@ -16,12 +16,29 @@ async function throwIfResNotOk(res: Response) {
     try {
       // Thử đọc response text
       const text = await res.text();
+
       // Kiểm tra nếu đây là HTML thay vì JSON
       if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
         throw new Error(`${res.status}: Server returned HTML instead of JSON (possible server error)`);
       }
+
+      // Thử parse JSON nếu có
+      try {
+        const jsonData = JSON.parse(text);
+        // Nếu có thông báo lỗi cụ thể từ API, sử dụng nó
+        if (jsonData && jsonData.message) {
+          throw new Error(`${res.status}: ${jsonData.message}`);
+        }
+      } catch (jsonError) {
+        // Nếu không parse được JSON, sử dụng text gốc
+        console.error("Could not parse error response as JSON:", jsonError);
+      }
+
       throw new Error(`${res.status}: ${text || res.statusText}`);
     } catch (error) {
+      if (error instanceof Error) {
+        throw error; // Nếu đã là Error object, throw lại
+      }
       // Nếu không đọc được response text
       throw new Error(`${res.status}: ${res.statusText || "Unknown error"}`);
     }

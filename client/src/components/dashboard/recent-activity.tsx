@@ -3,6 +3,7 @@ import { LogInIcon, LogOutIcon, UserPlusIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 type ActivityType = 'clockIn' | 'clockOut' | 'newEmployee';
 
@@ -47,6 +48,8 @@ const SAMPLE_ACTIVITIES: ActivityItem[] = [
 ];
 
 export function RecentActivity() {
+  const { t } = useTranslation();
+
   const { data: activities, isLoading } = useQuery<ActivityItem[]>({
     queryKey: ["/api/attendance/recent-activities"],
     // Fallback to sample data if the API doesn't exist yet
@@ -103,8 +106,8 @@ export function RecentActivity() {
     <Card className="shadow-sm h-full">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg font-medium">Recent Activity</CardTitle>
-          <span className="text-sm text-primary hover:underline cursor-pointer">View All</span>
+          <CardTitle className="text-lg font-medium">{t('dashboard.recentActivity')}</CardTitle>
+          <span className="text-sm text-primary hover:underline cursor-pointer">{t('common.viewAll')}</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -135,7 +138,7 @@ export function RecentActivity() {
           ))
         ) : (
           <div className="text-center py-8">
-            <p className="text-muted-foreground">No recent activities</p>
+            <p className="text-muted-foreground">{t('common.noData')}</p>
           </div>
         )}
       </CardContent>

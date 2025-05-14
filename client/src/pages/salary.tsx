@@ -13,44 +13,61 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SalaryRecord } from "@shared/schema";
+import { useTranslation } from "react-i18next";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
+
+// Define an extended type for SalaryRecords with the fields we're using in the UI
+interface ExtendedSalaryRecord extends SalaryRecord {
+  employeeName?: string;
+  netSalary?: number;
+}
+
+// Define a type for salary statistics
+interface SalaryStatistic {
+  month: number;
+  totalSalary: number;
+  totalEmployees: number;
+}
 
 export default function SalaryPage() {
+  const { t } = useTranslation();
+  const toast = useI18nToast();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedMonth, setSelectedMonth] = useState("");
-  
+  const [selectedMonth, setSelectedMonth] = useState("all");
+
   // Create year options from 5 years ago to 5 years in the future
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 11 }, (_, i) => (currentYear - 5 + i).toString());
-  
+
   // Month options
   const monthOptions = [
-    { value: "1", label: "January" },
-    { value: "2", label: "February" },
-    { value: "3", label: "March" },
-    { value: "4", label: "April" },
-    { value: "5", label: "May" },
-    { value: "6", label: "June" },
-    { value: "7", label: "July" },
-    { value: "8", label: "August" },
-    { value: "9", label: "September" },
-    { value: "10", label: "October" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
+    { value: "1", label: t('months.january') },
+    { value: "2", label: t('months.february') },
+    { value: "3", label: t('months.march') },
+    { value: "4", label: t('months.april') },
+    { value: "5", label: t('months.may') },
+    { value: "6", label: t('months.june') },
+    { value: "7", label: t('months.july') },
+    { value: "8", label: t('months.august') },
+    { value: "9", label: t('months.september') },
+    { value: "10", label: t('months.october') },
+    { value: "11", label: t('months.november') },
+    { value: "12", label: t('months.december') },
   ];
 
   // Get salary records
-  const { data: salaryRecords, isLoading } = useQuery<SalaryRecord[]>({
+  const { data: salaryRecords, isLoading } = useQuery<ExtendedSalaryRecord[]>({
     queryKey: [
-      "/api/salary-records", 
+      "/api/salary-records",
       { year: selectedYear !== "" ? parseInt(selectedYear) : undefined },
-      { month: selectedMonth !== "" ? parseInt(selectedMonth) : undefined }
+      { month: selectedMonth !== "all" ? parseInt(selectedMonth) : undefined }
     ],
     queryFn: async () => {
       const url = new URL("/api/salary-records", window.location.origin);
       if (selectedYear) {
         url.searchParams.append("year", selectedYear);
       }
-      if (selectedMonth) {
+      if (selectedMonth && selectedMonth !== "all") {
         url.searchParams.append("month", selectedMonth);
       }
       const res = await fetch(url.toString());
@@ -60,7 +77,7 @@ export default function SalaryPage() {
   });
 
   // Salary statistics
-  const { data: salaryStats, isLoading: statsLoading } = useQuery({
+  const { data: salaryStats, isLoading: statsLoading } = useQuery<SalaryStatistic[]>({
     queryKey: ["/api/stats/salary", selectedYear],
     queryFn: async () => {
       const res = await fetch(`/api/stats/salary/${selectedYear}`);
@@ -80,15 +97,15 @@ export default function SalaryPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Salary Management" />
+      <Header title={t('salary.title')} />
 
       <div className="p-4 space-y-4 flex-1 overflow-auto">
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-semibold">Salary Records</h1>
+          <h1 className="text-xl font-semibold">{t('salary.salaryRecords')}</h1>
           <Link href="/salary/new">
             <Button className="gap-2">
               <Plus className="h-4 w-4" />
-              New Salary Record
+              {t('salary.newSalaryRecord')}
             </Button>
           </Link>
         </div>
@@ -98,10 +115,10 @@ export default function SalaryPage() {
           <CardContent className="p-4">
             <div className="flex flex-col md:flex-row gap-4 items-end">
               <div className="flex-1">
-                <label className="block text-sm font-medium mb-1">Year</label>
+                <label className="block text-sm font-medium mb-1">{t('common.year')}</label>
                 <Select value={selectedYear} onValueChange={setSelectedYear}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select Year" />
+                    <SelectValue placeholder={t('salary.selectYear')} />
                   </SelectTrigger>
                   <SelectContent>
                     {yearOptions.map(year => (
@@ -111,13 +128,13 @@ export default function SalaryPage() {
                 </Select>
               </div>
               <div className="flex-1">
-                <label className="block text-sm font-medium mb-1">Month</label>
+                <label className="block text-sm font-medium mb-1">{t('common.month')}</label>
                 <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="All Months" />
+                    <SelectValue placeholder={t('salary.allMonths')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Months</SelectItem>
+                    <SelectItem value="all">{t('salary.allMonths')}</SelectItem>
                     {monthOptions.map(month => (
                       <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
                     ))}
@@ -125,10 +142,10 @@ export default function SalaryPage() {
                 </Select>
               </div>
               <Button variant="outline" className="gap-2" onClick={() => {
-                setSelectedMonth("");
+                setSelectedMonth("all");
               }}>
                 <Filter className="h-4 w-4" />
-                Reset Filters
+                {t('common.resetFilters')}
               </Button>
             </div>
           </CardContent>
@@ -151,9 +168,9 @@ export default function SalaryPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Salary Expense ({selectedYear})</p>
+                      <p className="text-sm text-muted-foreground">{t('salary.totalSalaryExpense')} ({selectedYear})</p>
                       <h3 className="text-2xl font-bold">
-                        {formatCurrency(salaryStats?.reduce((sum, month) => sum + month.totalSalary, 0) || 0)}
+                        {formatCurrency(salaryStats?.reduce((sum: number, month: SalaryStatistic) => sum + month.totalSalary, 0) || 0)}
                       </h3>
                     </div>
                     <div className="p-2 bg-primary/10 rounded-full">
@@ -166,11 +183,11 @@ export default function SalaryPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Average Monthly Salary ({selectedYear})</p>
+                      <p className="text-sm text-muted-foreground">{t('salary.averageMonthlySalary')} ({selectedYear})</p>
                       <h3 className="text-2xl font-bold">
                         {formatCurrency(
-                          salaryStats && salaryStats.length > 0 
-                            ? salaryStats.reduce((sum, month) => sum + month.totalSalary, 0) / salaryStats.filter(m => m.totalSalary > 0).length 
+                          salaryStats && salaryStats.length > 0
+                            ? salaryStats.reduce((sum: number, month: SalaryStatistic) => sum + month.totalSalary, 0) / salaryStats.filter((m: SalaryStatistic) => m.totalSalary > 0).length
                             : 0
                         )}
                       </h3>
@@ -185,9 +202,9 @@ export default function SalaryPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Paid Employees ({selectedYear})</p>
+                      <p className="text-sm text-muted-foreground">{t('salary.paidEmployees')} ({selectedYear})</p>
                       <h3 className="text-2xl font-bold">
-                        {salaryStats?.reduce((max, month) => Math.max(max, month.totalEmployees), 0) || 0}
+                        {salaryStats?.reduce((max: number, month: SalaryStatistic) => Math.max(max, month.totalEmployees), 0) || 0}
                       </h3>
                     </div>
                     <div className="p-2 bg-primary/10 rounded-full">
@@ -226,15 +243,18 @@ export default function SalaryPage() {
                 <Card>
                   <CardContent className="p-6 flex flex-col items-center justify-center py-10">
                     <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium">No salary records found</h3>
+                    <h3 className="text-lg font-medium">{t('salary.noRecordsFound')}</h3>
                     <p className="text-muted-foreground">
-                      {selectedMonth 
-                        ? `There are no salary records for ${monthOptions.find(m => m.value === selectedMonth)?.label} ${selectedYear}.`
-                        : `There are no salary records for ${selectedYear}.`}
+                      {selectedMonth !== "all"
+                        ? t('salary.noRecordsForMonthYear', {
+                          month: monthOptions.find(m => m.value === selectedMonth)?.label,
+                          year: selectedYear
+                        })
+                        : t('salary.noRecordsForYear', { year: selectedYear })}
                     </p>
                     <Link href="/salary/new">
                       <Button variant="outline" className="mt-4">
-                        Create New Salary Record
+                        {t('salary.createNewRecord')}
                       </Button>
                     </Link>
                   </CardContent>
@@ -246,25 +266,22 @@ export default function SalaryPage() {
                       <div className="flex justify-between items-start">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-medium">Salary Record #{record.id}</h3>
+                            <h3 className="font-medium">{t('salary.salaryRecordId', { id: record.id })}</h3>
                             <Badge variant="outline" className={record.paymentStatus ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                              {record.paymentStatus ? "Paid" : "Unpaid"}
+                              {record.paymentStatus ? t('salary.paid') : t('salary.unpaid')}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            <strong>Period:</strong> {monthOptions.find(m => m.value === record.month.toString())?.label} {record.year}
+                            {t('employees.name')}: {record.employeeName || 'N/A'} • {t('salary.paymentDate')}: {record.paymentDate ? format(new Date(record.paymentDate), 'PP') : 'N/A'}
                           </p>
-                          <p className="text-sm text-muted-foreground">
-                            <strong>Basic Salary:</strong> {formatCurrency(record.basicSalary)} | 
-                            <strong> Bonus:</strong> {formatCurrency(record.bonus)} | 
-                            <strong> Deduction:</strong> {formatCurrency(record.deduction)}
-                          </p>
-                          <p className="text-sm font-medium">
-                            <strong>Total Salary:</strong> {formatCurrency(record.totalSalary)}
+                          <p className="text-lg font-semibold">
+                            {t('salary.netSalary')}: {formatCurrency(record.netSalary || parseFloat(record.totalSalary) || 0)}
                           </p>
                         </div>
                         <Link href={`/salary/${record.id}`}>
-                          <Button variant="outline" size="sm">View Details</Button>
+                          <Button variant="outline" size="sm">
+                            {t('common.view')}
+                          </Button>
                         </Link>
                       </div>
                     </CardContent>

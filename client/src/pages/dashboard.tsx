@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
@@ -8,6 +9,8 @@ import { DepartmentStats } from "@/components/dashboard/department-stats";
 import { EmployeeTable } from "@/components/dashboard/employee-table";
 
 export default function Dashboard() {
+  const { t } = useTranslation();
+
   // Fetch daily attendance summary
   const { data: dailySummary, isLoading: isSummaryLoading } = useQuery({
     queryKey: ["/api/stats/daily"],
@@ -20,13 +23,13 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title="Dashboard" />
-      
+      <Header title={t('common.dashboard')} />
+
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <StatsCard 
-            title="Present Today" 
+          <StatsCard
+            title={t('dashboard.presentToday')}
             value={isSummaryLoading ? 0 : dailySummary?.present || 0}
             change={{
               value: 12,
@@ -35,9 +38,9 @@ export default function Dashboard() {
             }}
             type="people"
           />
-          
-          <StatsCard 
-            title="Absent Today" 
+
+          <StatsCard
+            title={t('attendance.absent')}
             value={isSummaryLoading ? 0 : dailySummary?.absent || 0}
             change={{
               value: 3,
@@ -46,9 +49,9 @@ export default function Dashboard() {
             }}
             type="absent"
           />
-          
-          <StatsCard 
-            title="Late Arrivals" 
+
+          <StatsCard
+            title={t('attendance.late')}
             value={isSummaryLoading ? 0 : dailySummary?.late || 0}
             change={{
               value: 2,
@@ -57,9 +60,9 @@ export default function Dashboard() {
             }}
             type="late"
           />
-          
-          <StatsCard 
-            title="Total Employees" 
+
+          <StatsCard
+            title={t('dashboard.totalEmployees')}
             value={isSummaryLoading ? 0 : dailySummary?.total || 0}
             change={{
               value: 1,
@@ -69,27 +72,27 @@ export default function Dashboard() {
             type="total"
           />
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Attendance Recognition */}
           <div className="lg:col-span-2">
             <AttendanceRecognition />
           </div>
-          
+
           {/* Recent Activity */}
           <div>
             <RecentActivity />
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Weekly Attendance Chart */}
           <WeeklyAttendanceChart />
-          
+
           {/* Department Stats */}
           <DepartmentStats />
         </div>
-        
+
         {/* Employee Table */}
         <EmployeeTable />
       </main>

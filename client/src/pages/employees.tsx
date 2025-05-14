@@ -30,6 +30,8 @@ import { CalendarIcon, Check, Filter, Loader2, Plus, Search, SlidersHorizontal, 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useTranslation } from "react-i18next";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
 
 export default function Employees() {
   const [_, navigate] = useLocation();
@@ -43,6 +45,8 @@ export default function Employees() {
   const [positionFilter, setPositionFilter] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const { t } = useTranslation();
+  const i18nToast = useI18nToast();
 
   // Add debounced search
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -103,7 +107,7 @@ export default function Employees() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearchQuery, departmentFilter, statusFilter, positionFilter, joinDateFilter, sortBy]);
+  }, [debouncedSearchQuery, departmentFilter, statusFilter, positionFilter, joinDateFilter, sortBy, limit]);
 
   const employees = data?.employees || [];
   const totalCount = data?.total || 0;
@@ -135,11 +139,16 @@ export default function Employees() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title="Employees" onSearch={handleSearch} />
+      <Header
+        title=""
+        onSearch={handleSearch}
+        showSearch={true}
+        searchPlaceholder={t('employees.searchByName')}
+      />
 
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl font-bold">Employee Directory</h1>
+          <h1 className="text-2xl font-bold">{t('employees.title')}</h1>
 
           <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0">
             <Button
@@ -148,7 +157,7 @@ export default function Employees() {
               className="relative"
             >
               <Filter className="mr-2 h-4 w-4" />
-              Filters
+              {t('common.filter')}
               {activeFiltersCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
                   {activeFiltersCount}
@@ -158,18 +167,18 @@ export default function Employees() {
 
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Sort by" />
+                <SelectValue placeholder={t('common.filter')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="newest">Newest First</SelectItem>
-                <SelectItem value="oldest">Oldest First</SelectItem>
-                <SelectItem value="name_asc">Name (A-Z)</SelectItem>
-                <SelectItem value="name_desc">Name (Z-A)</SelectItem>
+                <SelectItem value="newest">{t('employees.sortNewest')}</SelectItem>
+                <SelectItem value="oldest">{t('employees.sortOldest')}</SelectItem>
+                <SelectItem value="name_asc">{t('employees.sortNameAsc')}</SelectItem>
+                <SelectItem value="name_desc">{t('employees.sortNameDesc')}</SelectItem>
               </SelectContent>
             </Select>
 
             <Button onClick={handleAddEmployee}>
-              <Plus className="mr-2 h-4 w-4" /> Add Employee
+              <Plus className="mr-2 h-4 w-4" /> {t('employees.addNew')}
             </Button>
           </div>
         </div>
@@ -178,21 +187,21 @@ export default function Employees() {
           <Card className="mb-6">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle>Advanced Filters</CardTitle>
+                <CardTitle>{t('employees.advancedFilters')}</CardTitle>
                 <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-                  <X className="h-4 w-4 mr-1" /> Clear all
+                  <X className="h-4 w-4 mr-1" /> {t('employees.clearAll')}
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
+                <Label htmlFor="department">{t('employees.department')}</Label>
                 <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
                   <SelectTrigger id="department">
-                    <SelectValue placeholder="All Departments" />
+                    <SelectValue placeholder={t('employees.allDepartments')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Departments</SelectItem>
+                    <SelectItem value="all">{t('employees.allDepartments')}</SelectItem>
                     {departments?.map((dept: { id: number, name: string }) => (
                       <SelectItem key={dept.id} value={dept.id.toString()}>
                         {dept.name}
@@ -203,32 +212,32 @@ export default function Employees() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status">{t('common.status')}</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger id="status">
-                    <SelectValue placeholder="All Status" />
+                    <SelectValue placeholder={t('employees.allStatus')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="on_leave">On Leave</SelectItem>
+                    <SelectItem value="all">{t('employees.allStatus')}</SelectItem>
+                    <SelectItem value="active">{t('employees.active')}</SelectItem>
+                    <SelectItem value="inactive">{t('employees.inactive')}</SelectItem>
+                    <SelectItem value="on_leave">{t('employees.onLeave')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="position">Position</Label>
+                <Label htmlFor="position">{t('employees.position')}</Label>
                 <Input
                   id="position"
-                  placeholder="Any position"
+                  placeholder={t('employees.anyPosition')}
                   value={positionFilter}
                   onChange={(e) => setPositionFilter(e.target.value)}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="joinDate">Join Date</Label>
+                <Label htmlFor="joinDate">{t('employees.joinDate')}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -240,7 +249,7 @@ export default function Employees() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {joinDateFilter ? format(joinDateFilter, "PPP") : "Any date"}
+                      {joinDateFilter ? format(joinDateFilter, "PPP") : t('employees.anyDate')}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -258,7 +267,7 @@ export default function Employees() {
                           onClick={() => setJoinDateFilter(undefined)}
                           className="w-full"
                         >
-                          <X className="h-4 w-4 mr-1" /> Clear date
+                          <X className="h-4 w-4 mr-1" /> {t('employees.clearDate')}
                         </Button>
                       </div>
                     )}
@@ -294,7 +303,7 @@ export default function Employees() {
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page === 1}
                     >
-                      Previous
+                      {t('common.back')}
                     </Button>
                   </PaginationItem>
 
@@ -329,29 +338,50 @@ export default function Employees() {
                       onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
                     >
-                      Next
+                      {t('common.next')}
                     </Button>
                   </PaginationItem>
                 </PaginationContent>
               </Pagination>
             )}
+
+            <div className="flex justify-end mt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{t('common.rowsPerPage')}:</span>
+                <Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="4">4</SelectItem>
+                    <SelectItem value="8">8</SelectItem>
+                    <SelectItem value="12">12</SelectItem>
+                    <SelectItem value="16">16</SelectItem>
+                    <SelectItem value="24">24</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">
+                  {t('common.showing')} {Math.min((page - 1) * limit + 1, totalCount)} - {Math.min(page * limit, totalCount)} {t('common.of')} {totalCount}
+                </span>
+              </div>
+            </div>
           </>
         ) : (
           <div className="flex flex-col items-center justify-center text-center h-[400px] bg-muted/20 rounded-lg">
             <Users2 className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-medium mb-2">No employees found</h3>
+            <h3 className="text-xl font-medium mb-2">{t('employees.noEmployeesFound')}</h3>
             <p className="text-muted-foreground mb-4">
               {searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter
-                ? "Try adjusting your filters or search query"
-                : "Get started by adding your first employee"}
+                ? t('employees.adjustFilters')
+                : t('employees.getStarted')}
             </p>
             {(searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter) && (
               <Button variant="outline" onClick={clearAllFilters} className="mb-4">
-                <X className="h-4 w-4 mr-1" /> Clear all filters
+                <X className="h-4 w-4 mr-1" /> {t('employees.clearAllFilters')}
               </Button>
             )}
             <Button onClick={handleAddEmployee}>
-              <Plus className="mr-2 h-4 w-4" /> Add Employee
+              <Plus className="mr-2 h-4 w-4" /> {t('employees.addNew')}
             </Button>
           </div>
         )}

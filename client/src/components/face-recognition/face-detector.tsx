@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, VideoOff, Settings, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
-import * as faceapi from 'face-api.js';
+import * as faceapi from '@vladmandic/face-api';
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 
 type CameraDevice = {
   deviceId: string;
@@ -19,13 +20,29 @@ type CameraDevice = {
   kind: string;
 };
 
+type RecognizedPerson = {
+  name: string;
+  confidence: number;
+  employeeId?: number;
+};
+
 type FaceDetectorProps = {
   videoRef: React.RefObject<HTMLVideoElement>;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   status: RecognitionStatusType;
+  modelsPreloaded?: boolean;
+  onFaceRecognized?: (descriptor: string, person: RecognizedPerson | null) => void;
 };
 
-export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps) {
+// Thêm interface cho dữ liệu nhân viên
+interface EmployeeWithFace {
+  id: number;
+  firstName: string;
+  lastName: string;
+  faceDescriptor: string;
+}
+
+export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = false, onFaceRecognized }: FaceDetectorProps) {
   const { toast } = useToast();
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(false);
@@ -49,6 +66,50 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
   // Thêm biến để theo dõi trạng thái nhận diện ổn định
   const lastSuccessfulDetectionTimeRef = useRef<number>(0);
   const successBoxOpacityRef = useRef<number>(0);
+
+  // Thêm state để lưu thông tin người được nhận diện
+  const [recognizedPerson, setRecognizedPerson] = useState<RecognizedPerson | null>(null);
+
+  // Thêm biến để kiểm soát việc nhận diện
+  const detectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef(false);
+
+  // Thêm state để lưu trữ danh sách nhân viên có face descriptor
+  const [employeesWithFace, setEmployeesWithFace] = useState<EmployeeWithFace[]>([]);
+
+  // Fetch danh sách nhân viên có face descriptor từ API
+  const { data: employeesData, isLoading: isLoadingEmployees } = useQuery({
+    queryKey: ['employeesWithFace'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/employees');
+        if (!response.ok) {
+          throw new Error('Failed to fetch employees');
+        }
+        const data = await response.json();
+        console.log('Fetched employees:', data);
+
+        // Lọc những nhân viên có face descriptor
+        const employeesWithFace = data.employees.filter(
+          (emp: any) => emp.faceDescriptor && emp.faceDescriptor !== ''
+        );
+
+        console.log(`Found ${employeesWithFace.length} employees with face descriptors`);
+        return employeesWithFace;
+      } catch (error) {
+        console.error('Error fetching employees:', error);
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Cập nhật state khi có dữ liệu mới
+  useEffect(() => {
+    if (employeesData && Array.isArray(employeesData)) {
+      setEmployeesWithFace(employeesData);
+    }
+  }, [employeesData]);
 
   const getAvailableCameras = async () => {
     try {
@@ -171,13 +232,10 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
     }
 
     setIsLoading(true);
-
-    // Tăng số lần thử
     initAttempts.current += 1;
     console.log(`Start camera attempt ${initAttempts.current}/${maxInitAttempts}`);
 
     try {
-      // Check if videoRef exists and is accessible
       if (!videoRef.current) {
         console.error("Video element not found");
         if (componentMounted.current) {
@@ -188,7 +246,6 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
         return;
       }
 
-      // Check if browser supports getUserMedia
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.error("getUserMedia is not supported in this browser");
         if (componentMounted.current) {
@@ -199,50 +256,86 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
         return;
       }
 
-      // Stop existing stream if any
       stopCurrentStream();
 
-      // Cấu hình camera với chất lượng cao hơn
-      const constraints = {
-        video: {
-          width: { ideal: 640, min: 480 },     // Tăng độ phân giải lên cao hơn
-          height: { ideal: 480, min: 360 },    // Tăng độ phân giải lên cao hơn
-          frameRate: { ideal: 24, min: 15 },   // Tăng tốc độ khung hình cho video mượt hơn
-          aspectRatio: { ideal: 1.33333 },     // Tỷ lệ 4:3 chuẩn cho nhận diện khuôn mặt
-          facingMode: deviceId ? undefined : "user", // Ưu tiên camera trước mặt nếu không chỉ định deviceId
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-        },
-        audio: false
+      // Kiểm tra trạng thái camera trước khi thử khởi tạo
+      const checkCameraStatus = async () => {
+        try {
+          // Thử lấy danh sách thiết bị
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+          if (videoDevices.length === 0) {
+            throw new Error("No camera devices found");
+          }
+
+          // Nếu có deviceId, kiểm tra xem thiết bị có tồn tại không
+          if (deviceId && !videoDevices.some(device => device.deviceId === deviceId)) {
+            throw new Error("Specified camera device not found");
+          }
+
+          return true;
+        } catch (error) {
+          console.error("Camera status check failed:", error);
+          return false;
+        }
+      };
+
+      // Kiểm tra trạng thái camera
+      const cameraAvailable = await checkCameraStatus();
+      if (!cameraAvailable) {
+        throw new Error("Camera is not available or not properly connected");
+      }
+
+      // Thử khởi tạo camera với các cấu hình khác nhau
+      const tryCameraConfig = async () => {
+        // Create an array of valid configurations without null values
+        const configs: MediaStreamConstraints[] = [
+          // Cấu hình cơ bản
+          { video: true, audio: false },
+        ];
+
+        // Add deviceId configuration if available
+        if (deviceId) {
+          configs.push({
+            video: { deviceId: { exact: deviceId } },
+            audio: false
+          });
+        }
+
+        // Add facingMode configuration as a fallback
+        configs.push({
+          video: { facingMode: "user" },
+          audio: false
+        });
+
+        for (const config of configs) {
+          try {
+            console.log("Trying camera configuration:", JSON.stringify(config));
+
+            // Thêm timeout cho mỗi lần thử
+            const timeoutPromise = new Promise<MediaStream>((_, reject) => {
+              setTimeout(() => reject(new Error("Camera initialization timeout")), 5000);
+            });
+
+            const stream = await Promise.race([
+              navigator.mediaDevices.getUserMedia(config),
+              timeoutPromise
+            ]);
+
+            if (stream) {
+              return stream;
+            }
+          } catch (err) {
+            console.warn("Configuration failed:", err);
+            continue;
+          }
+        }
+        throw new Error("All camera configurations failed");
       };
 
       try {
-        console.log("Requesting camera with constraints:", JSON.stringify(constraints));
-
-        // Thiết lập thời gian chờ ngắn hơn và thử lại nhanh hơn
-        let stream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (err) {
-          console.warn("First camera attempt failed, trying fallback constraints", err);
-          // Nếu thất bại với cấu hình ban đầu, thử lại với cấu hình tạm chấp nhận
-          const fallbackConstraints = {
-            video: {
-              facingMode: "user",
-              width: { ideal: 480, min: 320 },   // Vẫn giữ độ phân giải khá tốt
-              height: { ideal: 360, min: 240 },  // Vẫn giữ độ phân giải khá tốt
-              frameRate: { ideal: 20, min: 10 }  // Giảm fps một chút nhưng vẫn đủ mượt
-            },
-            audio: false
-          };
-
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-          } catch (secondErr) {
-            console.warn("Second camera attempt failed, trying basic constraints", secondErr);
-            // Thử lần cuối với cấu hình cơ bản nhất
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          }
-        }
+        const stream = await tryCameraConfig();
 
         if (!stream) {
           throw new Error('Failed to get camera stream');
@@ -262,19 +355,18 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
         videoRef.current.srcObject = stream;
         videoRef.current.style.display = 'block';
 
-        // Thiết lập các thuộc tính video để cải thiện hiệu suất
+        // Thiết lập các thuộc tính video
         videoRef.current.muted = true;
         videoRef.current.playsInline = true;
         videoRef.current.autoplay = true;
 
-        // Chỉ đặt lại các cờ khi video thực sự bắt đầu phát
-        const videoReadyPromise = new Promise<void>((resolve, reject) => {
+        // Đợi video sẵn sàng với timeout ngắn hơn
+        await new Promise<void>((resolve, reject) => {
           if (!videoRef.current) {
             reject(new Error("Video element not available"));
             return;
           }
 
-          // Sự kiện phát triển
           const handlePlaying = () => {
             console.log("Video is now playing");
             if (videoRef.current) {
@@ -283,86 +375,52 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
             resolve();
           };
 
-          // Theo dõi sự kiện playing
           videoRef.current.addEventListener('playing', handlePlaying);
 
-          // Đồng thời theo dõi loadedmetadata để đảm bảo khả năng tương thích
+          // Timeout ngắn hơn cho việc phát video
+          const videoTimeout = setTimeout(() => {
+            if (videoRef.current && videoRef.current.readyState >= 2) {
+              console.log("Video is ready even though playing event wasn't fired");
+              resolve();
+            } else {
+              reject(new Error("Video playback timeout"));
+            }
+          }, 3000);
+
           videoRef.current.onloadedmetadata = () => {
             console.log("Video metadata loaded");
             if (videoRef.current) {
               videoRef.current.play().catch(e => {
                 console.error("Error playing video after metadata loaded:", e);
+                reject(e);
               });
             }
           };
+
+          return () => clearTimeout(videoTimeout);
         });
 
-        // Đặt thời gian chờ ngắn cho quá trình khởi động video
-        const timeoutPromise = new Promise<void>((_, reject) => {
-          const timeoutId = setTimeout(() => {
-            if (videoRef.current && videoRef.current.readyState >= 2) {
-              console.log("Video is ready even though playing event wasn't fired");
-              // Có thể phát nhưng không nhận được sự kiện playing
-              return;
-            }
-            reject(new Error("Video startup timed out"));
-          }, 5000); // Tăng timeout lên 5 giây
+        // Camera đã khởi tạo thành công
+        if (componentMounted.current) {
+          setCameraActive(true);
+          setCameraError(false);
+          console.log("Camera is now active");
+          initAttempts.current = 0;
+          setIsLoading(false);
 
-          // Lưu timeout ID để có thể hủy nếu component unmount
-          return () => clearTimeout(timeoutId);
-        });
-
-        try {
-          // Đợi video bắt đầu phát hoặc timeout
-          await Promise.race([videoReadyPromise, timeoutPromise]);
-
-          // Video đã bắt đầu phát hoặc có readyState đủ cao
-          if (componentMounted.current) {
-            setCameraActive(true);
-            setCameraError(false);
-            console.log("Camera is now active");
-
-            // Reset số lần thử
-            initAttempts.current = 0;
-
-            // Refresh danh sách camera để lấy nhãn
-            if (availableCameras.some(camera => !camera.label || camera.label.startsWith('Camera '))) {
-              getAvailableCameras();
-            }
-          }
-        } catch (timeoutError) {
-          console.error("Camera startup timed out:", timeoutError);
-
-          // Kiểm tra xem camera có thực sự hoạt động không mặc dù timeout
-          if (videoRef.current && videoRef.current.readyState >= 2 && componentMounted.current) {
-            console.log("Camera appears to be working despite timeout");
-            setCameraActive(true);
-            setCameraError(false);
-            return;
-          }
-
-          // Nếu vẫn còn lần thử, thử lại với độ trễ
-          if (initAttempts.current < maxInitAttempts && componentMounted.current) {
-            console.log(`Retrying camera initialization (attempt ${initAttempts.current}/${maxInitAttempts})`);
-            setIsLoading(false);
-            setTimeout(() => {
-              if (componentMounted.current) {
-                startCamera(deviceId);
-              }
-            }, 1000);
-            return;
-          } else if (componentMounted.current) {
-            throw new Error("Camera initialization timed out after multiple attempts");
+          // Refresh danh sách camera
+          if (availableCameras.some(camera => !camera.label || camera.label.startsWith('Camera '))) {
+            getAvailableCameras();
           }
         }
       } catch (e) {
         console.error("Error accessing camera:", e);
 
         if (!componentMounted.current) {
-          return; // Don't update state if component unmounted
+          return;
         }
 
-        // Phát hiện và xử lý các lỗi cụ thể
+        // Xử lý các lỗi cụ thể
         let errorMsg = "Camera access failed";
 
         if (e instanceof Error) {
@@ -372,14 +430,14 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
             errorMsg = "No camera found. Please connect a camera and try again.";
           } else if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
             errorMsg = "Camera access denied. Please check your browser permissions.";
-          } else if (e.name === 'AbortError') {
+          } else if (e.name === 'AbortError' || e.message?.includes('timeout')) {
             errorMsg = "Camera initialization timed out. Please try again.";
           } else if (e.message) {
             errorMsg = e.message;
           }
         }
 
-        // Nếu vẫn còn lần thử, thử lại với độ trễ
+        // Thử lại nếu còn lần thử
         if (initAttempts.current < maxInitAttempts && componentMounted.current) {
           console.log(`Error encountered, retrying camera initialization (attempt ${initAttempts.current}/${maxInitAttempts})`);
           setIsLoading(false);
@@ -387,7 +445,7 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
             if (componentMounted.current) {
               startCamera(deviceId);
             }
-          }, 1000);
+          }, 2000);
           return;
         }
 
@@ -445,7 +503,10 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
 
       setIsLoading(true);
       try {
-        if (modelsLoaded.current) {
+        // Nếu model đã được tải trước từ component cha, hoặc đã tải trong component này
+        if (modelsPreloaded || modelsLoaded.current) {
+          console.log("Models already loaded, skipping loading step");
+          modelsLoaded.current = true;
           setIsModelLoaded(true);
           setIsLoading(false);
           return;
@@ -491,6 +552,10 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
           console.log("Loading tinyFaceDetector...");
           await faceapi.nets.tinyFaceDetector.load(validModelPath);
           console.log("Loaded tinyFaceDetector");
+
+          console.log("Loading SsdMobilenetv1...");
+          await faceapi.nets.ssdMobilenetv1.load(validModelPath);
+          console.log("Loaded SsdMobilenetv1");
 
           console.log("Loading faceLandmark68Net...");
           await faceapi.nets.faceLandmark68Net.load(validModelPath);
@@ -633,86 +698,28 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
 
     const setupFaceDetection = () => {
       if (!videoRef.current || !canvasRef.current || !isModelLoaded || !cameraActive || status === 'processing') {
-        console.log("Not setting up face detection:", {
-          videoRef: !!videoRef.current,
-          canvasRef: !!canvasRef.current,
-          isModelLoaded,
-          cameraActive,
-          status
-        });
         return;
       }
-
-      console.log("Setting up face detection interval");
 
       // Clear any existing intervals
       if (intervalRef.current !== null) {
         window.clearInterval(intervalRef.current);
       }
 
-      // Set an interval to detect faces
-      intervalRef.current = window.setInterval(async () => {
-        if (!componentMounted.current || !videoRef.current || !canvasRef.current) return;
+      // Set an interval to detect faces - giảm xuống 200ms
+      intervalRef.current = window.setInterval(detectFaces, 200);
 
-        // Make sure video is playing and ready
-        if (videoRef.current.paused || videoRef.current.ended || videoRef.current.readyState < 2) return;
-
-        try {
-          // Get video dimensions
-          const displaySize = {
-            width: videoRef.current.videoWidth || videoRef.current.width || 640,
-            height: videoRef.current.videoHeight || videoRef.current.height || 480
-          };
-
-          // Match canvas size to video
-          if (canvasRef.current) {
-            faceapi.matchDimensions(canvasRef.current, displaySize);
-          }
-
-          // Sử dụng phương pháp đơn giản nhất - chỉ phát hiện khuôn mặt
-          const detections = await faceapi.detectAllFaces(
-            videoRef.current,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 320,
-              scoreThreshold: 0.65
-            })
-          );
-
-          // Vẽ kết quả nếu component vẫn mounted
-          if (componentMounted.current && canvasRef.current && detections.length > 0) {
-            const resizedDetections = faceapi.resizeResults(detections, displaySize);
-            const ctx = canvasRef.current.getContext('2d');
-
-            if (ctx) {
-              // Xóa canvas
-              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-
-              // Vẽ các phát hiện khuôn mặt
-              resizedDetections.forEach(detection => {
-                // Lấy thông tin box
-                const box = detection.box;
-                const score = detection.score;
-
-                // Vẽ khung khuôn mặt
-                ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-                ctx.lineWidth = 3;
-                ctx.lineJoin = 'round';
-                ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-                // Vẽ thông tin nhận diện
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                ctx.fillRect(box.x, box.y - 20, 90, 20);
-
-                ctx.font = 'bold 16px Arial';
-                ctx.fillStyle = 'rgba(255, 255, 255, 1)';
-                ctx.fillText('Đã nhận diện', box.x + 5, box.y - 5);
-              });
-            }
-          }
-        } catch (e) {
-          console.error("Error in face detection:", e);
+      return () => {
+        if (intervalRef.current !== null) {
+          window.clearInterval(intervalRef.current);
+          intervalRef.current = null;
         }
-      }, 300); // Đặt lại thành 300ms - cân bằng giữa mượt mà và hiệu suất
+        if (detectionTimeoutRef.current !== null) {
+          clearTimeout(detectionTimeoutRef.current);
+          detectionTimeoutRef.current = null;
+        }
+        isProcessingRef.current = false;
+      };
     };
 
     setupFaceDetection();
@@ -722,6 +729,11 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
         window.clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      if (detectionTimeoutRef.current !== null) {
+        clearTimeout(detectionTimeoutRef.current);
+        detectionTimeoutRef.current = null;
+      }
+      isProcessingRef.current = false;
     };
   }, [canvasRef, videoRef, cameraActive, isModelLoaded, status]);
 
@@ -873,6 +885,212 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
     }
   };
 
+  // Sửa đổi hàm detectFaces để sử dụng dữ liệu từ API
+  const detectFaces = async () => {
+    if (!videoRef.current || !canvasRef.current || !cameraActive || isProcessingRef.current || !isCameraOn) {
+      return;
+    }
+
+    // Kiểm tra xem mô hình đã được tải chưa
+    if (!faceapi.nets.ssdMobilenetv1.isLoaded) {
+      console.warn("SsdMobilenetv1 model not loaded yet, skipping detection");
+      isProcessingRef.current = false;
+      return;
+    }
+
+    isProcessingRef.current = true;
+
+    try {
+      // Kiểm tra xem có nhân viên nào có face descriptor không
+      if (employeesWithFace.length === 0) {
+        isProcessingRef.current = false;
+        return;
+      }
+
+      // Ensure the canvas dimensions match the video
+      const displaySize = {
+        width: videoRef.current.videoWidth,
+        height: videoRef.current.videoHeight
+      };
+
+      if (canvasRef.current.width !== displaySize.width || canvasRef.current.height !== displaySize.height) {
+        canvasRef.current.width = displaySize.width;
+        canvasRef.current.height = displaySize.height;
+      }
+
+      // Detect faces with landmarks and descriptors
+      const detections = await faceapi.detectAllFaces(videoRef.current, new faceapi.SsdMobilenetv1Options())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      if (!detections || detections.length === 0) {
+        isProcessingRef.current = false;
+        return;
+      }
+
+      // Get the 2D context from canvas with null check
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) {
+        console.warn("Could not get 2D context from canvas");
+        isProcessingRef.current = false;
+        return;
+      }
+
+      // Clear previous drawings
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+      if (detections.length > 0) {
+        // Tạo danh sách descriptor từ dữ liệu nhân viên
+        const labeledDescriptorsFromDB = employeesWithFace
+          .filter(emp => emp.faceDescriptor) // Lọc những nhân viên có face descriptor
+          .map(emp => {
+            try {
+              // Parse face descriptor từ chuỗi JSON hoặc chuỗi phân tách bằng dấu phẩy
+              let descriptor;
+              if (typeof emp.faceDescriptor === 'string') {
+                if (emp.faceDescriptor.startsWith('[') || emp.faceDescriptor.startsWith('{')) {
+                  descriptor = JSON.parse(emp.faceDescriptor);
+                } else {
+                  descriptor = emp.faceDescriptor.split(',').map(Number);
+                }
+              } else if (Array.isArray(emp.faceDescriptor)) {
+                descriptor = emp.faceDescriptor;
+              } else {
+                console.error(`Invalid face descriptor format for employee ${emp.id}`);
+                return null;
+              }
+
+              // Kiểm tra descriptor có hợp lệ không
+              if (Array.isArray(descriptor) && descriptor.length === 128) {
+                return {
+                  name: `${emp.firstName} ${emp.lastName}`,
+                  employeeId: emp.id,
+                  descriptor: new Float32Array(descriptor)
+                };
+              }
+              return null;
+            } catch (error) {
+              console.error(`Error parsing face descriptor for employee ${emp.id}:`, error);
+              return null;
+            }
+          })
+          .filter(Boolean); // Lọc bỏ các giá trị null
+
+        // So sánh với dữ liệu từ cơ sở dữ liệu
+        const bestMatch = detections.map(detection => {
+          const distances = labeledDescriptorsFromDB
+            .filter(labeled => labeled !== null) // Lọc bỏ các giá trị null
+            .map(labeled => ({
+              name: labeled!.name,
+              employeeId: labeled!.employeeId,
+              distance: faceapi.euclideanDistance(detection.descriptor, labeled!.descriptor)
+            }));
+
+          // Nếu không có descriptor nào, trả về null
+          if (distances.length === 0) {
+            return null;
+          }
+
+          const best = distances.reduce((prev, curr) =>
+            prev.distance < curr.distance ? prev : curr
+          );
+
+          return {
+            name: best.name,
+            employeeId: best.employeeId,
+            confidence: 1 - best.distance,
+            detection
+          };
+        }).filter(Boolean); // Lọc bỏ các giá trị null
+
+        if (bestMatch.length > 0) {
+          const bestMatchResult = bestMatch[0];
+
+          // Chỉ hiển thị kết quả khi độ tin cậy > 60%
+          if (bestMatchResult && bestMatchResult.confidence > 0.6) {
+            setRecognizedPerson({
+              name: bestMatchResult.name,
+              employeeId: bestMatchResult.employeeId,
+              confidence: bestMatchResult.confidence
+            });
+
+            // Gọi callback nếu có
+            if (onFaceRecognized && bestMatchResult.detection.descriptor) {
+              // Chuyển descriptor thành chuỗi
+              const descriptorString = Array.from(bestMatchResult.detection.descriptor).toString();
+              onFaceRecognized(descriptorString, {
+                name: bestMatchResult.name,
+                employeeId: bestMatchResult.employeeId,
+                confidence: bestMatchResult.confidence
+              });
+            }
+          } else {
+            setRecognizedPerson(null);
+          }
+
+          // Vẽ kết quả
+          const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+          // Double check canvas and context are still available before drawing
+          if (canvasRef.current && ctx) {
+            resizedDetections.forEach((detection, i) => {
+              if (i >= bestMatch.length) return;
+
+              const matchInfo = bestMatch[i];
+              if (!matchInfo) return;
+
+              const box = detection.detection.box;
+              const drawBox = new faceapi.draw.DrawBox(box, {
+                label: matchInfo.confidence > 0.6
+                  ? `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`
+                  : 'Chưa nhận diện',
+                boxColor: matchInfo.confidence > 0.6 ? 'green' : 'red'
+              });
+
+              // Ensure canvas element is not null before drawing
+              if (canvasRef.current) {
+                drawBox.draw(canvasRef.current);
+              }
+            });
+          }
+        } else {
+          setRecognizedPerson(null);
+        }
+      } else {
+        setRecognizedPerson(null);
+      }
+    } catch (error) {
+      console.error('Error detecting faces:', error);
+      setRecognizedPerson(null);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+
+  // Thêm useEffect để đảm bảo video đã sẵn sàng
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    const handleVideoReady = () => {
+      if (videoRef.current && videoRef.current.videoWidth > 0 && videoRef.current.videoHeight > 0) {
+        console.log('Video is ready with dimensions:', {
+          width: videoRef.current.videoWidth,
+          height: videoRef.current.videoHeight
+        });
+      }
+    };
+
+    videoRef.current.addEventListener('loadedmetadata', handleVideoReady);
+    videoRef.current.addEventListener('loadeddata', handleVideoReady);
+
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('loadedmetadata', handleVideoReady);
+        videoRef.current.removeEventListener('loadeddata', handleVideoReady);
+      }
+    };
+  }, []);
+
   return (
     <div className="relative w-full">
       <div className={cn(
@@ -1016,6 +1234,14 @@ export function FaceDetector({ videoRef, canvasRef, status }: FaceDetectorProps)
                 </Button>
               </>
             )}
+          </div>
+        )}
+
+        {/* Hiển thị thông tin người được nhận diện */}
+        {recognizedPerson && (
+          <div className="absolute top-4 left-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
+            <div className="font-semibold">Đã nhận diện: {recognizedPerson.name}</div>
+            <div className="text-sm">Độ tin cậy: {Math.round(recognizedPerson.confidence * 100)}%</div>
           </div>
         )}
       </div>

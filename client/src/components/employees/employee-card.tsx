@@ -10,6 +10,8 @@ import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +71,8 @@ function formatJoinDate(dateValue: any): string {
 
 export function EmployeeCard({ employee }: EmployeeCardProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const i18nToast = useI18nToast();
 
   // Hardcoded department names due to API issues
   const departmentMap = {
@@ -84,29 +88,22 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
       await apiRequest("DELETE", `/api/employees/${employee.id}`);
     },
     onSuccess: () => {
-      toast({
-        title: "Employee Deleted",
-        description: "The employee has been successfully deleted.",
-      });
+      i18nToast.success('employees.deleteSuccess', 'employees.deleteSuccessMessage');
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to delete employee: ${error.message}`,
-        variant: "destructive",
-      });
+      i18nToast.error('common.error', 'employees.deleteError', { error: error.message });
     },
   });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
-        return <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>;
+        return <Badge className="bg-green-500 hover:bg-green-600">{t('employees.active')}</Badge>;
       case 'inactive':
-        return <Badge variant="secondary">Inactive</Badge>;
+        return <Badge variant="secondary">{t('employees.inactive')}</Badge>;
       case 'on_leave':
-        return <Badge className="bg-amber-500 hover:bg-amber-600">On Leave</Badge>;
+        return <Badge className="bg-amber-500 hover:bg-amber-600">{t('employees.onLeave')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -124,8 +121,8 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
             {getInitials(employee.firstName, employee.lastName)}
           </AvatarFallback>
         </Avatar>
-        <h3 className="font-semibold text-lg">{employee.firstName} {employee.lastName}</h3>
-        <p className="text-sm text-muted-foreground mb-2">{employee.position || 'No position'}</p>
+        <h3 className="font-semibold text-lg">{employee.lastName} {employee.firstName}</h3>
+        <p className="text-sm text-muted-foreground mb-2">{employee.position || t('employees.noPosition')}</p>
         {getStatusBadge(employee.status)}
       </div>
 
@@ -134,15 +131,15 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
       <CardContent className="p-4">
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Employee ID</span>
+            <span className="text-sm text-muted-foreground">{t('employees.id')}</span>
             <span className="text-sm font-medium">{employee.employeeId}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Department</span>
-            <span className="text-sm font-medium">{department?.name || 'Not assigned'}</span>
+            <span className="text-sm text-muted-foreground">{t('employees.department')}</span>
+            <span className="text-sm font-medium">{department?.name || t('employees.notAssigned')}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sm text-muted-foreground">Joined</span>
+            <span className="text-sm text-muted-foreground">{t('employees.joined')}</span>
             <span className="text-sm font-medium">{formatJoinDate(employee.joinDate)}</span>
           </div>
         </div>
@@ -152,37 +149,36 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/employees/${employee.id}`}>
             <Eye className="mr-2 h-4 w-4" />
-            View
+            {t('common.view')}
           </Link>
         </Button>
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/employees/${employee.id}/edit`}>
             <Pencil className="mr-2 h-4 w-4" />
-            Edit
+            {t('common.edit')}
           </Link>
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="ghost" size="sm" className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              {t('common.delete')}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>{t('employees.confirmDelete')}</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete {employee.firstName} {employee.lastName}'s
-                record and all associated data.
+                {t('employees.deleteWarning', { name: `${employee.firstName} ${employee.lastName}` })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={() => deleteEmployeeMutation.mutate()}
               >
-                {deleteEmployeeMutation.isPending ? "Deleting..." : "Delete"}
+                {deleteEmployeeMutation.isPending ? t('employees.deleting') : t('common.delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

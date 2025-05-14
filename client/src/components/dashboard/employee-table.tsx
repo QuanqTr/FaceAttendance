@@ -53,8 +53,8 @@ export function EmployeeTable() {
       }
 
       // Combine employee data with attendance data
-      const employeesWithAttendance = employees.map(employee => {
-        const attendance = attendanceData.find(a => a.employee.id === employee.id)?.attendance;
+      const employeesWithAttendance = employees.map((employee: any) => {
+        const attendance = attendanceData.find((a: any) => a.employee.id === employee.id)?.attendance;
         return {
           employee,
           attendance: attendance ? {
@@ -160,7 +160,7 @@ export function EmployeeTable() {
                         </div>
                         <div>
                           <p className="text-sm font-medium">
-                            {item.employee.firstName} {item.employee.lastName}
+                            {item.employee.lastName} {item.employee.firstName}
                           </p>
                           <p className="text-xs text-muted-foreground">{item.employee.employeeId}</p>
                         </div>
@@ -221,7 +221,7 @@ export function EmployeeTable() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              {[...Array(Math.ceil(data.total / limit)).keys()].slice(0, 3).map(i => (
+              {Array.from({ length: Math.ceil(data.total / limit) }).slice(0, 3).map((_, i) => (
                 <Button
                   key={i}
                   variant={page === i + 1 ? "default" : "outline"}

@@ -12,6 +12,9 @@ export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'lat
 // Enum for attendance type
 export const attendanceTypeEnum = pgEnum('attendance_type', ['in', 'out']);
 
+// Enum for time log type
+export const timeLogTypeEnum = pgEnum('time_log_type', ['checkin', 'checkout']);
+
 // Enum for leave request status
 export const leaveRequestStatusEnum = pgEnum('leave_request_status', ['pending', 'approved', 'rejected']);
 
@@ -25,11 +28,16 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   fullName: text("full_name").notNull(),
   role: text("role").default("admin").notNull(),
+  employeeId: integer("employee_id").references(() => employees.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   departments: many(departments),
+  employee: one(employees, {
+    fields: [users.employeeId],
+    references: [employees.id],
+  }),
 }));
 
 // Departments table
@@ -90,6 +98,15 @@ export const attendanceRecords = pgTable("attendance_records", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Time logs table for clock-in/clock-out tracking
+export const timeLogs = pgTable("time_logs", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  logTime: timestamp("log_time").defaultNow().notNull(),
+  type: timeLogTypeEnum("type").notNull(),
+  source: text("source").default("face"),
+});
+
 // Leave requests table
 export const leaveRequests = pgTable("leave_requests", {
   id: serial("id").primaryKey(),
@@ -148,6 +165,13 @@ export const attendanceRecordsRelations = relations(attendanceRecords, ({ one })
   }),
 }));
 
+export const timeLogsRelations = relations(timeLogs, ({ one }) => ({
+  employee: one(employees, {
+    fields: [timeLogs.employeeId],
+    references: [employees.id],
+  }),
+}));
+
 export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
   employee: one(employees, {
     fields: [leaveRequests.employeeId],
@@ -180,6 +204,9 @@ export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords
   id: true,
   createdAt: true
 });
+export const insertTimeLogSchema = createInsertSchema(timeLogs).omit({
+  id: true
+});
 export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
   id: true,
   approvedById: true,
@@ -210,6 +237,9 @@ export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 
 export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
 export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
+
+export type TimeLog = typeof timeLogs.$inferSelect;
+export type InsertTimeLog = z.infer<typeof insertTimeLogSchema>;
 
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
 export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;

@@ -35,24 +35,38 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { format } from "date-fns";
 import { insertEmployeeSchema } from "@shared/schema";
 
 // Extend the schema with additional validation
-const employeeFormSchema = insertEmployeeSchema.extend({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Invalid email address"),
-  employeeId: z.string().min(1, "Employee ID is required"),
-  departmentId: z.number().min(1, "Department is required"),
-  position: z.string().optional(),
-  phone: z.string().optional(),
+const createEmployeeFormSchema = (t: any) => insertEmployeeSchema.extend({
+  firstName: z.string().min(1, { message: t('employees.firstNameRequired') })
+    .refine(val => /^[A-Za-zÀ-ỹ\s]+$/.test(val), {
+      message: t('employees.nameNoNumbersSpecialChars')
+    }),
+  lastName: z.string().min(1, { message: t('employees.lastNameRequired') })
+    .refine(val => /^[A-Za-zÀ-ỹ\s]+$/.test(val), {
+      message: t('employees.nameNoNumbersSpecialChars')
+    }),
+  email: z.string().email({ message: t('employees.invalidEmail') }),
+  employeeId: z.string().min(1, { message: t('employees.employeeIdRequired') }),
+  departmentId: z.number().min(1, { message: t('employees.departmentRequired') }),
+  position: z.string().min(1, { message: t('employees.positionRequired') })
+    .refine(val => !val || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+/.test(val), {
+      message: t('employees.positionNoSpecialChars')
+    }),
+  phone: z.string().optional()
+    .refine(val => !val || /^\d+$/.test(val), {
+      message: t('employees.phoneNumbersOnly')
+    }),
   joinDate: z.string(),
   status: z.enum(["active", "inactive", "on_leave"]).default("active"),
 });
 
-type EmployeeFormValues = z.infer<typeof employeeFormSchema>;
+type EmployeeFormValues = z.infer<ReturnType<typeof createEmployeeFormSchema>>;
 
 // Robust date parsing function to handle various date formats
 function parseJoinDate(dateValue: any): string {
@@ -119,10 +133,21 @@ async function checkSession(): Promise<boolean> {
   }
 }
 
+// Function to generate employee ID based on E0xx format
+function generateEmployeeId(): string {
+  // Get all existing employees to find the next available ID
+  const nextId = Math.floor(Math.random() * 99) + 1; // For demo purposes using random number between 1-99
+
+  // Format: E0xx where xx is padded with leading zeros
+  return `E${nextId.toString().padStart(3, '0')}`;
+}
+
 export default function EmployeeForm() {
   const [, params] = useRoute<{ id: string }>("/employees/:id/edit");
   const [isEditMode, setIsEditMode] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const i18nToast = useI18nToast();
 
   const employeeId = params?.id ? parseInt(params.id) : null;
 
@@ -145,6 +170,8 @@ export default function EmployeeForm() {
     },
     enabled: !!employeeId,
   });
+
+  const employeeFormSchema = createEmployeeFormSchema(t);
 
   // Initialize form
   const form = useForm<EmployeeFormValues>({
@@ -237,6 +264,9 @@ export default function EmployeeForm() {
       }
       form.setValue('joinDate', formattedJoinDate);
       console.log("Form has been set with join date:", formattedJoinDate);
+    } else {
+      // This is create mode - generate employee ID
+      form.setValue('employeeId', generateEmployeeId());
     }
   }, [employee, form]);
 
@@ -247,134 +277,61 @@ export default function EmployeeForm() {
       return await res.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Employee Created",
-        description: "The employee has been successfully created.",
-      });
+      i18nToast.success('employees.createSuccess', 'employees.createSuccessMessage');
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       window.location.href = "/employees";
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to create employee: ${error.message}`,
-        variant: "destructive",
-      });
+      i18nToast.error('common.error', 'employees.createError', { error: error.message });
     },
   });
 
   // Update employee mutation
   const updateMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
-      try {
-        // Nhận date string từ date input, định dạng value là YYYY-MM-DD khi lấy từ e.target.value
-        // bất kể định dạng hiển thị là MM/DD/YYYY hay bất kỳ định dạng nào khác
-        // Dữ liệu từ form luôn là YYYY-MM-DD
-
-        console.log("Sending data with join date:", data.joinDate);
-
-        const apiData = {
-          ...data,
-          // Giữ nguyên định dạng YYYY-MM-DD cho API
-          joinDate: data.joinDate ? data.joinDate : null
-        };
-
-        console.log("Final API data:", apiData);
-
-        const res = await apiRequest("PUT", `/api/employees/${employeeId}`, apiData);
-        return await res.json();
-      } catch (error) {
-        console.error("Error in update mutation:", error);
-        throw error;
-      }
+      const res = await apiRequest("PUT", `/api/employees/${employeeId}`, data);
+      return await res.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Employee Updated",
-        description: "The employee has been successfully updated.",
-      });
+      i18nToast.success('employees.updateSuccess', 'employees.updateSuccessMessage');
       queryClient.invalidateQueries({ queryKey: [`/api/employees/${employeeId}`] });
-      // Use window.location.replace to avoid adding to history stack
-      window.location.replace(`/employees/${employeeId}`);
+      window.location.href = "/employees";
     },
     onError: (error) => {
-      console.error("Update mutation error:", error);
-
-      // If session expired, redirect to login
-      if (error instanceof Error &&
-        (error.message.includes("401") ||
-          error.message.toLowerCase().includes("unauthorized"))) {
-        toast({
-          title: "Session Expired",
-          description: "Your session has expired. Please login again.",
-          variant: "destructive",
-        });
-        // Use history replace to avoid adding to history stack
-        setTimeout(() => window.location.replace("/auth"), 1500);
-      } else {
-        toast({
-          title: "Error",
-          description: `Failed to update employee: ${error.message}`,
-          variant: "destructive",
-        });
-      }
+      i18nToast.error('common.error', 'employees.updateError', { error: error.message });
     },
   });
 
   const onSubmit = async (data: EmployeeFormValues) => {
     console.log("Form submitted with data:", data);
-    console.log("Join date value from form:", data.joinDate);
-    console.log("Join date type:", typeof data.joinDate);
 
-    // Kiểm tra và đảm bảo departmentId luôn là số
-    if (!data.departmentId) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng chọn phòng ban",
-        variant: "destructive",
-      });
+    const sessionValid = await checkSession();
+    if (!sessionValid) {
+      i18nToast.error('employees.sessionExpired', 'employees.sessionExpiredMessage');
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 2000);
       return;
     }
 
-    // Kiểm tra định dạng của ngày tháng
-    if (data.joinDate && typeof data.joinDate === 'string') {
-      console.log("Join date format check - raw value:", data.joinDate);
+    // Format date as YYYY-MM-DD string
+    const formattedData = {
+      ...data,
+      joinDate: parseJoinDate(data.joinDate),
+    };
+    console.log("Formatted data:", formattedData);
 
-      // Kiểm tra xem có đúng định dạng YYYY-MM-DD không
-      const isValidFormat = /^\d{4}-\d{2}-\d{2}$/.test(data.joinDate);
-      if (!isValidFormat) {
-        console.error("Join date is not in YYYY-MM-DD format:", data.joinDate);
-        toast({
-          title: "Lỗi định dạng ngày",
-          description: "Ngày phải có định dạng YYYY-MM-DD",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    if (isEditMode) {
-      // Check session before proceeding
-      const isSessionValid = await checkSession();
-      if (!isSessionValid) {
-        toast({
-          title: "Session Expired",
-          description: "Your session has expired. Please login again.",
-          variant: "destructive",
-        });
-        setTimeout(() => window.location.replace("/auth"), 1500);
-        return;
-      }
-
-      updateMutation.mutate(data);
+    if (isEditMode && employeeId) {
+      updateMutation.mutate(formattedData);
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(formattedData);
     }
   };
 
   if (isEditMode && isLoadingEmployee) {
     return (
       <div className="flex flex-col flex-1 overflow-hidden">
-        <Header title={isEditMode ? "Edit Employee" : "Add Employee"} />
+        <Header title={t('employees.editEmployee')} />
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
           <div className="flex justify-center items-center h-full">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -386,259 +343,240 @@ export default function EmployeeForm() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title={isEditMode ? "Edit Employee" : "Add Employee"} />
+      <Header title='Chỉnh sửa thông tin' />
 
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="flex items-center mb-6">
-          <Link href={isEditMode ? `/employees/${employeeId}` : "/employees"}>
-            <Button variant="ghost" className="mr-2 p-0 h-8 w-8">
+          <Link href="/employees" className="mr-4">
+            <Button variant="ghost" className="h-8 w-8 p-0" aria-label={t('common.back')}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold">
-            {isEditMode ? "Edit Employee" : "Add New Employee"}
-          </h1>
+          <h1 className="text-2xl font-bold">Chỉnh sửa thông tin cá nhân</h1>
         </div>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Personal Information</CardTitle>
-                <CardDescription>
-                  Enter the employee's basic information
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter first name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter last name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="Enter email address" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter phone number (optional)" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Employment Details</CardTitle>
-                <CardDescription>
-                  Enter employment and department information
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="employeeId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Employee ID</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter employee ID" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="departmentId"
-                    render={({ field }) => {
-                      console.log("Department field value:", field.value);
-                      return (
+        <div className="mx-auto max-w-4xl">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('employees.personalInfo')}</CardTitle>
+                  <CardDescription>{t('employees.personalInfoDesc')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="firstName"
+                      render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Department</FormLabel>
+                          <FormLabel>{t('employees.firstName')}</FormLabel>
+                          <FormControl>
+                            <Input placeholder={t('employees.enterFirstName')} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('employees.lastName')}</FormLabel>
+                          <FormControl>
+                            <Input placeholder={t('employees.enterLastName')} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('employees.email')}</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder={t('employees.enterEmail')} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('employees.phone')}</FormLabel>
+                        <FormControl>
+                          <Input placeholder={t('employees.enterPhone')} {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('employees.employmentInfo')}</CardTitle>
+                  <CardDescription>{t('employees.employmentInfoDesc')}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Employee ID is hidden from interface but still part of the form data */}
+                  <input type="hidden" {...form.register('employeeId')} />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="position"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('employees.position')}</FormLabel>
+                          <FormControl>
+                            <Input placeholder={t('employees.enterPosition')} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="departmentId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('employees.department')}</FormLabel>
                           <Select
-                            onValueChange={(value) => {
-                              console.log("Selected department value:", value);
-                              field.onChange(parseInt(value));
-                            }}
-                            defaultValue={field.value?.toString()}
-                            value={field.value?.toString() || ""}
+                            onValueChange={(value) => field.onChange(parseInt(value))}
+                            value={field.value?.toString()}
                             disabled={isLoadingDepartments}
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder={isLoadingDepartments ? "Loading departments..." : "Select a department"} />
+                                <SelectValue placeholder={t('employees.selectDepartment')} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
                               {isLoadingDepartments ? (
-                                <div className="p-2 text-center">Loading departments...</div>
-                              ) : departments && departments.length > 0 ? (
-                                departments.map((dept: any) => (
-                                  <SelectItem key={dept.id} value={dept.id.toString()}>
-                                    {dept.name} - {dept.description || "No description"}
+                                <div className="flex items-center justify-center p-2">
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                  <span>{t('employees.loadingDepartments')}</span>
+                                </div>
+                              ) : departmentsError ? (
+                                <div className="text-center p-2 text-destructive">
+                                  {t('employees.departmentsError')}
+                                </div>
+                              ) : departments.length === 0 ? (
+                                <div className="text-center p-2">
+                                  {t('employees.noDepartments')}
+                                </div>
+                              ) : (
+                                departments.map((department) => (
+                                  <SelectItem key={department.id} value={department.id.toString()}>
+                                    {department.name} - {department.description || t('employees.noDescription')}
                                   </SelectItem>
                                 ))
-                              ) : (
-                                <div className="p-2 text-center">No departments available</div>
                               )}
                             </SelectContent>
                           </Select>
-                          {departmentsError && (
-                            <div className="text-sm text-red-500 mt-1">
-                              Error loading departments. Please try again.
-                            </div>
-                          )}
                           <FormMessage />
                         </FormItem>
-                      )
-                    }}
-                  />
-                </div>
+                      )}
+                    />
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="position"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Position</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter position (optional)" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="joinDate"
-                    render={({ field }) => {
-                      console.log("Join date field value:", field.value);
-                      return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="joinDate"
+                      render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Join Date</FormLabel>
+                          <FormLabel>{t('employees.joinDate')}</FormLabel>
                           <FormControl>
-                            <Input
-                              type="date"
-                              {...field}
-                              value={field.value || ""}
-                              onChange={(e) => {
-                                // HTML date input trả về chuỗi theo định dạng YYYY-MM-DD dù hiển thị MM/DD/YYYY
-                                console.log("Selected date (raw value):", e.target.value);
-                                field.onChange(e.target.value);
-                              }}
-                            />
+                            <Input type="date" {...field} />
                           </FormControl>
-                          <FormDescription className="text-xs mt-1">
-                          </FormDescription>
                           <FormMessage />
                         </FormItem>
-                      )
-                    }}
-                  />
-                </div>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                          <SelectItem value="on_leave">On Leave</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-              <CardFooter className="flex justify-end space-x-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => window.history.back()}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <span className="flex items-center">
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {isEditMode ? "Updating..." : "Creating..."}
-                    </span>
-                  ) : (
-                    <span className="flex items-center">
-                      <Save className="mr-2 h-4 w-4" />
-                      {isEditMode ? "Update Employee" : "Create Employee"}
-                    </span>
-                  )}
-                </Button>
-              </CardFooter>
-            </Card>
-          </form>
-        </Form>
+                    <FormField
+                      control={form.control}
+                      name="status"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('employees.status')}</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={t('employees.selectStatus')} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="active">{t('employees.active')}</SelectItem>
+                              <SelectItem value="inactive">{t('employees.inactive')}</SelectItem>
+                              <SelectItem value="on_leave">{t('employees.onLeave')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => window.location.href = "/employees"}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isEditMode ? updateMutation.isPending : createMutation.isPending}
+                  >
+                    {isEditMode ? (
+                      updateMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {t('employees.updating')}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          {t('employees.updateEmployee')}
+                        </>
+                      )
+                    ) : (
+                      createMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {t('employees.creating')}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          {t('employees.createEmployee')}
+                        </>
+                      )
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </form>
+          </Form>
+        </div>
       </main>
     </div>
   );

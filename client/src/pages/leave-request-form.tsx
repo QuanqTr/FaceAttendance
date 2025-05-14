@@ -18,6 +18,8 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
 import { leaveRequestTypeEnum } from "@shared/schema";
 
 // Form schema for leave request
@@ -50,6 +52,8 @@ type FormValues = z.infer<typeof formSchema>;
 export default function LeaveRequestForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { t } = useTranslation();
+  const i18nToast = useI18nToast();
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
 
   // Get list of employees for dropdown
@@ -80,21 +84,14 @@ export default function LeaveRequestForm() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Leave request created successfully",
-      });
+      i18nToast.success('common.success', 'leaveRequests.createSuccess');
       // Invalidate the queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ["/api/leave-requests"] });
       // Navigate back to the leave requests page
       navigate("/leave-requests");
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create leave request",
-        variant: "destructive",
-      });
+      i18nToast.error('common.error', 'leaveRequests.createError', { error: error.message });
     },
   });
 
@@ -126,14 +123,14 @@ export default function LeaveRequestForm() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Create Leave Request" />
+      <Header title={t('leaveRequests.newRequest')} />
 
       <div className="p-4 flex-1 overflow-auto">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
-            <CardTitle>New Leave Request</CardTitle>
+            <CardTitle>{t('leaveRequests.newRequest')}</CardTitle>
             <CardDescription>
-              Create a new leave request for an employee.
+              {t('leaveRequests.newRequestDescription')}
             </CardDescription>
           </CardHeader>
 
@@ -146,7 +143,7 @@ export default function LeaveRequestForm() {
                   name="employeeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Employee</FormLabel>
+                      <FormLabel>{t('leaveRequests.employeeName')}</FormLabel>
                       <Select
                         disabled={employeesLoading || employees.length === 0}
                         onValueChange={handleEmployeeSelect}
@@ -154,8 +151,8 @@ export default function LeaveRequestForm() {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select an employee">
-                              {selectedEmployee?.name || "Select an employee"}
+                            <SelectValue placeholder={t('leaveRequests.selectEmployee')}>
+                              {selectedEmployee?.name || t('leaveRequests.selectEmployee')}
                             </SelectValue>
                           </SelectTrigger>
                         </FormControl>
@@ -166,7 +163,7 @@ export default function LeaveRequestForm() {
                             </div>
                           ) : employees.length === 0 ? (
                             <div className="p-2 text-center text-muted-foreground">
-                              No employees found
+                              {t('leaveRequests.noEmployeesFound')}
                             </div>
                           ) : (
                             employees.map((employee: any) => (
@@ -192,7 +189,7 @@ export default function LeaveRequestForm() {
                     name="startDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Start Date</FormLabel>
+                        <FormLabel>{t('leaveRequests.startDate')}</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -206,7 +203,7 @@ export default function LeaveRequestForm() {
                                 {field.value ? (
                                   format(field.value, "PPP")
                                 ) : (
-                                  <span>Pick a date</span>
+                                  <span>{t('leaveRequests.selectDate')}</span>
                                 )}
                                 <Calendar className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -234,7 +231,7 @@ export default function LeaveRequestForm() {
                     name="endDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>End Date</FormLabel>
+                        <FormLabel>{t('leaveRequests.endDate')}</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -248,7 +245,7 @@ export default function LeaveRequestForm() {
                                 {field.value ? (
                                   format(field.value, "PPP")
                                 ) : (
-                                  <span>Pick a date</span>
+                                  <span>{t('leaveRequests.selectDate')}</span>
                                 )}
                                 <Calendar className="ml-auto h-4 w-4 opacity-50" />
                               </Button>
@@ -259,10 +256,9 @@ export default function LeaveRequestForm() {
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
-                              disabled={(date) => {
-                                const startDate = form.getValues("startDate");
-                                return date < startDate;
-                              }}
+                              disabled={(date) =>
+                                date < new Date(new Date().setHours(0, 0, 0, 0))
+                              }
                               initialFocus
                             />
                           </PopoverContent>
@@ -279,21 +275,21 @@ export default function LeaveRequestForm() {
                   name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Leave Type</FormLabel>
+                      <FormLabel>{t('leaveRequests.leaveType')}</FormLabel>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select leave type" />
+                            <SelectValue placeholder={t('leaveRequests.selectLeaveType')} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="sick">Sick Leave</SelectItem>
-                          <SelectItem value="vacation">Vacation</SelectItem>
-                          <SelectItem value="personal">Personal</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
+                          <SelectItem value="sick">{t('leaveRequests.sick')}</SelectItem>
+                          <SelectItem value="vacation">{t('leaveRequests.vacation')}</SelectItem>
+                          <SelectItem value="personal">{t('leaveRequests.personal')}</SelectItem>
+                          <SelectItem value="other">{t('leaveRequests.other')}</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -307,16 +303,16 @@ export default function LeaveRequestForm() {
                   name="reason"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Reason (Optional)</FormLabel>
+                      <FormLabel>{t('leaveRequests.reasonOptional')}</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Please provide a reason for your leave request"
+                          placeholder={t('leaveRequests.reasonPlaceholder')}
                           className="resize-none"
                           {...field}
                         />
                       </FormControl>
                       <FormDescription>
-                        Briefly describe the reason for the leave request.
+                        {t('leaveRequests.reasonDescription')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -330,7 +326,7 @@ export default function LeaveRequestForm() {
                   variant="outline"
                   onClick={() => navigate("/leave-requests")}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   type="submit"
@@ -342,7 +338,7 @@ export default function LeaveRequestForm() {
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  Save Request
+                  {t('common.save')}
                 </Button>
               </CardFooter>
             </form>

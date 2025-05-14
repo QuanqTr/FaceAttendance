@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays, addDays, parseISO } from "date-fns";
+import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
 import { AttendanceRecognition } from "@/components/dashboard/attendance-recognition";
 import { AttendanceLog } from "@/components/attendance/attendance-log";
+import { WorkHoursLog } from "@/components/attendance/work-hours-log";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
@@ -21,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { useI18nToast } from "@/hooks/use-i18n-toast";
 
 type AttendanceRecord = {
   id: number;
@@ -33,14 +36,25 @@ type AttendanceRecord = {
   status: 'present' | 'absent' | 'late';
 };
 
+type WorkHoursRecord = {
+  employeeId: number;
+  employeeName: string;
+  regularHours: number;
+  overtimeHours: number;
+  checkinTime: string | null;
+  checkoutTime: string | null;
+};
+
 export default function Attendance() {
+  const { t } = useTranslation();
+  const toast = useI18nToast();
   const [date, setDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("today");
 
   const formattedDate = format(date, "yyyy-MM-dd");
 
-  const { data: attendanceRecords, isLoading } = useQuery<AttendanceRecord[]>({
+  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useQuery<AttendanceRecord[]>({
     queryKey: ["/api/attendance/daily", formattedDate],
     queryFn: async () => {
       const res = await fetch(`/api/attendance/daily?date=${formattedDate}`);
@@ -53,13 +67,23 @@ export default function Attendance() {
         // Ensure each record has a unique ID by combining employee ID with index
         id: item.attendance?.id || (item.employee.id * 1000 + index),
         employeeId: item.employee.id,
-        employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
+        employeeName: `${item.employee.lastName} ${item.employee.firstName}`,
         departmentName: item.employee.departmentId, // In a real app, this would fetch the department name
         date: formattedDate,
         timeIn: item.attendance?.type === 'in' ? new Date(item.attendance?.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
         timeOut: item.attendance?.type === 'out' ? new Date(item.attendance?.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
         status: item.attendance?.status || 'absent',
       }));
+    }
+  });
+
+  // Fetch work hours data
+  const { data: workHoursData, isLoading: isLoadingWorkHours } = useQuery<WorkHoursRecord[]>({
+    queryKey: ["/api/work-hours/daily", formattedDate],
+    queryFn: async () => {
+      const res = await fetch(`/api/work-hours/daily?date=${formattedDate}`);
+      if (!res.ok) throw new Error("Failed to fetch work hours data");
+      return await res.json();
     }
   });
 
@@ -83,59 +107,69 @@ export default function Attendance() {
   const exportAttendance = () => {
     // In a real app, this would trigger a CSV/Excel export
     console.log("Exporting attendance data");
+    toast.success('common.success', 'reports.exportSuccess');
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title="Attendance" onSearch={handleSearch} />
+    <div className="flex flex-col min-h-screen">
+      <Header title={t('attendance.title')} onSearch={handleSearch} showSearch={true} />
 
-      <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
-        <Tabs defaultValue="today" className="space-y-4" onValueChange={setActiveTab}>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-            <TabsList>
-              <TabsTrigger value="today">Today's Attendance</TabsTrigger>
-              <TabsTrigger value="record">Record Attendance</TabsTrigger>
-            </TabsList>
+      <main className="flex-1 container py-6 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
+          <h1 className="text-2xl font-bold">{t('attendance.title')}</h1>
 
-            <div className="flex items-center mt-4 sm:mt-0 space-x-2">
-              {activeTab === "today" && (
-                <>
-                  <div className="flex items-center space-x-1">
-                    <Button variant="outline" size="icon" onClick={handlePreviousDay}>
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="min-w-[160px] justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {format(date, "MMMM d, yyyy")}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={date}
-                          onSelect={(newDate) => newDate && setDate(newDate)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <Button variant="outline" size="icon" onClick={handleNextDay}>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <Button variant="outline" size="icon" onClick={exportAttendance}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handlePreviousDay}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[240px] justify-start text-left font-normal",
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {format(date, "PPP")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={(newDate) => newDate && setDate(newDate)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleNextDay}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="today">{t('attendance.dailyAttendance')}</TabsTrigger>
+            <TabsTrigger value="record">{t('attendance.recordAttendance')}</TabsTrigger>
+            <TabsTrigger value="workhours">{t('attendance.workHours')}</TabsTrigger>
+          </TabsList>
 
           <TabsContent value="today" className="space-y-4">
             <AttendanceLog
-              records={filteredRecords}
-              isLoading={isLoading}
+              records={attendanceRecords || []}
+              isLoading={isLoadingAttendance}
               date={date}
             />
           </TabsContent>
@@ -143,10 +177,25 @@ export default function Attendance() {
           <TabsContent value="record">
             <Card>
               <CardHeader>
-                <CardTitle>Face Recognition Attendance</CardTitle>
+                <CardTitle>{t('attendance.faceRecognition')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <AttendanceRecognition />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="workhours" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('attendance.workHours')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WorkHoursLog
+                  records={workHoursData || []}
+                  isLoading={isLoadingWorkHours}
+                  date={date}
+                />
               </CardContent>
             </Card>
           </TabsContent>

@@ -1,14 +1,17 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { 
-  ClipboardList, 
-  LayoutDashboard, 
-  Menu, 
-  Settings, 
+import { useTranslation } from "react-i18next";
+import {
+  ClipboardList,
+  LayoutDashboard,
+  Menu,
+  Settings,
   Users2,
   Calendar,
-  DollarSign
+  DollarSign,
+  Globe
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type MobileNavLinkProps = {
   href: string;
@@ -33,6 +36,7 @@ const MobileNavLink = ({ href, icon, children, isActive }: MobileNavLinkProps) =
 
 export function MobileNav() {
   const [location] = useLocation();
+  const { t } = useTranslation();
 
   const isActive = (path: string) => {
     if (path === '/' && location === '/') return true;
@@ -41,48 +45,51 @@ export function MobileNav() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-background border-t z-10 md:hidden">
-      <div className="grid grid-cols-5">
-        <MobileNavLink 
-          href="/"
-          icon={<LayoutDashboard className="h-5 w-5" />}
-          isActive={isActive('/')}
-        >
-          Dashboard
-        </MobileNavLink>
-        
-        <MobileNavLink 
-          href="/attendance"
-          icon={<ClipboardList className="h-5 w-5" />}
-          isActive={isActive('/attendance')}
-        >
-          Attendance
-        </MobileNavLink>
-        
-        <MobileNavLink 
-          href="/employees"
-          icon={<Users2 className="h-5 w-5" />}
-          isActive={isActive('/employees')}
-        >
-          Employees
-        </MobileNavLink>
-        
-        <MobileNavLink 
-          href="/leave-requests"
-          icon={<Calendar className="h-5 w-5" />}
-          isActive={isActive('/leave-requests')}
-        >
-          Leave
-        </MobileNavLink>
-        
-        <MobileNavLink 
-          href="/salary"
-          icon={<DollarSign className="h-5 w-5" />}
-          isActive={isActive('/salary')}
-        >
-          Salary
-        </MobileNavLink>
+    <>
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t z-10 md:hidden">
+        <div className="grid grid-cols-5">
+          <MobileNavLink
+            href="/"
+            icon={<LayoutDashboard className="h-5 w-5" />}
+            isActive={isActive('/')}
+          >
+            {t('common.dashboard')}
+          </MobileNavLink>
+
+          <MobileNavLink
+            href="/attendance"
+            icon={<ClipboardList className="h-5 w-5" />}
+            isActive={isActive('/attendance')}
+          >
+            {t('common.attendance')}
+          </MobileNavLink>
+
+          <MobileNavLink
+            href="/employees"
+            icon={<Users2 className="h-5 w-5" />}
+            isActive={isActive('/employees')}
+          >
+            {t('common.employees')}
+          </MobileNavLink>
+
+          <MobileNavLink
+            href="/leave-requests"
+            icon={<Calendar className="h-5 w-5" />}
+            isActive={isActive('/leave-requests')}
+          >
+            {t('common.leaveRequests').split(' ')[0]}
+          </MobileNavLink>
+
+          <MobileNavLink
+            href="/salary"
+            icon={<DollarSign className="h-5 w-5" />}
+            isActive={isActive('/salary')}
+          >
+            {t('common.salary')}
+          </MobileNavLink>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

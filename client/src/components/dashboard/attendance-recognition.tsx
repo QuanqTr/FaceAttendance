@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CameraIcon, RefreshCw, Loader2 } from "lucide-react";
+import { CameraIcon, RefreshCw, Loader2, LogIn, LogOut } from "lucide-react";
 import { RecognitionStatus } from "@/components/face-recognition/recognition-status";
 import { FaceDetector } from "@/components/face-recognition/face-detector";
-import { useMutation } from "@tanstack/react-query";
+import { LivenessDetector } from "@/components/face-recognition/liveness-detector";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import * as faceapi from 'face-api.js';
+import * as faceapi from '@vladmandic/face-api';
+import { format } from "date-fns";
 
 export type RecognizedUser = {
   id: number;
@@ -15,6 +17,7 @@ export type RecognizedUser = {
   name: string;
   department: string;
   time: string;
+  attendanceType?: 'checkin' | 'checkout';
 };
 
 export type RecognitionStatusType = 'waiting' | 'processing' | 'success' | 'error';
@@ -23,30 +26,35 @@ export function AttendanceRecognition() {
   const { toast } = useToast();
   const [status, setStatus] = useState<RecognitionStatusType>('waiting');
   const [recognizedUser, setRecognizedUser] = useState<RecognizedUser | null>(null);
+  const [currentAttendanceType, setCurrentAttendanceType] = useState<'checkin' | 'checkout'>('checkin');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const componentMounted = useRef(true);
+  const [detectedFaceDescriptor, setDetectedFaceDescriptor] = useState<string | null>(null);
+  const [autoProcessing, setAutoProcessing] = useState(false);
+  const [livenessVerified, setLivenessVerified] = useState(false);
+  const [showLivenessCheck, setShowLivenessCheck] = useState(false);
 
   // Mutation for clock in
   const clockInMutation = useMutation({
     mutationFn: async (faceDescriptor: string) => {
       try {
-        const res = await apiRequest("POST", "/api/attendance", {
+        const res = await apiRequest("POST", "/api/time-logs", {
           faceDescriptor,
-          type: 'in',
-          status: 'present',
-          date: new Date().toISOString(),
+          type: 'checkin',
         });
 
         if (!res.ok) {
           const errorData = await res.json();
+          console.error("Clock-in API error response:", errorData);
           throw new Error(errorData.message || 'Failed to clock in');
         }
 
         return await res.json();
       } catch (error: any) {
+        console.error("Clock-in error details:", error);
         throw new Error(error.message || 'Failed to clock in. Please try again.');
       }
     },
@@ -56,23 +64,21 @@ export function AttendanceRecognition() {
         id: data.employeeId,
         employeeId: data.employee.employeeId,
         name: `${data.employee.firstName} ${data.employee.lastName}`,
-        department: data.employee.department.name,
-        time: new Date().toLocaleTimeString(),
+        department: data.employee.department?.name || 'Unknown',
+        time: new Date(data.logTime).toLocaleTimeString(),
+        attendanceType: 'checkin',
       });
       toast({
         title: "Clocked In",
         description: `Successfully clocked in ${data.employee.firstName} ${data.employee.lastName}`,
       });
       setIsProcessing(false);
+      setLivenessVerified(false);
     },
     onError: (error: Error) => {
       setStatus('error');
-      toast({
-        title: "Recognition Failed",
-        description: error.message || "Could not process face data",
-        variant: "destructive",
-      });
       setIsProcessing(false);
+      setLivenessVerified(false);
     },
   });
 
@@ -80,20 +86,20 @@ export function AttendanceRecognition() {
   const clockOutMutation = useMutation({
     mutationFn: async (faceDescriptor: string) => {
       try {
-        const res = await apiRequest("POST", "/api/attendance", {
+        const res = await apiRequest("POST", "/api/time-logs", {
           faceDescriptor,
-          type: 'out',
-          status: 'present',
-          date: new Date().toISOString(),
+          type: 'checkout',
         });
 
         if (!res.ok) {
           const errorData = await res.json();
+          console.error("Clock-out API error response:", errorData);
           throw new Error(errorData.message || 'Failed to clock out');
         }
 
         return await res.json();
       } catch (error: any) {
+        console.error("Clock-out error details:", error);
         throw new Error(error.message || 'Failed to clock out. Please try again.');
       }
     },
@@ -103,24 +109,37 @@ export function AttendanceRecognition() {
         id: data.employeeId,
         employeeId: data.employee.employeeId,
         name: `${data.employee.firstName} ${data.employee.lastName}`,
-        department: data.employee.department.name,
-        time: new Date().toLocaleTimeString(),
+        department: data.employee.department?.name || 'Unknown',
+        time: new Date(data.logTime).toLocaleTimeString(),
+        attendanceType: 'checkout',
       });
       toast({
         title: "Clocked Out",
         description: `Successfully clocked out ${data.employee.firstName} ${data.employee.lastName}`,
       });
       setIsProcessing(false);
+      setLivenessVerified(false);
     },
     onError: (error: Error) => {
       setStatus('error');
-      toast({
-        title: "Recognition Failed",
-        description: error.message || "Could not process face data",
-        variant: "destructive",
-      });
       setIsProcessing(false);
+      setLivenessVerified(false);
     },
+  });
+
+  // Fetch employee's today work hours if recognized
+  const { data: workHoursData } = useQuery({
+    queryKey: ['workHours', recognizedUser?.id],
+    queryFn: async () => {
+      if (!recognizedUser?.id) return null;
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const res = await apiRequest("GET", `/api/work-hours/employee/${recognizedUser.id}?date=${today}`);
+
+      if (!res.ok) return null;
+      return await res.json();
+    },
+    enabled: !!recognizedUser?.id && status === 'success',
   });
 
   // Check camera readiness
@@ -271,7 +290,70 @@ export function AttendanceRecognition() {
     return () => clearTimeout(initTimer);
   }, []);
 
-  const handleClockIn = async () => {
+  // Xử lý khi nhận diện khuôn mặt thành công
+  const handleFaceRecognized = (descriptor: string, person: any) => {
+    if (isProcessing || !person) return;
+
+    // Lưu descriptor để sử dụng khi cần
+    setDetectedFaceDescriptor(descriptor);
+
+    // Nếu đang ở chế độ tự động xử lý, thực hiện check-in/check-out ngay
+    if (autoProcessing) {
+      if (currentAttendanceType === 'checkin') {
+        handleClockIn(descriptor);
+      } else {
+        handleClockOut(descriptor);
+      }
+    }
+  };
+
+  // Xử lý khi liveness detection xác thực thành công
+  const handleLivenessVerified = (isLive: boolean) => {
+    setLivenessVerified(isLive);
+
+    if (isLive) {
+      toast({
+        title: "Xác thực thành công",
+        description: "Đã xác nhận khuôn mặt thật",
+      });
+
+      // Nếu đã có face descriptor, tiến hành check-in/check-out
+      if (detectedFaceDescriptor) {
+        if (currentAttendanceType === 'checkin') {
+          handleClockIn(detectedFaceDescriptor);
+        } else {
+          handleClockOut(detectedFaceDescriptor);
+        }
+      } else {
+        // Nếu chưa có face descriptor, thử lấy descriptor mới
+        captureFaceDescriptor().then(descriptor => {
+          if (currentAttendanceType === 'checkin') {
+            handleClockIn(descriptor);
+          } else {
+            handleClockOut(descriptor);
+          }
+        }).catch(error => {
+          toast({
+            title: "Lỗi",
+            description: "Không thể nhận diện khuôn mặt. Vui lòng thử lại.",
+            variant: "destructive",
+          });
+        });
+      }
+    } else {
+      toast({
+        title: "Xác thực thất bại",
+        description: "Không thể xác nhận khuôn mặt thật. Vui lòng thử lại.",
+        variant: "destructive",
+      });
+    }
+
+    // Ẩn liveness detector sau khi hoàn thành
+    setShowLivenessCheck(false);
+  };
+
+  // Cập nhật hàm handleClockIn để có thể nhận descriptor từ bên ngoài
+  const handleClockIn = async (providedDescriptor?: string) => {
     if (isProcessing) return;
 
     // Kiểm tra xem camera có bị tắt không
@@ -294,25 +376,66 @@ export function AttendanceRecognition() {
       return;
     }
 
+    // Nếu chưa xác thực liveness và không có descriptor được cung cấp, hiển thị liveness detector
+    if (!livenessVerified && !providedDescriptor) {
+      setCurrentAttendanceType('checkin');
+      setShowLivenessCheck(true);
+      return;
+    }
+
+    setCurrentAttendanceType('checkin');
     setIsProcessing(true);
     setStatus('processing');
 
     try {
-      const faceDescriptor = await captureFaceDescriptor();
-      clockInMutation.mutate(faceDescriptor);
+      // Sử dụng descriptor đã cung cấp hoặc lấy mới
+      const faceDescriptor = providedDescriptor || await captureFaceDescriptor();
+
+      const response = await clockInMutation.mutateAsync(faceDescriptor).catch(error => {
+        // Xử lý lỗi từ API
+        console.error("Clock-in error:", error);
+
+        // Trích xuất thông báo lỗi từ API
+        let errorMessage = error.message || "Could not process face data";
+        let errorTitle = "Recognition Failed";
+
+        // Xử lý các loại lỗi cụ thể
+        if (errorMessage.includes("Bạn đã check-in trước đó")) {
+          errorTitle = "Check-in Failed";
+          errorMessage = "Bạn đã check-in trước đó. Vui lòng check-out trước khi check-in lại.";
+        } else if (errorMessage.includes("Vui lòng đợi ít nhất 1 phút")) {
+          errorTitle = "Check-in Failed";
+          errorMessage = "Vui lòng đợi ít nhất 1 phút trước khi check-in lại.";
+        } else if (errorMessage.includes("Face descriptor is required")) {
+          errorTitle = "Check-in Failed";
+          errorMessage = "Không nhận diện được khuôn mặt. Vui lòng thử lại.";
+        } else if (errorMessage.includes("Invalid face descriptor")) {
+          errorTitle = "Check-in Failed";
+          errorMessage = "Dữ liệu khuôn mặt không hợp lệ. Vui lòng thử lại.";
+        } else if (errorMessage.includes("Không thể nhận diện khuôn mặt")) {
+          errorTitle = "Check-in Failed";
+          errorMessage = "Không thể nhận diện khuôn mặt. Vui lòng thử lại với ánh sáng tốt hơn.";
+        }
+
+        toast({
+          title: errorTitle,
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        throw error;
+      });
+
+      return response;
     } catch (error: any) {
       console.error("Face recognition error:", error);
       setStatus('error');
-      toast({
-        title: "Recognition Failed",
-        description: error.message || "Could not process face data",
-        variant: "destructive",
-      });
       setIsProcessing(false);
     }
   };
 
-  const handleClockOut = async () => {
+  // Cập nhật hàm handleClockOut để có thể nhận descriptor từ bên ngoài
+  const handleClockOut = async (providedDescriptor?: string) => {
     if (isProcessing) return;
 
     // Kiểm tra xem camera có bị tắt không
@@ -335,28 +458,84 @@ export function AttendanceRecognition() {
       return;
     }
 
+    // Nếu chưa xác thực liveness và không có descriptor được cung cấp, hiển thị liveness detector
+    if (!livenessVerified && !providedDescriptor) {
+      setCurrentAttendanceType('checkout');
+      setShowLivenessCheck(true);
+      return;
+    }
+
+    setCurrentAttendanceType('checkout');
     setIsProcessing(true);
     setStatus('processing');
 
     try {
-      const faceDescriptor = await captureFaceDescriptor();
-      clockOutMutation.mutate(faceDescriptor);
+      // Sử dụng descriptor đã cung cấp hoặc lấy mới
+      const faceDescriptor = providedDescriptor || await captureFaceDescriptor();
+
+      const response = await clockOutMutation.mutateAsync(faceDescriptor).catch(error => {
+        // Xử lý lỗi từ API
+        console.error("Clock-out error:", error);
+
+        // Trích xuất thông báo lỗi từ API
+        let errorMessage = error.message || "Could not process face data";
+        let errorTitle = "Recognition Failed";
+
+        // Xử lý các loại lỗi cụ thể
+        if (errorMessage.includes("Bạn chưa check-in hôm nay")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Bạn chưa check-in hôm nay. Vui lòng check-in trước khi check-out.";
+        } else if (errorMessage.includes("Không có check-in nào cần check-out")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Không có check-in nào cần check-out. Vui lòng check-in trước.";
+        } else if (errorMessage.includes("Vui lòng đợi ít nhất 1 phút")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Vui lòng đợi ít nhất 1 phút trước khi check-out lại.";
+        } else if (errorMessage.includes("Face descriptor is required")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Không nhận diện được khuôn mặt. Vui lòng thử lại.";
+        } else if (errorMessage.includes("Invalid face descriptor")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Dữ liệu khuôn mặt không hợp lệ. Vui lòng thử lại.";
+        } else if (errorMessage.includes("Không thể nhận diện khuôn mặt")) {
+          errorTitle = "Check-out Failed";
+          errorMessage = "Không thể nhận diện khuôn mặt. Vui lòng thử lại với ánh sáng tốt hơn.";
+        }
+
+        toast({
+          title: errorTitle,
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        throw error;
+      });
+
+      return response;
     } catch (error: any) {
       console.error("Face recognition error:", error);
       setStatus('error');
-      toast({
-        title: "Recognition Failed",
-        description: error.message || "Could not process face data",
-        variant: "destructive",
-      });
       setIsProcessing(false);
     }
+  };
+
+  // Thêm toggle cho chế độ tự động
+  const toggleAutoProcessing = () => {
+    setAutoProcessing(prev => !prev);
+    toast({
+      title: autoProcessing ? "Auto Mode Disabled" : "Auto Mode Enabled",
+      description: autoProcessing
+        ? "You'll need to click buttons to clock in/out"
+        : "System will automatically process when a face is recognized",
+    });
   };
 
   const handleRefresh = () => {
     setStatus('waiting');
     setRecognizedUser(null);
     setIsProcessing(false);
+    setLivenessVerified(false);
+    setShowLivenessCheck(false);
   };
 
   // Lifecycle management
@@ -383,10 +562,20 @@ export function AttendanceRecognition() {
       <CardHeader className="pb-3">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg font-medium">Face Recognition</CardTitle>
-          <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isProcessing}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            <span>Refresh</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={autoProcessing ? "default" : "outline"}
+              size="sm"
+              onClick={toggleAutoProcessing}
+              title={autoProcessing ? "Disable auto mode" : "Enable auto mode"}
+            >
+              Auto {autoProcessing ? "ON" : "OFF"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={isProcessing}>
+              <RefreshCw className="h-4 w-4 mr-1" />
+              <span>Refresh</span>
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -396,26 +585,35 @@ export function AttendanceRecognition() {
               videoRef={videoRef}
               canvasRef={canvasRef}
               status={status}
+              onFaceRecognized={handleFaceRecognized}
+            />
+
+            {/* Liveness Detector */}
+            <LivenessDetector
+              videoRef={videoRef}
+              canvasRef={canvasRef}
+              onLivenessVerified={handleLivenessVerified}
+              isActive={showLivenessCheck}
             />
 
             <div className="mt-4 flex justify-center">
               {isCameraReady ? (
                 <>
                   <Button
-                    onClick={handleClockIn}
-                    className="bg-primary text-white py-2 px-6 rounded-full flex items-center justify-center mr-4 hover:bg-primary/90 transition-colors"
-                    disabled={isProcessing || clockInMutation.isPending || status === 'processing'}
+                    onClick={() => handleClockIn()}
+                    className="bg-green-600 text-white py-2 px-6 rounded-full flex items-center justify-center mr-4 hover:bg-green-700 transition-colors"
+                    disabled={isProcessing || clockInMutation.isPending || status === 'processing' || showLivenessCheck}
                   >
-                    <CameraIcon className="mr-2 h-4 w-4" />
+                    <LogIn className="mr-2 h-4 w-4" />
                     <span>Clock In</span>
                   </Button>
                   <Button
-                    onClick={handleClockOut}
+                    onClick={() => handleClockOut()}
                     variant="destructive"
                     className="py-2 px-6 rounded-full flex items-center justify-center hover:bg-destructive/90 transition-colors"
-                    disabled={isProcessing || clockOutMutation.isPending || status === 'processing'}
+                    disabled={isProcessing || clockOutMutation.isPending || status === 'processing' || showLivenessCheck}
                   >
-                    <CameraIcon className="mr-2 h-4 w-4" />
+                    <LogOut className="mr-2 h-4 w-4" />
                     <span>Clock Out</span>
                   </Button>
                 </>
@@ -433,6 +631,7 @@ export function AttendanceRecognition() {
               status={status}
               recognizedUser={recognizedUser}
               onRetry={handleRefresh}
+              attendanceType={currentAttendanceType}
             />
           </div>
         </div>
