@@ -6,6 +6,8 @@ import { Header } from "@/components/layout/header";
 import { AttendanceRecognition } from "@/components/dashboard/attendance-recognition";
 import { AttendanceLog } from "@/components/attendance/attendance-log";
 import { WorkHoursLog } from "@/components/attendance/work-hours-log";
+import { AttendanceTabs } from "@/components/attendance/attendance-tabs";
+import type { WorkHoursRecord } from "@/components/attendance/work-hours-log";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
@@ -21,7 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
 
@@ -36,21 +38,12 @@ type AttendanceRecord = {
   status: 'present' | 'absent' | 'late';
 };
 
-type WorkHoursRecord = {
-  employeeId: number;
-  employeeName: string;
-  regularHours: number;
-  overtimeHours: number;
-  checkinTime: string | null;
-  checkoutTime: string | null;
-};
-
 export default function Attendance() {
   const { t } = useTranslation();
   const toast = useI18nToast();
   const [date, setDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("today");
+  const [activeTab, setActiveTab] = useState("record");
 
   const formattedDate = format(date, "yyyy-MM-dd");
 
@@ -107,18 +100,18 @@ export default function Attendance() {
   const exportAttendance = () => {
     // In a real app, this would trigger a CSV/Excel export
     console.log("Exporting attendance data");
-    toast.success('common.success', 'reports.exportSuccess');
+    toast.success(t('common.success'), t('reports.exportSuccess'));
   };
 
   return (
     <div className="flex flex-col min-h-screen">
       <Header title={t('attendance.title')} onSearch={handleSearch} showSearch={true} />
 
-      <main className="flex-1 container py-6 space-y-6">
+      <main className="flex-1 container py-4 space-y-2">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
-          <h1 className="text-2xl font-bold">{t('attendance.title')}</h1>
+          <h1 className="text-2xl px-6 font-bold tracking-tight">{t('attendance.title')}</h1>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 px-6">
             <Button
               variant="outline"
               size="icon"
@@ -135,8 +128,8 @@ export default function Attendance() {
                     "w-[240px] justify-start text-left font-normal",
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {format(date, "PPP")}
+                  <CalendarIcon className="mr-3 h-4 w-4" />
+                  {format(date, "dd/MM/yyyy")}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -159,47 +152,36 @@ export default function Attendance() {
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="today">{t('attendance.dailyAttendance')}</TabsTrigger>
-            <TabsTrigger value="record">{t('attendance.recordAttendance')}</TabsTrigger>
-            <TabsTrigger value="workhours">{t('attendance.workHours')}</TabsTrigger>
-          </TabsList>
+        <AttendanceTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-          <TabsContent value="today" className="space-y-4">
-            <AttendanceLog
-              records={attendanceRecords || []}
-              isLoading={isLoadingAttendance}
-              date={date}
-            />
-          </TabsContent>
-
-          <TabsContent value="record">
+        <div className="space-y-6">
+          {activeTab === "record" && (
             <Card>
-              <CardHeader>
-                <CardTitle>{t('attendance.faceRecognition')}</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xl">{t('attendance.faceRecognition')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <AttendanceRecognition />
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="workhours" className="space-y-4">
+          {activeTab === "workhours" && (
             <Card>
-              <CardHeader>
-                <CardTitle>{t('attendance.workHours')}</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xl">{t('attendance.dailyAttendance')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <WorkHoursLog
                   records={workHoursData || []}
                   isLoading={isLoadingWorkHours}
                   date={date}
+                  onDateChange={setDate}
                 />
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </main>
     </div>
   );

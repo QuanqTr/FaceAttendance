@@ -3,7 +3,7 @@ import { FaceDetector } from "@/components/face-recognition/face-detector";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Loader2, UserCheck, AlertCircle, RefreshCcw, Camera, LogIn, LogOut } from "lucide-react";
-import * as faceapi from '@vladmandic/face-api';
+import * as faceapi from 'face-api.js';
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
 
 type RecognitionResponse = {

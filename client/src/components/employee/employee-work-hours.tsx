@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays, addDays, startOfMonth, endOfMonth } from "date-fns";
+import { vi } from "date-fns/locale";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 type EmployeeWorkHoursProps = {
     employeeId: number;
@@ -29,8 +31,12 @@ type EmployeeWorkHoursProps = {
 type WorkHoursData = {
     regularHours: number;
     overtimeHours: number;
+    regularHoursFormatted: string;     // Định dạng "giờ:phút"
+    overtimeHoursFormatted: string;    // Định dạng "giờ:phút"
+    totalHoursFormatted: string;       // Định dạng "giờ:phút"
     checkinTime: string | null;
     checkoutTime: string | null;
+    status: string;
 };
 
 export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
@@ -40,21 +46,53 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
     const formattedDate = format(date, "yyyy-MM-dd");
 
     // Fetch work hours for the employee on the selected date
-    const { data: workHours, isLoading } = useQuery<WorkHoursData>({
+    const { data: workHours, isLoading, isError } = useQuery<WorkHoursData>({
         queryKey: [`/api/work-hours/employee/${employeeId}`, formattedDate],
         queryFn: async () => {
-            const res = await fetch(`/api/work-hours/employee/${employeeId}?date=${formattedDate}`);
-            if (!res.ok) throw new Error("Failed to fetch work hours");
-            return await res.json();
-        }
+            try {
+                console.log(`Fetching work hours for date: ${formattedDate}`);
+                const res = await fetch(`/api/work-hours/employee/${employeeId}?date=${formattedDate}`);
+
+                if (!res.ok) {
+                    console.error(`Error fetching work hours: ${res.status} ${res.statusText}`);
+
+                    // If server error, return a default data structure
+                    return {
+                        regularHours: 0,
+                        overtimeHours: 0,
+                        regularHoursFormatted: "0:00",
+                        overtimeHoursFormatted: "0:00",
+                        totalHoursFormatted: "0:00",
+                        checkinTime: null,
+                        checkoutTime: null,
+                        status: "unknown"
+                    };
+                }
+
+                const data = await res.json();
+                console.log("Received work hours data:", data);
+                return data;
+            } catch (error) {
+                console.error("Error in work hours query:", error);
+                // Return default values on error
+                return {
+                    regularHours: 0,
+                    overtimeHours: 0,
+                    regularHoursFormatted: "0:00",
+                    overtimeHoursFormatted: "0:00",
+                    totalHoursFormatted: "0:00",
+                    checkinTime: null,
+                    checkoutTime: null,
+                    status: "unknown"
+                };
+            }
+        },
+        retry: 1, // Only retry once on failure
+        retryDelay: 1000, // Wait 1 second before retrying
     });
 
-    const handlePreviousDay = () => {
-        setDate(subDays(date, 1));
-    };
-
-    const handleNextDay = () => {
-        setDate(addDays(date, 1));
+    const handleDateChange = (newDate: Date) => {
+        setDate(newDate);
     };
 
     // Export work hours data as CSV
@@ -63,32 +101,107 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
             // Get the month range
             const monthStart = startOfMonth(date);
             const monthEnd = endOfMonth(date);
-            const monthStartFormatted = format(monthStart, "yyyy-MM-dd");
-            const monthEndFormatted = format(monthEnd, "yyyy-MM-dd");
+            const daysInMonth = Array.from(
+                { length: endOfMonth(date).getDate() },
+                (_, i) => new Date(date.getFullYear(), date.getMonth(), i + 1)
+            );
 
-            // Fetch the month's data
-            const res = await fetch(`/api/work-hours/employee/${employeeId}?startDate=${monthStartFormatted}&endDate=${monthEndFormatted}`);
+            // Prepare to collect data for each day
+            const allData = [];
 
-            if (!res.ok) {
-                throw new Error("Failed to fetch work hours data");
+            // Show loading toast
+            toast({
+                title: t('common.exporting'),
+                description: t('common.preparingData'),
+            });
+
+            // Fetch data for each day in the month
+            for (const day of daysInMonth) {
+                try {
+                    const formattedDay = format(day, "yyyy-MM-dd");
+                    const res = await fetch(`/api/work-hours/employee/${employeeId}?date=${formattedDay}`);
+
+                    if (res.ok) {
+                        const dayData = await res.json();
+                        allData.push({
+                            date: day,
+                            regularHours: dayData.regularHours || 0,
+                            overtimeHours: dayData.overtimeHours || 0,
+                            regularHoursFormatted: dayData.regularHoursFormatted || "0:00",
+                            overtimeHoursFormatted: dayData.overtimeHoursFormatted || "0:00",
+                            totalHoursFormatted: dayData.totalHoursFormatted || "0:00",
+                            checkinTime: dayData.checkinTime,
+                            checkoutTime: dayData.checkoutTime,
+                            status: dayData.status || "unknown"
+                        });
+                    } else {
+                        console.warn(`Failed to get data for day ${formattedDay}: ${res.status} ${res.statusText}`);
+                        // If we can't get data for a day, add it with zeros
+                        allData.push({
+                            date: day,
+                            regularHours: 0,
+                            overtimeHours: 0,
+                            regularHoursFormatted: "0:00",
+                            overtimeHoursFormatted: "0:00",
+                            totalHoursFormatted: "0:00",
+                            checkinTime: null,
+                            checkoutTime: null,
+                            status: "unknown"
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error processing day ${format(day, "yyyy-MM-dd")}:`, error);
+                    // Add default data for this day
+                    allData.push({
+                        date: day,
+                        regularHours: 0,
+                        overtimeHours: 0,
+                        regularHoursFormatted: "0:00",
+                        overtimeHoursFormatted: "0:00",
+                        totalHoursFormatted: "0:00",
+                        checkinTime: null,
+                        checkoutTime: null,
+                        status: "error"
+                    });
+                }
             }
 
-            const data = await res.json();
-
             // Create CSV content
-            const headers = ["Date", "Regular Hours", "Overtime Hours", "Total Hours", "Clock In", "Clock Out"];
-            const rows = data.map((day: any) => [
-                format(new Date(day.date), "yyyy-MM-dd"),
-                day.regularHours.toFixed(2),
-                day.overtimeHours.toFixed(2),
-                (day.regularHours + day.overtimeHours).toFixed(2),
-                day.checkinTime ? format(new Date(day.checkinTime), "HH:mm:ss") : "--:--:--",
-                day.checkoutTime ? format(new Date(day.checkoutTime), "HH:mm:ss") : "--:--:--",
-            ]);
+            const headers = ["Date", "Regular Hours", "Overtime Hours", "Total Hours", "Clock In", "Clock Out", "Status"];
+            const rows = allData.map(day => {
+                let clockInFormatted = "--:--:--";
+                let clockOutFormatted = "--:--:--";
+
+                if (day.checkinTime) {
+                    try {
+                        clockInFormatted = format(new Date(day.checkinTime), "HH:mm:ss");
+                    } catch (error) {
+                        console.error("Error formatting checkin time for CSV:", error);
+                    }
+                }
+
+                if (day.checkoutTime) {
+                    try {
+                        clockOutFormatted = format(new Date(day.checkoutTime), "HH:mm:ss");
+                    } catch (error) {
+                        console.error("Error formatting checkout time for CSV:", error);
+                    }
+                }
+
+                return [
+                    format(day.date, "yyyy-MM-dd"),
+                    day.regularHoursFormatted,
+                    day.overtimeHoursFormatted,
+                    day.totalHoursFormatted,
+                    clockInFormatted,
+                    clockOutFormatted,
+                    day.status
+                ];
+            });
 
             const csvContent = [
                 headers.join(","),
-                ...rows.map((row: any) => row.join(","))
+                ...rows.map(row => row.join(","))
             ].join("\n");
 
             // Create a download link
@@ -107,6 +220,7 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
                 description: t('common.fileDownloaded'),
             });
         } catch (error) {
+            console.error("Export error:", error);
             toast({
                 title: t('common.error'),
                 description: t('common.exportFailed'),
@@ -115,38 +229,69 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
         }
     };
 
+    // Helper to convert UTC date string to local time
+    const formatLocalTime = (utcDateString: string | null | undefined) => {
+        if (!utcDateString) return "--:--";
+        try {
+            const date = new Date(utcDateString);
+            return format(date, "HH:mm");
+        } catch (error) {
+            console.error("Error formatting date:", error);
+            return "--:--";
+        }
+    };
+
+    // Get status display information
+    const getStatusInfo = (status: string | undefined) => {
+        if (!status) return { label: t('status.unknown'), color: 'bg-gray-200' };
+
+        switch (status) {
+            case 'normal':
+                return { label: t('status.normal'), color: 'bg-green-100 text-green-800 hover:bg-green-200' };
+            case 'late':
+                return { label: t('status.late'), color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' };
+            case 'early_leave':
+                return { label: t('status.earlyLeave'), color: 'bg-orange-100 text-orange-800 hover:bg-orange-200' };
+            case 'absent':
+                return { label: t('status.absent'), color: 'bg-red-100 text-red-800 hover:bg-red-200' };
+            default:
+                return { label: status, color: 'bg-gray-200' };
+        }
+    };
+
+    const statusInfo = getStatusInfo(workHours?.status);
+
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-md font-medium">
-                    {t('attendance.workHours')}
+        <Card className="flex flex-col w-full overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>
+                    <div className="flex items-center space-x-2">
+                        <Clock className="w-5 h-5" />
+                        <span>{t('employee.workHours')}</span>
+                    </div>
                 </CardTitle>
+
                 <div className="flex items-center space-x-2">
                     <Button
                         variant="outline"
                         size="icon"
-                        onClick={handlePreviousDay}
+                        onClick={() => handleDateChange(subDays(date, 1))}
                     >
-                        <ChevronLeft className="h-4 w-4" />
+                        <ChevronLeft className="w-4 h-4" />
                     </Button>
 
                     <Popover>
                         <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                className={cn(
-                                    "w-[180px] justify-start text-left font-normal",
-                                )}
-                            >
+                            <Button variant="outline" className="min-w-[240px] justify-start text-left font-normal">
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(date, "PPP")}
+                                {format(date, "PPP", { locale: vi })}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
+                        <PopoverContent className="w-auto p-0">
                             <Calendar
                                 mode="single"
                                 selected={date}
-                                onSelect={(newDate) => newDate && setDate(newDate)}
+                                onSelect={(date) => date && handleDateChange(date)}
                                 initialFocus
                             />
                         </PopoverContent>
@@ -155,89 +300,52 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
                     <Button
                         variant="outline"
                         size="icon"
-                        onClick={handleNextDay}
+                        onClick={() => handleDateChange(addDays(date, 1))}
                     >
-                        <ChevronRight className="h-4 w-4" />
+                        <ChevronRight className="w-4 h-4" />
                     </Button>
 
                     <Button
                         variant="outline"
                         size="icon"
                         onClick={exportWorkHours}
-                        title={t('common.export')}
+                        disabled={isLoading}
                     >
-                        <Download className="h-4 w-4" />
+                        <Download className="w-4 h-4" />
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent>
-                {isLoading ? (
-                    <div className="flex justify-center items-center h-40">
-                        <Clock className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>{t('attendance.date')}</TableHead>
-                                    <TableHead>{t('attendance.clockIn')}</TableHead>
-                                    <TableHead>{t('attendance.clockOut')}</TableHead>
-                                    <TableHead>{t('attendance.regularHours')}</TableHead>
-                                    <TableHead>{t('attendance.overtimeHours')}</TableHead>
-                                    <TableHead>{t('attendance.totalHours')}</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow>
-                                    <TableCell>{format(date, "MMM d, yyyy")}</TableCell>
-                                    <TableCell>
-                                        {workHours?.checkinTime
-                                            ? format(new Date(workHours.checkinTime), "HH:mm")
-                                            : "--:--"}
-                                    </TableCell>
-                                    <TableCell>
-                                        {workHours?.checkoutTime
-                                            ? format(new Date(workHours.checkoutTime), "HH:mm")
-                                            : "--:--"}
-                                    </TableCell>
-                                    <TableCell>{workHours?.regularHours.toFixed(2) || "0.00"}</TableCell>
-                                    <TableCell>{workHours?.overtimeHours.toFixed(2) || "0.00"}</TableCell>
-                                    <TableCell className="font-medium">
-                                        {workHours
-                                            ? (workHours.regularHours + workHours.overtimeHours).toFixed(2)
-                                            : "0.00"}
-                                    </TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-muted/50 p-4 rounded-lg">
-                                <div className="text-sm text-muted-foreground mb-1">{t('attendance.regularHours')}</div>
-                                <div className="text-2xl font-semibold">
-                                    {workHours?.regularHours.toFixed(2) || "0.00"}
-                                </div>
-                            </div>
-
-                            <div className="bg-muted/50 p-4 rounded-lg">
-                                <div className="text-sm text-muted-foreground mb-1">{t('attendance.overtimeHours')}</div>
-                                <div className="text-2xl font-semibold">
-                                    {workHours?.overtimeHours.toFixed(2) || "0.00"}
-                                </div>
-                            </div>
-
-                            <div className="bg-primary/10 p-4 rounded-lg">
-                                <div className="text-sm text-muted-foreground mb-1">{t('attendance.totalHours')}</div>
-                                <div className="text-2xl font-semibold text-primary">
-                                    {workHours
-                                        ? (workHours.regularHours + workHours.overtimeHours).toFixed(2)
-                                        : "0.00"}
-                                </div>
-                            </div>
+            <CardContent className="p-0">
+                <div className="bg-stone-50 px-6 py-4 border-y">
+                    <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium text-green-600 flex items-center gap-2">
+                            <span>{workHours?.checkinTime ? formatLocalTime(workHours.checkinTime) : "--:--"}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span>{workHours?.checkoutTime ? formatLocalTime(workHours.checkoutTime) : "--:--"}</span>
                         </div>
+                        <Badge className={cn("text-xs", statusInfo.color)}>
+                            {statusInfo.label}
+                        </Badge>
                     </div>
-                )}
+                </div>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>{t('employee.regularHours')}</TableHead>
+                            <TableHead>{t('employee.overtimeHours')}</TableHead>
+                            <TableHead>{t('employee.totalHours')}</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell>{workHours?.regularHoursFormatted || "0:00"}</TableCell>
+                            <TableCell>{workHours?.overtimeHoursFormatted || "0:00"}</TableCell>
+                            <TableCell className="font-medium">
+                                {workHours?.totalHoursFormatted || "0:00"}
+                            </TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
             </CardContent>
         </Card>
     );

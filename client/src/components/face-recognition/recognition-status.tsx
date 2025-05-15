@@ -16,7 +16,7 @@ type RecognitionStatusProps = {
 export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceType = 'checkin' }: RecognitionStatusProps) {
   return (
     <div className="bg-muted/50 rounded-lg p-4 h-full">
-      <h3 className="text-md font-medium mb-3">Recognition Status</h3>
+      <h3 className="text-md font-medium mb-3">Trạng thái nhận diện</h3>
 
       {/* Waiting state */}
       <div className={cn("transition-opacity duration-300", status === 'waiting' ? "opacity-100" : "opacity-0 hidden")}>
@@ -25,8 +25,8 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <Frown className="text-muted-foreground h-5 w-5" />
           </div>
           <div className="ml-3">
-            <p className="font-medium">Waiting</p>
-            <p className="text-xs text-muted-foreground">Stand in front of camera</p>
+            <p className="font-medium">Đang chờ</p>
+            <p className="text-xs text-muted-foreground">Đứng trước máy quay</p>
           </div>
         </div>
 
@@ -46,8 +46,8 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <Frown className="text-amber-500 h-5 w-5" />
           </div>
           <div className="ml-3">
-            <p className="font-medium">Processing</p>
-            <p className="text-xs text-amber-500">Recognizing face...</p>
+            <p className="font-medium">Đang xử lý</p>
+            <p className="text-xs text-amber-500">Đang nhận diện khuôn mặt...</p>
           </div>
         </div>
 
@@ -68,7 +68,7 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
           </div>
           <div className="ml-3">
             <p className="font-medium">{recognizedUser?.name || 'User'}</p>
-            <p className="text-xs text-green-500">Recognized successfully</p>
+            <p className="text-xs text-green-500">Nhận diện thành công</p>
           </div>
         </div>
 
@@ -104,7 +104,7 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
         </div>
 
         <div className="text-center">
-          <span className="text-sm text-green-500 font-medium">Attendance recorded</span>
+          <span className="text-sm text-green-500 font-medium">Lịch sử điểm danh</span>
         </div>
       </div>
 
@@ -115,8 +115,8 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <X className="text-destructive h-5 w-5" />
           </div>
           <div className="ml-3">
-            <p className="font-medium">Recognition Failed</p>
-            <p className="text-xs text-destructive">Please check the following:</p>
+            <p className="font-medium">Nhận diện thất bại</p>
+            <p className="text-xs text-destructive">Vui lòng kiểm tra những thông tin sau:</p>
           </div>
         </div>
 
@@ -125,25 +125,25 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center mr-2 mt-0.5">
               <X className="text-destructive h-3 w-3" />
             </div>
-            <p className="text-muted-foreground">Make sure your face is clearly visible in the frame</p>
+            <p className="text-muted-foreground">Khuôn mặt trong khung hình</p>
           </div>
           <div className="flex items-start">
             <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center mr-2 mt-0.5">
               <X className="text-destructive h-3 w-3" />
             </div>
-            <p className="text-muted-foreground">Ensure good lighting conditions</p>
+            <p className="text-muted-foreground">Chưa checkin/checkout</p>
           </div>
           <div className="flex items-start">
             <div className="w-5 h-5 rounded-full bg-destructive/10 flex items-center justify-center mr-2 mt-0.5">
               <X className="text-destructive h-3 w-3" />
             </div>
-            <p className="text-muted-foreground">Check if your face is registered in the system</p>
+            <p className="text-muted-foreground">Chưa đăng ký khuôn mặt</p>
           </div>
         </div>
 
         <div className="text-center mt-6">
           <Button variant="default" onClick={onRetry} className="bg-primary text-white">
-            Try Again
+            Thử lại
           </Button>
         </div>
       </div>

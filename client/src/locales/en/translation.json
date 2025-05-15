@@ -421,5 +421,19 @@
         "forbidden": "You don't have permission to access this resource",
         "notFound": "Resource not found",
         "serverError": "Server error occurred"
+    },
+    "status": {
+        "status": "Status",
+        "normal": "Normal",
+        "late": "Late",
+        "earlyLeave": "Early Leave",
+        "absent": "Absent",
+        "unknown": "Unknown"
+    },
+    "employee": {
+        "regularHours": "Regular Hours",
+        "overtimeHours": "Overtime Hours",
+        "totalHours": "Total Hours",
+        "workHours": "Work Hours"
     }
 }

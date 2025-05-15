@@ -139,6 +139,34 @@ export const salaryRecords = pgTable("salary_records", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Cached work hours table for storing calculated work hours
+export const cachedWorkHours = pgTable("cached_work_hours", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  date: date("date").notNull(),
+  regularHours: decimal("regular_hours", { precision: 5, scale: 2 }).notNull(),
+  overtimeHours: decimal("overtime_hours", { precision: 5, scale: 2 }).notNull(),
+  regularHoursFormatted: text("regular_hours_formatted").notNull(),
+  overtimeHoursFormatted: text("overtime_hours_formatted").notNull(),
+  totalHoursFormatted: text("total_hours_formatted").notNull(),
+  checkinTime: timestamp("checkin_time"),
+  checkoutTime: timestamp("checkout_time"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Work hours table - calculated by the PostgreSQL function
+export const workHours = pgTable("work_hours", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  workDate: date("work_date").notNull(),
+  firstCheckin: timestamp("first_checkin"),
+  lastCheckout: timestamp("last_checkout"),
+  regularHours: decimal("regular_hours", { precision: 5, scale: 2 }).default("0.00"),
+  otHours: decimal("ot_hours", { precision: 5, scale: 2 }).default("0.00"),
+  status: text("status").default("normal"), // 'normal', 'late', 'early_leave', 'absent'
+});
+
 // Define all relations
 export const employeesRelations = relations(employees, ({ one, many }) => ({
   department: one(departments, {
@@ -190,6 +218,20 @@ export const salaryRecordsRelations = relations(salaryRecords, ({ one }) => ({
   }),
 }));
 
+export const cachedWorkHoursRelations = relations(cachedWorkHours, ({ one }) => ({
+  employee: one(employees, {
+    fields: [cachedWorkHours.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const workHoursRelations = relations(workHours, ({ one }) => ({
+  employee: one(employees, {
+    fields: [workHours.employeeId],
+    references: [employees.id],
+  }),
+}));
+
 // Create insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true, updatedAt: true });
@@ -224,6 +266,16 @@ export const insertFaceDataSchema = createInsertSchema(faceData).omit({
   createdAt: true,
   updatedAt: true
 });
+export const insertCachedWorkHoursSchema = createInsertSchema(cachedWorkHours).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export const insertWorkHoursSchema = createInsertSchema(workHours).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
 
 // Export types
 export type User = typeof users.$inferSelect;
@@ -246,6 +298,12 @@ export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
 
 export type SalaryRecord = typeof salaryRecords.$inferSelect;
 export type InsertSalaryRecord = z.infer<typeof insertSalaryRecordSchema>;
+
+export type CachedWorkHours = typeof cachedWorkHours.$inferSelect;
+export type InsertCachedWorkHours = z.infer<typeof insertCachedWorkHoursSchema>;
+
+export type WorkHours = typeof workHours.$inferSelect;
+export type InsertWorkHours = z.infer<typeof insertWorkHoursSchema>;
 
 // Login schema (subset of InsertUser)
 export const loginSchema = insertUserSchema.pick({ username: true, password: true });

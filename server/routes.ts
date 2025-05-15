@@ -15,14 +15,43 @@ import {
   leaveRequestTypeEnum,
   employees,
   users,
+  workHours,
   type Employee,
   type User,
   type InsertUser
 } from "@shared/schema";
-import { eq, and, gte, lt, ne } from "drizzle-orm";
+import { eq, and, gte, lt, ne, asc, lte, sql } from "drizzle-orm";
 import { db } from "./db";
 import type { Request, Response, NextFunction } from "express";
 import path from "path";
+
+// Hàm điều chỉnh ngày theo múi giờ Việt Nam (UTC+7)
+function adjustDateToVietnamTimezone(date: Date): Date {
+  // Tạo một bản sao của ngày để không thay đổi ngày gốc
+  const adjustedDate = new Date(date);
+  return adjustedDate;
+}
+
+// Hàm lấy chuỗi ngày theo định dạng YYYY-MM-DD
+function getDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Hàm log thông tin thời gian để debug
+function logTimeInfo(label: string, date: Date | null | undefined): void {
+  if (!date) {
+    console.log(`[DEBUG] ${label}: null`);
+    return;
+  }
+  console.log(`[DEBUG] ${label}:`);
+  console.log(`  - Original: ${date.toString()}`);
+  console.log(`  - ISO: ${date.toISOString()}`);
+  console.log(`  - Date string: ${getDateString(date)}`);
+  console.log(`  - Locale string: ${date.toLocaleString('vi-VN')}`);
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication routes
@@ -935,42 +964,220 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/time-logs/employee/:id", async (req, res, next) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid employee ID" });
-      }
-
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
-      const logs = await storage.getEmployeeTimeLogs(id, date);
-      res.json(logs);
-    } catch (error) {
-      next(error);
-    }
-  });
-
   app.get("/api/work-hours/employee/:id", async (req, res, next) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid employee ID" });
+        return res.status(400).json({ message: "ID nhân viên không hợp lệ" });
       }
 
-      const date = req.query.date ? new Date(req.query.date as string) : new Date();
-      const workHours = await storage.getEmployeeWorkHours(id, date);
+      // Kiểm tra xem có yêu cầu phạm vi ngày không
+      if (req.query.startDate && req.query.endDate) {
+        const startDate = new Date(req.query.startDate as string);
+        const endDate = new Date(req.query.endDate as string);
 
-      // Format times for the response
-      const response = {
-        ...workHours,
-        checkinTime: workHours.checkinTime ? workHours.checkinTime.toISOString() : null,
-        checkoutTime: workHours.checkoutTime ? workHours.checkoutTime.toISOString() : null,
-        // Format hours to 2 decimal places
-        regularHours: parseFloat(workHours.regularHours.toFixed(2)),
-        overtimeHours: parseFloat(workHours.overtimeHours.toFixed(2))
-      };
+        console.log(`[API] Lấy dữ liệu giờ làm cho nhân viên ${id} từ ${startDate.toISOString()} đến ${endDate.toISOString()}`);
 
-      res.json(response);
+        // Kiểm tra tính hợp lệ của ngày
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          return res.status(400).json({ message: "Phạm vi ngày không hợp lệ" });
+        }
+
+        try {
+          // Lấy tất cả dữ liệu giờ làm của nhân viên
+          const allWorkHours = await db
+            .select()
+            .from(workHours)
+            .where(eq(workHours.employeeId, id))
+            .orderBy(asc(workHours.workDate));
+
+          console.log(`[API] Tìm thấy ${allWorkHours.length} bản ghi cho nhân viên ${id}`);
+
+          // Lọc kết quả theo khoảng thời gian trong JavaScript
+          const startTimestamp = startDate.getTime();
+          const endTimestamp = endDate.getTime();
+
+          // Lọc kết quả chỉ lấy các bản ghi trong khoảng thời gian yêu cầu
+          const workHoursData = allWorkHours.filter(record => {
+            const recordDate = new Date(record.workDate);
+            const recordTimestamp = recordDate.getTime();
+            return recordTimestamp >= startTimestamp && recordTimestamp <= endTimestamp;
+          });
+
+          console.log(`[API] Sau khi lọc theo phạm vi ngày: ${workHoursData.length} bản ghi`);
+
+          // Định dạng giờ thành "hours:minutes"
+          const formatHoursMinutes = (decimalHours: number): string => {
+            const hours = Math.floor(decimalHours);
+            const minutes = Math.round((decimalHours - hours) * 60);
+            return `${hours}:${minutes.toString().padStart(2, '0')}`;
+          };
+
+          // Định dạng kết quả
+          const results = workHoursData.map(record => {
+            const regularHours = record.regularHours ? parseFloat(record.regularHours.toString()) : 0;
+            const overtimeHours = record.otHours ? parseFloat(record.otHours.toString()) : 0;
+
+            // Chuyển đổi thời gian check-in và check-out thành chuỗi ISO
+            const checkinTime = record.firstCheckin
+              ? new Date(record.firstCheckin).toISOString()
+              : null;
+            const checkoutTime = record.lastCheckout
+              ? new Date(record.lastCheckout).toISOString()
+              : null;
+
+            return {
+              date: getDateString(new Date(record.workDate)),
+              regularHours,
+              overtimeHours,
+              regularHoursFormatted: formatHoursMinutes(regularHours),
+              overtimeHoursFormatted: formatHoursMinutes(overtimeHours),
+              totalHoursFormatted: formatHoursMinutes(regularHours + overtimeHours),
+              checkinTime,
+              checkoutTime,
+              status: record.status || "normal"
+            };
+          });
+
+          return res.json(results);
+        } catch (error) {
+          console.error(`[API] Lỗi khi lấy dữ liệu giờ làm: ${error}`);
+          return res.status(500).json({ message: "Lỗi khi lấy dữ liệu giờ làm" });
+        }
+      }
+
+      // Trường hợp chỉ lấy dữ liệu cho một ngày
+      const dateStr = req.query.date as string;
+      const date = dateStr ? new Date(dateStr) : new Date();
+
+      console.log(`[API] Lấy dữ liệu giờ làm cho nhân viên ${id} vào ngày ${date.toISOString().split('T')[0]}`);
+
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Ngày không hợp lệ" });
+      }
+
+      try {
+        // Định dạng ngày theo múi giờ Việt Nam
+        const formattedDate = new Date(date);
+        formattedDate.setHours(0, 0, 0, 0);
+
+        // Chuyển đổi ngày thành chuỗi YYYY-MM-DD
+        const formattedDateStr = getDateString(formattedDate);
+
+        console.log(`[API] Đang tìm dữ liệu cho nhân viên ${id} vào ngày ${formattedDateStr}`);
+        logTimeInfo("Ngày tìm kiếm", formattedDate);
+
+        // Lấy dữ liệu giờ làm của nhân viên
+        const workHoursData = await db
+          .select()
+          .from(workHours)
+          .where(eq(workHours.employeeId, id));
+
+        console.log(`[API] Đã tìm thấy ${workHoursData.length} bản ghi cho nhân viên ${id}`);
+        if (workHoursData.length > 0) {
+          console.log(`[API] Mẫu dữ liệu:`, JSON.stringify(workHoursData[0]));
+          const sampleDate = new Date(workHoursData[0].workDate);
+          logTimeInfo("Ngày trong database", sampleDate);
+
+          if (workHoursData[0].firstCheckin) {
+            logTimeInfo("Giờ vào trong database", workHoursData[0].firstCheckin);
+          }
+
+          if (workHoursData[0].lastCheckout) {
+            logTimeInfo("Giờ ra trong database", workHoursData[0].lastCheckout);
+          }
+        }
+
+        // Lọc theo ngày
+        const filteredData = workHoursData.filter(record => {
+          // Lấy ngày từ workDate và chuyển thành chuỗi YYYY-MM-DD
+          const recordDate = new Date(record.workDate);
+          const recordDateStr = getDateString(recordDate);
+          console.log(`[API] So sánh ngày: ${recordDateStr} với ${formattedDateStr}`);
+          return recordDateStr === formattedDateStr;
+        });
+
+        console.log(`[API] Sau khi lọc theo ngày: ${filteredData.length} bản ghi`);
+
+        // Kiểm tra ngày có phải là quá khứ không
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const isDateInPast = date < today;
+
+        // Định dạng giờ thành "hours:minutes"
+        const formatHoursMinutes = (decimalHours: number): string => {
+          const hours = Math.floor(decimalHours);
+          const minutes = Math.round((decimalHours - hours) * 60);
+          return `${hours}:${minutes.toString().padStart(2, '0')}`;
+        };
+
+        if (filteredData.length > 0) {
+          // Đã có dữ liệu
+          const record = filteredData[0];
+          console.log(`[API] Dữ liệu tìm thấy: ${JSON.stringify(record)}`);
+          const regularHours = record.regularHours ? parseFloat(record.regularHours.toString()) : 0;
+          const overtimeHours = record.otHours ? parseFloat(record.otHours.toString()) : 0;
+
+          // Chuyển đổi thời gian check-in và check-out thành chuỗi có thể đọc được
+          // Thay vì dùng toISOString() (sẽ chuyển về UTC), ta tạo chuỗi giữ nguyên giờ
+          const formatTimeToString = (date: Date | null): string | null => {
+            if (!date) return null;
+
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+
+            return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000Z`;
+          };
+
+          const firstCheckin = record.firstCheckin ? new Date(record.firstCheckin) : null;
+          const lastCheckout = record.lastCheckout ? new Date(record.lastCheckout) : null;
+
+          const checkinTime = formatTimeToString(firstCheckin);
+          const checkoutTime = formatTimeToString(lastCheckout);
+
+          return res.json({
+            regularHours,
+            overtimeHours,
+            regularHoursFormatted: formatHoursMinutes(regularHours),
+            overtimeHoursFormatted: formatHoursMinutes(overtimeHours),
+            totalHoursFormatted: formatHoursMinutes(regularHours + overtimeHours),
+            checkinTime,
+            checkoutTime,
+            status: record.status || "normal"
+          });
+        } else {
+          // Không có dữ liệu
+          console.log(`[API] Không tìm thấy dữ liệu cho ngày ${formattedDateStr}, trả về absent cho ngày quá khứ`);
+          return res.json({
+            regularHours: 0,
+            overtimeHours: 0,
+            regularHoursFormatted: "0:00",
+            overtimeHoursFormatted: "0:00",
+            totalHoursFormatted: "0:00",
+            checkinTime: null,
+            checkoutTime: null,
+            status: isDateInPast ? "absent" : "normal"
+          });
+        }
+      } catch (error) {
+        console.error(`[API] Lỗi khi lấy chi tiết giờ làm: ${error}`);
+        console.error(`[API] Chi tiết lỗi:`, error);
+        // Trả về phản hồi mặc định thay vì lỗi
+        return res.json({
+          regularHours: 0,
+          overtimeHours: 0,
+          regularHoursFormatted: "0:00",
+          overtimeHoursFormatted: "0:00",
+          totalHoursFormatted: "0:00",
+          checkinTime: null,
+          checkoutTime: null,
+          status: "error"
+        });
+      }
     } catch (error) {
       next(error);
     }
@@ -979,19 +1186,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/work-hours/daily", async (req, res, next) => {
     try {
       const date = req.query.date ? new Date(req.query.date as string) : new Date();
-      const dailyHours = await storage.getDailyWorkHours(date);
 
-      // Format times for the response
-      const response = dailyHours.map(record => ({
-        ...record,
-        checkinTime: record.checkinTime ? record.checkinTime.toISOString() : null,
-        checkoutTime: record.checkoutTime ? record.checkoutTime.toISOString() : null,
-        // Format hours to 2 decimal places
-        regularHours: parseFloat(record.regularHours.toFixed(2)),
-        overtimeHours: parseFloat(record.overtimeHours.toFixed(2))
-      }));
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Ngày không hợp lệ" });
+      }
 
-      res.json(response);
+      try {
+        // Định dạng ngày theo múi giờ Việt Nam
+        const formattedDate = new Date(date);
+        formattedDate.setHours(0, 0, 0, 0);
+        const dateStr = getDateString(formattedDate);
+
+        console.log(`[API] Lấy dữ liệu giờ làm cho ngày ${dateStr}`);
+
+        // Lấy tất cả nhân viên
+        const allEmployees = await db.select().from(employees);
+
+        // Lấy tất cả bản ghi work_hours cho ngày đó
+        const allWorkHours = await db
+          .select()
+          .from(workHours);
+
+        // Lọc chỉ lấy dữ liệu của ngày được chọn
+        const workHoursData = allWorkHours.filter(record => {
+          const recordDate = new Date(record.workDate);
+          const recordDateStr = getDateString(recordDate);
+          return recordDateStr === dateStr;
+        });
+
+        console.log(`[API] Tìm thấy ${workHoursData.length} bản ghi cho ngày ${dateStr}`);
+
+        // Kiểm tra ngày quá khứ để thiết lập trạng thái absent
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const isDateInPast = date < today;
+
+        // Định dạng giờ thành "hours:minutes"
+        const formatHoursMinutes = (decimalHours: number): string => {
+          const hours = Math.floor(decimalHours);
+          const minutes = Math.round((decimalHours - hours) * 60);
+          return `${hours}:${minutes.toString().padStart(2, '0')}`;
+        };
+
+        // Tạo kết quả cho tất cả nhân viên
+        const results = allEmployees.map(employee => {
+          // Tìm dữ liệu giờ làm của nhân viên nếu có
+          const employeeHours = workHoursData.find(wh => wh.employeeId === employee.id);
+
+          if (employeeHours) {
+            // Đã có dữ liệu
+            const regularHours = employeeHours.regularHours ? parseFloat(employeeHours.regularHours.toString()) : 0;
+            const overtimeHours = employeeHours.otHours ? parseFloat(employeeHours.otHours.toString()) : 0;
+
+            // Chuyển đổi thời gian check-in và check-out thành chuỗi có thể đọc được
+            const formatTimeToString = (date: Date | null): string | null => {
+              if (!date) return null;
+
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              const seconds = String(date.getSeconds()).padStart(2, '0');
+
+              return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000Z`;
+            };
+
+            // Chuyển đổi giờ vào và giờ ra thành chuỗi
+            const firstCheckin = employeeHours.firstCheckin ? new Date(employeeHours.firstCheckin) : null;
+            const lastCheckout = employeeHours.lastCheckout ? new Date(employeeHours.lastCheckout) : null;
+
+            const checkinTime = firstCheckin ? formatTimeToString(firstCheckin) : null;
+            const checkoutTime = lastCheckout ? formatTimeToString(lastCheckout) : null;
+
+            return {
+              employeeId: employee.id,
+              employeeName: `${employee.firstName} ${employee.lastName}`,
+              regularHours,
+              overtimeHours,
+              checkinTime,
+              checkoutTime,
+              status: employeeHours.status || "normal"
+            };
+          } else {
+            // Không có dữ liệu
+            return {
+              employeeId: employee.id,
+              employeeName: `${employee.firstName} ${employee.lastName}`,
+              regularHours: 0,
+              overtimeHours: 0,
+              checkinTime: null,
+              checkoutTime: null,
+              status: isDateInPast ? "absent" : "normal"
+            };
+          }
+        });
+
+        return res.json(results);
+      } catch (error) {
+        console.error(`[API] Lỗi khi lấy dữ liệu giờ làm hàng ngày: ${error}`);
+        return res.status(500).json({ message: "Lỗi khi lấy dữ liệu giờ làm" });
+      }
     } catch (error) {
       next(error);
     }
@@ -1007,9 +1302,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
       const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
 
+      console.log(`[API] Fetching attendance records for employee ${id} from ${startDate?.toISOString() || 'all time'} to ${endDate?.toISOString() || 'present'}`);
+
       const records = await storage.getEmployeeAttendance(id, startDate, endDate);
+
+      // Ghi log số lượng bản ghi điểm danh tìm thấy và thông tin mẫu
+      console.log(`[API] Found ${records.length} attendance records for employee ${id}`);
+      if (records.length > 0) {
+        console.log(`[API] Sample record:`, JSON.stringify(records[0], null, 2));
+      }
+
       res.json(records);
     } catch (error) {
+      console.error(`[API] Error fetching attendance records:`, error);
       next(error);
     }
   });

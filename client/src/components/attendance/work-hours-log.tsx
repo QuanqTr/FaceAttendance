@@ -12,16 +12,31 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Loader2, Search } from "lucide-react";
+import { Calendar as CalendarIcon, Download, Loader2, Search, Filter, Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as DateCalendar } from "@/components/ui/calendar";
 
-type WorkHoursRecord = {
+export type WorkHoursRecord = {
     employeeId: number;
     employeeName: string;
     regularHours: number;
     overtimeHours: number;
     checkinTime: string | null;
     checkoutTime: string | null;
+    status: string;
 };
 
 type WorkHoursLogProps = {
@@ -29,72 +44,212 @@ type WorkHoursLogProps = {
     isLoading: boolean;
     date: Date;
     showSearch?: boolean;
+    onDateChange?: (date: Date) => void;
 };
 
-export function WorkHoursLog({ records, isLoading, date, showSearch = true }: WorkHoursLogProps) {
+export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDateChange }: WorkHoursLogProps) {
+    // Component này hiển thị dữ liệu giờ làm việc lấy trực tiếp từ bảng work_hours
     const { toast } = useToast();
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
 
-    // Filter records based on search query
-    const filteredRecords = records.filter((record) =>
-        record.employeeName.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filter records based on search query and status
+    const filteredRecords = records.filter((record) => {
+        const nameMatch = record.employeeName &&
+            record.employeeName.toLowerCase().includes(searchQuery.toLowerCase());
+
+        const statusMatch = statusFilter === "all" ||
+            (record.status && record.status === statusFilter);
+
+        return nameMatch && statusMatch;
+    });
+
+    // Helper function to safely format dates
+    const safeFormatDate = (dateString: string | null | undefined, formatStr: string = 'HH:mm') => {
+        if (!dateString) return '--:--';
+        try {
+            // Log thông tin để debug
+            console.log(`[DEBUG] Formatting date string: ${dateString}`);
+
+            // Parse date string
+            const date = new Date(dateString);
+
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                console.error("Invalid date:", dateString);
+                return '--:--';
+            }
+
+            // Lấy thời gian từ chuỗi ISO trực tiếp để tránh vấn đề múi giờ
+            // Format: "2025-05-13T09:00:00.000Z" -> lấy "09:00"
+            const timeMatch = dateString.match(/T(\d{2}):(\d{2})/);
+            if (timeMatch) {
+                const hours = timeMatch[1];
+                const minutes = timeMatch[2];
+                console.log(`[DEBUG] Extracted time directly: ${hours}:${minutes}`);
+                if (formatStr === 'HH:mm') {
+                    return `${hours}:${minutes}`;
+                }
+            }
+
+            // Fallback to date-fns format if direct extraction fails
+            const formattedTime = format(date, formatStr);
+            console.log(`[DEBUG] Formatted time with date-fns: ${formattedTime}`);
+
+            return formattedTime;
+        } catch (error) {
+            console.error("Error formatting date:", error, dateString);
+            return '--:--';
+        }
+    };
 
     // Export work hours data as CSV
     const exportWorkHours = () => {
-        // Create CSV content
-        const headers = ["Employee ID", "Employee Name", "Date", "Regular Hours", "Overtime Hours", "Clock In", "Clock Out"];
-        const rows = filteredRecords.map((record) => [
-            record.employeeId,
-            record.employeeName,
-            format(date, 'yyyy-MM-dd'),
-            record.regularHours,
-            record.overtimeHours,
-            record.checkinTime ? format(new Date(record.checkinTime), 'HH:mm:ss') : '--:--',
-            record.checkoutTime ? format(new Date(record.checkoutTime), 'HH:mm:ss') : '--:--',
-        ]);
+        try {
+            // Create CSV content
+            const headers = [
+                t('employees.id'),
+                t('attendance.employee'),
+                t('attendance.date'),
+                t('attendance.regularHours'),
+                t('attendance.overtimeHours'),
+                t('attendance.clockIn'),
+                t('attendance.clockOut'),
+                t('status.status')
+            ];
+            const rows = filteredRecords.map((record) => {
+                return [
+                    record.employeeId,
+                    record.employeeName,
+                    format(date, 'yyyy-MM-dd'),
+                    record.regularHours,
+                    record.overtimeHours,
+                    safeFormatDate(record.checkinTime, 'HH:mm:ss'),
+                    safeFormatDate(record.checkoutTime, 'HH:mm:ss'),
+                    record.status || 'unknown'
+                ];
+            });
 
-        const csvContent = [
-            headers.join(","),
-            ...rows.map(row => row.join(","))
-        ].join("\n");
+            const csvContent = [
+                headers.join(","),
+                ...rows.map(row => row.join(","))
+            ].join("\n");
 
-        // Create a download link
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `work-hours-${format(date, 'yyyy-MM-dd')}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            // Create a download link
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `work-hours-${format(date, 'yyyy-MM-dd')}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
 
-        toast({
-            title: t('common.exportSuccess'),
-            description: t('common.fileDownloaded'),
-        });
+            toast({
+                title: t('common.exportSuccess'),
+                description: t('attendance.fileDownloaded'),
+            });
+        } catch (error) {
+            console.error("Error exporting work hours data:", error);
+            toast({
+                title: t('common.error'),
+                description: t('common.exportFailed'),
+                variant: "destructive"
+            });
+        }
+    };
+
+    // Helper function to get status display information
+    const getStatusInfo = (status: string) => {
+        switch (status) {
+            case 'normal':
+                return { label: t('status.normal'), color: 'bg-green-100 text-green-800 hover:bg-green-200' };
+            case 'late':
+                return { label: t('status.late'), color: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' };
+            case 'early_leave':
+                return { label: t('status.earlyLeave'), color: 'bg-orange-100 text-orange-800 hover:bg-orange-200' };
+            case 'absent':
+                return { label: t('status.absent'), color: 'bg-red-100 text-red-800 hover:bg-red-200' };
+            case 'error':
+                return { label: t('status.error'), color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' };
+            default:
+                return { label: status || t('status.unknown'), color: 'bg-gray-200' };
+        }
+    };
+
+    // Handle date change if provided
+    const handleDateChange = (newDate: Date | undefined) => {
+        if (newDate && onDateChange) {
+            onDateChange(newDate);
+        }
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {showSearch && (
-                <div className="flex justify-between items-center">
-                    <div className="relative w-full md:w-72">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder={t('attendance.searchEmployees')}
-                            className="pl-8"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
+                <div className="flex flex-col space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex-1 flex flex-col md:flex-row gap-3">
+                            <div className="relative w-full md:w-72">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder={t('attendance.searchEmployees')}
+                                    className="pl-8"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
 
-                    <Button variant="outline" size="sm" onClick={exportWorkHours}>
-                        <Download className="mr-2 h-4 w-4" />
-                        {t('common.export')}
-                    </Button>
+                            <div className="flex items-center gap-2">
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            className={cn(
+                                                "justify-start text-left font-normal",
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {format(date, "dd/MM/yyyy")}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0" align="start">
+                                        <DateCalendar
+                                            mode="single"
+                                            selected={date}
+                                            onSelect={handleDateChange}
+                                            initialFocus
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            <div className="flex items-center">
+                                <Select
+                                    value={statusFilter}
+                                    onValueChange={setStatusFilter}
+                                >
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder={t('common.filter')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">{t('common.all')}</SelectItem>
+                                        <SelectItem value="normal">{t('status.normal')}</SelectItem>
+                                        <SelectItem value="late">{t('status.late')}</SelectItem>
+                                        <SelectItem value="early_leave">{t('status.earlyLeave')}</SelectItem>
+                                        <SelectItem value="absent">{t('status.absent')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <Button variant="outline" size="sm" onClick={exportWorkHours} className="shrink-0">
+                            <Download className="mr-2 h-4 w-4" />
+                            {t('attendance.export')}
+                        </Button>
+                    </div>
                 </div>
             )}
 
@@ -102,19 +257,20 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true }: Wo
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>{t('employee.employee')}</TableHead>
+                            <TableHead className="w-[200px]">{t('attendance.employee')}</TableHead>
                             <TableHead>{t('attendance.date')}</TableHead>
                             <TableHead>{t('attendance.clockIn')}</TableHead>
                             <TableHead>{t('attendance.clockOut')}</TableHead>
                             <TableHead>{t('attendance.regularHours')}</TableHead>
                             <TableHead>{t('attendance.overtimeHours')}</TableHead>
                             <TableHead>{t('attendance.totalHours')}</TableHead>
+                            <TableHead>{t('status.status')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center">
+                                <TableCell colSpan={8} className="h-24 text-center">
                                     <div className="flex justify-center">
                                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
                                     </div>
@@ -122,32 +278,42 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true }: Wo
                             </TableRow>
                         ) : filteredRecords.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="h-24 text-center">
-                                    {t('attendance.noRecords')}
+                                <TableCell colSpan={8} className="h-24 text-center">
+                                    <div className="flex flex-col items-center justify-center text-muted-foreground">
+                                        <Calendar className="h-10 w-10 mb-2" />
+                                        <p className="mb-1 font-medium">{t('attendance.noAttendanceRecordsFound')}</p>
+                                        <p className="text-sm">{t('attendance.noAttendanceRecordsForDay')}</p>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            filteredRecords.map((record, index) => (
-                                <TableRow key={`${record.employeeId}-${index}`}>
-                                    <TableCell className="font-medium">{record.employeeName}</TableCell>
-                                    <TableCell>{format(date, 'MMM d, yyyy')}</TableCell>
-                                    <TableCell>
-                                        {record.checkinTime
-                                            ? format(new Date(record.checkinTime), 'HH:mm')
-                                            : '--:--'}
-                                    </TableCell>
-                                    <TableCell>
-                                        {record.checkoutTime
-                                            ? format(new Date(record.checkoutTime), 'HH:mm')
-                                            : '--:--'}
-                                    </TableCell>
-                                    <TableCell>{record.regularHours.toFixed(2)}</TableCell>
-                                    <TableCell>{record.overtimeHours.toFixed(2)}</TableCell>
-                                    <TableCell className="font-medium">
-                                        {(record.regularHours + record.overtimeHours).toFixed(2)}
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                            filteredRecords.map((record, index) => {
+                                const statusInfo = getStatusInfo(record.status);
+                                return (
+                                    <TableRow key={`${record.employeeId}-${index}`}>
+                                        <TableCell className="font-medium">{record.employeeName || 'N/A'}</TableCell>
+                                        <TableCell>
+                                            {format(new Date(date), 'dd/MM/yyyy')}
+                                        </TableCell>
+                                        <TableCell>
+                                            {safeFormatDate(record.checkinTime)}
+                                        </TableCell>
+                                        <TableCell>
+                                            {safeFormatDate(record.checkoutTime)}
+                                        </TableCell>
+                                        <TableCell>{(record.regularHours || 0).toFixed(2)}</TableCell>
+                                        <TableCell>{(record.overtimeHours || 0).toFixed(2)}</TableCell>
+                                        <TableCell className="font-medium">
+                                            {((record.regularHours || 0) + (record.overtimeHours || 0)).toFixed(2)}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge className={cn("text-xs", statusInfo.color)}>
+                                                {statusInfo.label}
+                                            </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>

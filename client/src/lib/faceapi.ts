@@ -1,4 +1,4 @@
-import * as faceapi from '@vladmandic/face-api';
+import * as faceapi from 'face-api.js';
 
 // Initialize face-api with required models
 export const initFaceAPI = async (): Promise<boolean> => {

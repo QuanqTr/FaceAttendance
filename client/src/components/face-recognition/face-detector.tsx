@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, VideoOff, Settings, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
-import * as faceapi from '@vladmandic/face-api';
+import * as faceapi from 'face-api.js';
 import { Button } from "@/components/ui/button";
 import {
   Select,

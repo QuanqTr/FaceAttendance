@@ -4,11 +4,10 @@ import { Button } from "@/components/ui/button";
 import { CameraIcon, RefreshCw, Loader2, LogIn, LogOut } from "lucide-react";
 import { RecognitionStatus } from "@/components/face-recognition/recognition-status";
 import { FaceDetector } from "@/components/face-recognition/face-detector";
-import { LivenessDetector } from "@/components/face-recognition/liveness-detector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import * as faceapi from '@vladmandic/face-api';
+import * as faceapi from 'face-api.js';
 import { format } from "date-fns";
 
 export type RecognizedUser = {
@@ -34,8 +33,6 @@ export function AttendanceRecognition() {
   const componentMounted = useRef(true);
   const [detectedFaceDescriptor, setDetectedFaceDescriptor] = useState<string | null>(null);
   const [autoProcessing, setAutoProcessing] = useState(false);
-  const [livenessVerified, setLivenessVerified] = useState(false);
-  const [showLivenessCheck, setShowLivenessCheck] = useState(false);
 
   // Mutation for clock in
   const clockInMutation = useMutation({
@@ -73,12 +70,10 @@ export function AttendanceRecognition() {
         description: `Successfully clocked in ${data.employee.firstName} ${data.employee.lastName}`,
       });
       setIsProcessing(false);
-      setLivenessVerified(false);
     },
     onError: (error: Error) => {
       setStatus('error');
       setIsProcessing(false);
-      setLivenessVerified(false);
     },
   });
 
@@ -118,12 +113,10 @@ export function AttendanceRecognition() {
         description: `Successfully clocked out ${data.employee.firstName} ${data.employee.lastName}`,
       });
       setIsProcessing(false);
-      setLivenessVerified(false);
     },
     onError: (error: Error) => {
       setStatus('error');
       setIsProcessing(false);
-      setLivenessVerified(false);
     },
   });
 
@@ -307,51 +300,6 @@ export function AttendanceRecognition() {
     }
   };
 
-  // Xử lý khi liveness detection xác thực thành công
-  const handleLivenessVerified = (isLive: boolean) => {
-    setLivenessVerified(isLive);
-
-    if (isLive) {
-      toast({
-        title: "Xác thực thành công",
-        description: "Đã xác nhận khuôn mặt thật",
-      });
-
-      // Nếu đã có face descriptor, tiến hành check-in/check-out
-      if (detectedFaceDescriptor) {
-        if (currentAttendanceType === 'checkin') {
-          handleClockIn(detectedFaceDescriptor);
-        } else {
-          handleClockOut(detectedFaceDescriptor);
-        }
-      } else {
-        // Nếu chưa có face descriptor, thử lấy descriptor mới
-        captureFaceDescriptor().then(descriptor => {
-          if (currentAttendanceType === 'checkin') {
-            handleClockIn(descriptor);
-          } else {
-            handleClockOut(descriptor);
-          }
-        }).catch(error => {
-          toast({
-            title: "Lỗi",
-            description: "Không thể nhận diện khuôn mặt. Vui lòng thử lại.",
-            variant: "destructive",
-          });
-        });
-      }
-    } else {
-      toast({
-        title: "Xác thực thất bại",
-        description: "Không thể xác nhận khuôn mặt thật. Vui lòng thử lại.",
-        variant: "destructive",
-      });
-    }
-
-    // Ẩn liveness detector sau khi hoàn thành
-    setShowLivenessCheck(false);
-  };
-
   // Cập nhật hàm handleClockIn để có thể nhận descriptor từ bên ngoài
   const handleClockIn = async (providedDescriptor?: string) => {
     if (isProcessing) return;
@@ -373,13 +321,6 @@ export function AttendanceRecognition() {
         description: "Please wait for the camera to initialize fully before trying again.",
         variant: "destructive",
       });
-      return;
-    }
-
-    // Nếu chưa xác thực liveness và không có descriptor được cung cấp, hiển thị liveness detector
-    if (!livenessVerified && !providedDescriptor) {
-      setCurrentAttendanceType('checkin');
-      setShowLivenessCheck(true);
       return;
     }
 
@@ -458,13 +399,6 @@ export function AttendanceRecognition() {
       return;
     }
 
-    // Nếu chưa xác thực liveness và không có descriptor được cung cấp, hiển thị liveness detector
-    if (!livenessVerified && !providedDescriptor) {
-      setCurrentAttendanceType('checkout');
-      setShowLivenessCheck(true);
-      return;
-    }
-
     setCurrentAttendanceType('checkout');
     setIsProcessing(true);
     setStatus('processing');
@@ -534,8 +468,6 @@ export function AttendanceRecognition() {
     setStatus('waiting');
     setRecognizedUser(null);
     setIsProcessing(false);
-    setLivenessVerified(false);
-    setShowLivenessCheck(false);
   };
 
   // Lifecycle management
@@ -588,21 +520,13 @@ export function AttendanceRecognition() {
               onFaceRecognized={handleFaceRecognized}
             />
 
-            {/* Liveness Detector */}
-            <LivenessDetector
-              videoRef={videoRef}
-              canvasRef={canvasRef}
-              onLivenessVerified={handleLivenessVerified}
-              isActive={showLivenessCheck}
-            />
-
             <div className="mt-4 flex justify-center">
               {isCameraReady ? (
                 <>
                   <Button
                     onClick={() => handleClockIn()}
                     className="bg-green-600 text-white py-2 px-6 rounded-full flex items-center justify-center mr-4 hover:bg-green-700 transition-colors"
-                    disabled={isProcessing || clockInMutation.isPending || status === 'processing' || showLivenessCheck}
+                    disabled={isProcessing || clockInMutation.isPending || status === 'processing'}
                   >
                     <LogIn className="mr-2 h-4 w-4" />
                     <span>Clock In</span>
@@ -611,7 +535,7 @@ export function AttendanceRecognition() {
                     onClick={() => handleClockOut()}
                     variant="destructive"
                     className="py-2 px-6 rounded-full flex items-center justify-center hover:bg-destructive/90 transition-colors"
-                    disabled={isProcessing || clockOutMutation.isPending || status === 'processing' || showLivenessCheck}
+                    disabled={isProcessing || clockOutMutation.isPending || status === 'processing'}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Clock Out</span>

@@ -52,6 +52,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import faceapi, { initFaceAPI } from "@/lib/faceapi";
 import { EmployeeWorkHours } from "@/components/employee/employee-work-hours";
+import AttendanceCalendar from "@/components/employee/attendance-calendar";
 
 export default function EmployeeDetail() {
   const [, params] = useRoute<{ id: string }>("/employees/:id");
@@ -113,10 +114,29 @@ export default function EmployeeDetail() {
       const startDate = new Date(date.getFullYear(), date.getMonth(), 1);
       const endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
+      console.log(`Fetching attendance records from ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
+
       const res = await fetch(`/api/attendance/employee/${employeeId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
       if (!res.ok) throw new Error("Failed to fetch attendance records");
 
-      return await res.json();
+      const data = await res.json();
+      console.log(`Đã tải ${data.length} bản ghi điểm danh cho tháng ${format(date, 'MM/yyyy')}`);
+
+      // Nhóm các bản ghi theo ngày để kiểm tra
+      const recordsByDate = data.reduce((acc: any, record: any) => {
+        const recordDate = record.date ? new Date(record.date) : new Date(record.time);
+        const dateStr = format(recordDate, 'yyyy-MM-dd');
+
+        if (!acc[dateStr]) {
+          acc[dateStr] = [];
+        }
+        acc[dateStr].push(record);
+        return acc;
+      }, {});
+
+      console.log(`Có ${Object.keys(recordsByDate).length} ngày có điểm danh`);
+
+      return data;
     },
     enabled: !!employeeId,
   });
@@ -332,6 +352,26 @@ export default function EmployeeDetail() {
     setDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1));
   };
 
+  // Hàm chuyển đổi thời gian từ UTC sang giờ địa phương
+  const utcToLocalTime = (utcTime: string | Date): string => {
+    try {
+      // Tạo đối tượng Date từ chuỗi UTC hoặc đối tượng Date
+      const date = typeof utcTime === 'string' ? new Date(utcTime) : utcTime;
+
+      // Kiểm tra tính hợp lệ của Date
+      if (isNaN(date.getTime())) {
+        console.warn("Thời gian không hợp lệ:", utcTime);
+        return "--:--";
+      }
+
+      // Format thành HH:mm trong múi giờ địa phương
+      return format(date, 'HH:mm');
+    } catch (error) {
+      console.error("Lỗi khi chuyển đổi thời gian:", error);
+      return "--:--";
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title={t('employees.details')} />
@@ -464,57 +504,119 @@ export default function EmployeeDetail() {
               </TabsList>
 
               <TabsContent value="attendance">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle>{t('attendance.attendanceRecords')}</CardTitle>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePreviousMonth}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <div className="text-sm font-medium">
-                        {format(date, "MMMM yyyy")}
+                <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 mb-6">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle>{t('attendance.attendanceDetails')}</CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePreviousMonth}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <div className="text-sm font-medium">
+                          {format(date, "MMMM yyyy")}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleNextMonth}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleNextMonth}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {attendanceRecords && attendanceRecords.length > 0 ? (
-                      <AttendanceLog
-                        records={attendanceRecords.map((record: any) => ({
-                          id: record.id,
-                          employeeId: employee.id,
-                          employeeName: `${employee.lastName} ${employee.firstName}`,
-                          departmentName: "Department Name", // This would come from a real API
-                          date: format(new Date(record.date), 'yyyy-MM-dd'),
-                          timeIn: record.type === 'in' ? format(new Date(record.time), 'HH:mm') : undefined,
-                          timeOut: record.type === 'out' ? format(new Date(record.time), 'HH:mm') : undefined,
-                          status: record.status,
-                        }))}
-                        isLoading={false}
-                        date={date}
-                        showSearch={false}
-                      />
-                    ) : (
-                      <div className="text-center py-8">
-                        <CalendarIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <h3 className="text-lg font-medium mb-2">{t('attendance.noRecords')}</h3>
-                        <p className="text-muted-foreground">
-                          {t('attendance.noRecordsForMonth')}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent>
+                      {attendanceRecords && attendanceRecords.length > 0 ? (
+                        <AttendanceLog
+                          records={attendanceRecords.map((record: any) => {
+                            // Chuẩn hóa dữ liệu ngày và giờ
+                            let recordDate;
+                            try {
+                              if (record.date) {
+                                recordDate = new Date(record.date);
+                              } else if (record.time) {
+                                // Lấy ngày từ trường time
+                                const timeDate = new Date(record.time);
+                                recordDate = new Date(
+                                  timeDate.getFullYear(),
+                                  timeDate.getMonth(),
+                                  timeDate.getDate()
+                                );
+                              } else {
+                                recordDate = new Date(); // Dự phòng, tránh lỗi
+                                console.warn("Bản ghi thiếu thông tin ngày tháng:", record);
+                              }
+
+                              // Xác định thời gian check-in và check-out
+                              let timeIn = undefined;
+                              let timeOut = undefined;
+
+                              if (record.type === 'checkin' || record.type === 'in') {
+                                if (record.time) {
+                                  // Chuyển đổi thời gian từ UTC sang giờ địa phương 
+                                  timeIn = utcToLocalTime(record.time);
+                                  console.log(`Thời gian vào: ${record.time} -> ${timeIn}`);
+                                }
+                              } else if (record.type === 'checkout' || record.type === 'out') {
+                                if (record.time) {
+                                  // Chuyển đổi thời gian từ UTC sang giờ địa phương
+                                  timeOut = utcToLocalTime(record.time);
+                                  console.log(`Thời gian ra: ${record.time} -> ${timeOut}`);
+                                }
+                              }
+
+                              return {
+                                id: record.id,
+                                employeeId: employee.id,
+                                employeeName: `${employee.lastName} ${employee.firstName}`,
+                                departmentName: employee.departmentId ? employee.departmentId.toString() : t('employees.notAssigned'),
+                                date: format(recordDate, 'yyyy-MM-dd'),
+                                timeIn: timeIn,
+                                timeOut: timeOut,
+                                status: record.status || 'present',
+                              };
+                            } catch (error) {
+                              console.error("Lỗi khi xử lý bản ghi điểm danh:", error, record);
+                              // Trả về bản ghi mặc định nếu có lỗi
+                              return {
+                                id: record.id || 0,
+                                employeeId: employee.id,
+                                employeeName: `${employee.lastName} ${employee.firstName}`,
+                                departmentName: employee.departmentId ? employee.departmentId.toString() : t('employees.notAssigned'),
+                                date: format(new Date(), 'yyyy-MM-dd'),
+                                timeIn: "--:--",
+                                timeOut: "--:--",
+                                status: 'present',
+                              };
+                            }
+                          })}
+                          isLoading={false}
+                          date={date}
+                          showSearch={false}
+                        />
+                      ) : (
+                        <div className="text-center py-8">
+                          <CalendarIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <h3 className="text-lg font-medium mb-2">{t('attendance.noRecords')}</h3>
+                          <p className="text-muted-foreground">
+                            {t('attendance.noRecordsForMonth')}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 mb-6">
+                  <AttendanceCalendar
+                    employeeId={employee.id}
+                    initialDate={date}
+                    attendanceRecords={attendanceRecords || []}
+                  />
+                </div>
 
                 <div className="mt-6">
                   <EmployeeWorkHours employeeId={employee.id} />

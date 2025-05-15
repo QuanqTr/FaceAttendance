@@ -9,6 +9,7 @@
         "reports": "Báo cáo",
         "settings": "Cài đặt",
         "logout": "Đăng xuất",
+        "all": "Tất cả",
         "save": "Lưu",
         "cancel": "Hủy",
         "delete": "Xóa",
@@ -274,7 +275,31 @@
         "noRecords": "Không có bản ghi điểm danh",
         "noRecordsForMonth": "Không tìm thấy bản ghi điểm danh nào trong tháng này.",
         "todayAttendance": "Điểm danh hôm nay",
-        "recordAttendance": "Ghi nhận điểm danh"
+        "recordAttendance": "Ghi nhận điểm danh",
+        "dailyAttendance": "Điểm danh hàng ngày",
+        "workHours": "Giờ làm việc",
+        "searchEmployees": "Tìm kiếm nhân viên...",
+        "regularHours": "Giờ làm thông thường",
+        "overtimeHours": "Giờ làm thêm",
+        "totalHours": "Tổng số giờ",
+        "clockIn": "Giờ vào",
+        "clockOut": "Giờ ra",
+        "department": "Phòng ban",
+        "all": "Tất cả",
+        "employee": "Nhân viên",
+        "searchByName": "Tìm kiếm theo tên...",
+        "attendanceRecords": "Bản ghi điểm danh",
+        "noAttendanceRecordsFound": "Không có bản ghi điểm danh",
+        "noAttendanceRecordsForDay": "Không tìm thấy bản ghi điểm danh nào trong ngày này.",
+        "export": "Xuất dữ liệu",
+        "fileDownloaded": "Đã tải xuống thành công",
+        "noRecordsInThisMonth": "Không có bản ghi điểm danh nào trong tháng này.",
+        "workHoursRecords": "Bản ghi giờ làm việc",
+        "monthlyAttendance": "Điểm danh trong tháng",
+        "presentDay": "Ngày có đi làm",
+        "nonWorkDay": "Ngày không đi làm",
+        "attendanceCalendar": "Lịch điểm danh",
+        "attendanceDetails": "Chi tiết điểm danh"
     },
     "leaveRequests": {
         "title": "Đơn nghỉ phép",
@@ -421,5 +446,19 @@
         "forbidden": "Bạn không có quyền truy cập tài nguyên này",
         "notFound": "Không tìm thấy tài nguyên",
         "serverError": "Đã xảy ra lỗi máy chủ"
+    },
+    "status": {
+        "status": "Trạng thái",
+        "normal": "Bình thường",
+        "late": "Đi muộn",
+        "earlyLeave": "Về sớm",
+        "absent": "Vắng mặt",
+        "unknown": "Không xác định"
+    },
+    "employee": {
+        "regularHours": "Giờ làm thường",
+        "overtimeHours": "Giờ làm thêm",
+        "totalHours": "Tổng số giờ",
+        "workHours": "Giờ làm việc"
     }
 }

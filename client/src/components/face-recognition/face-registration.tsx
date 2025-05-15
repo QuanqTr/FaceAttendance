@@ -5,7 +5,7 @@ import { FaceDetector } from "@/components/face-recognition/face-detector";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import * as faceapi from '@vladmandic/face-api';
+import * as faceapi from 'face-api.js';
 import { Loader2, CheckCircle, AlertCircle, Camera } from "lucide-react";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
 
