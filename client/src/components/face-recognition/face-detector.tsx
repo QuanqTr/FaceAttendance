@@ -1248,5 +1248,3 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
     </div>
   );
 }
-
-

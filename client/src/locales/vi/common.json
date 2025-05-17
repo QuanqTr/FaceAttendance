@@ -33,7 +33,11 @@
         "info": "Thông tin",
         "accounts": "Quản lý tài khoản",
         "salary": "Lương",
-        "leaveRequests": "Yêu cầu nghỉ phép"
+        "leaveRequests": "Yêu cầu nghỉ phép",
+        "more": "Thêm",
+        "previous": "Trước đó",
+        "next": "Tiếp theo",
+        "refresh": "Làm mới"
     },
     "accounts": {
         "title": "Tài khoản người dùng",

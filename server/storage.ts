@@ -610,63 +610,6 @@ export class DatabaseStorage implements IStorage {
 
       console.log(`[TimeLogs] Tìm thấy ${records.length} bản ghi`);
 
-      // Generate test data for a specific employee and date if no records found
-      if (records.length === 0) {
-        console.log(`[TimeLogs] Không tìm thấy bản ghi nào, tạo dữ liệu test cho nhân viên ${employeeId}`);
-
-        // Tạo dữ liệu thời gian khác nhau dựa trên ID nhân viên
-        // Sử dụng modulo để tạo ra sự đa dạng
-        const minuteVariation = Math.abs(employeeId % 60); // 0-59 phút
-        const hourVariation = Math.abs(employeeId % 5); // 0-4 giờ
-
-        // Giờ vào: 7:00 - 9:30 tùy theo nhân viên
-        let checkInHour = 7 + Math.floor(hourVariation / 2);
-        let checkInMinute = minuteVariation;
-        if (checkInMinute > 30) {
-          checkInMinute = checkInMinute % 30;
-        }
-
-        // Giờ ra: 16:00 - 18:00 tùy theo nhân viên
-        let checkOutHour = 16 + Math.floor(hourVariation / 2);
-        let checkOutMinute = (minuteVariation + 15) % 60;
-
-        // Đảm bảo giờ ra luôn sau giờ vào ít nhất 7 giờ
-        if (checkOutHour - checkInHour < 7) {
-          checkOutHour = checkInHour + 7;
-        }
-
-        // Tạo đối tượng ngày với thời gian check-in và check-out
-        const testDate = new Date(date);
-
-        const checkInTime = new Date(testDate);
-        checkInTime.setHours(checkInHour, checkInMinute, 0, 0);
-
-        const checkOutTime = new Date(testDate);
-        checkOutTime.setHours(checkOutHour, checkOutMinute, 0, 0);
-
-        console.log(`[TimeLogs] Tạo dữ liệu test cho nhân viên ${employeeId}:`);
-        console.log(`[TimeLogs]   - Check-in: ${checkInHour}:${checkInMinute.toString().padStart(2, '0')}`);
-        console.log(`[TimeLogs]   - Check-out: ${checkOutHour}:${checkOutMinute.toString().padStart(2, '0')}`);
-
-        // Tạo bản ghi check-in và check-out
-        return [
-          {
-            id: -employeeId * 2 - 1, // ID nhân tạo cho check-in
-            employeeId: employeeId,
-            logTime: checkInTime,
-            type: 'checkin',
-            source: 'test-data'
-          },
-          {
-            id: -employeeId * 2 - 2, // ID nhân tạo cho check-out
-            employeeId: employeeId,
-            logTime: checkOutTime,
-            type: 'checkout',
-            source: 'test-data'
-          }
-        ];
-      }
-
       // Log all records for debugging
       records.forEach((record, index) => {
         console.log(`[TimeLogs] Bản ghi ${index + 1}: ${record.type} lúc ${record.logTime.toISOString()} (${record.logTime.getHours()}:${record.logTime.getMinutes()})`);

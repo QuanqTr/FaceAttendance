@@ -27,6 +27,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
 
 type AttendanceRecord = {
   id: number;
@@ -46,6 +47,12 @@ export default function Attendance() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("record");
   const { user } = useAuth();
+  const [, navigate] = useLocation();
+
+  if (!user || user.role !== "manager") {
+    navigate("/");
+    return null;
+  }
 
   const formattedDate = format(date, "yyyy-MM-dd");
 
@@ -154,20 +161,26 @@ export default function Attendance() {
           </div>
         </div>
 
+        <AttendanceTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-xl">{t('attendance.dailyAttendance')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <WorkHoursLog
-                records={workHoursData || []}
-                isLoading={isLoadingWorkHours}
-                date={date}
-                onDateChange={setDate}
-              />
-            </CardContent>
-          </Card>
+
+
+          {activeTab === "workhours" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xl">{t('attendance.dailyAttendance')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WorkHoursLog
+                  records={workHoursData || []}
+                  isLoading={isLoadingWorkHours}
+                  date={date}
+                  onDateChange={setDate}
+                />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>

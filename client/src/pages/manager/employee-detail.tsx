@@ -9,7 +9,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { AttendanceLog } from "@/components/attendance/attendance-log";
 import { Calendar } from "@/components/ui/calendar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -52,8 +51,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import faceapi, { initFaceAPI } from "@/lib/faceapi";
 import { EmployeeWorkHours } from "@/components/employee/employee-work-hours";
+import AttendanceCalendar from "@/components/employee/attendance-calendar";
 import { AttendanceTable } from "@/components/attendance/attendance-table";
 import { MonthlyAttendanceCalendar } from "@/components/attendance/monthly-attendance-calendar";
+import { AttendanceProfile } from "@/components/face-recognition/attendance-profile";
 
 export default function EmployeeDetail() {
   const [, params] = useRoute<{ id: string }>("/employees/:id");
@@ -107,18 +108,39 @@ export default function EmployeeDetail() {
     enabled: !!employeeId,
   });
 
-  const isValidDate = date instanceof Date && !isNaN(date.getTime());
-  const { data: workHoursData, isLoading: workHoursLoading, error: workHoursError } = useQuery({
-    queryKey: isValidDate ? [`/api/work-hours/employee/${employeeId}`, format(date, 'yyyy-MM')] : [],
+  const { data: attendanceRecords } = useQuery({
+    queryKey: [`/api/attendance/employee/${employeeId}`, format(date, 'yyyy-MM')],
     queryFn: async () => {
-      if (!employeeId || !isValidDate) return [];
-      const startDate = format(new Date(date.getFullYear(), date.getMonth(), 1), 'yyyy-MM-dd');
-      const endDate = format(new Date(date.getFullYear(), date.getMonth() + 1, 0), 'yyyy-MM-dd');
-      const res = await fetch(`/api/work-hours/employee/${employeeId}?startDate=${startDate}&endDate=${endDate}`);
-      if (!res.ok) throw new Error('Failed to fetch work hours');
-      return await res.json();
+      if (!employeeId) return [];
+
+      const startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+      const endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+      console.log(`Fetching attendance records from ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
+
+      const res = await fetch(`/api/attendance/employee/${employeeId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
+      if (!res.ok) throw new Error("Failed to fetch attendance records");
+
+      const data = await res.json();
+      console.log(`Đã tải ${data.length} bản ghi điểm danh cho tháng ${format(date, 'MM/yyyy')}`);
+
+      // Nhóm các bản ghi theo ngày để kiểm tra
+      const recordsByDate = data.reduce((acc: any, record: any) => {
+        const recordDate = record.date ? new Date(record.date) : new Date(record.time);
+        const dateStr = format(recordDate, 'yyyy-MM-dd');
+
+        if (!acc[dateStr]) {
+          acc[dateStr] = [];
+        }
+        acc[dateStr].push(record);
+        return acc;
+      }, {});
+
+      console.log(`Có ${Object.keys(recordsByDate).length} ngày có điểm danh`);
+
+      return data;
     },
-    enabled: !!employeeId && isValidDate,
+    enabled: !!employeeId,
   });
 
   const deleteEmployeeMutation = useMutation({
@@ -352,8 +374,8 @@ export default function EmployeeDetail() {
     }
   };
 
-  // Chuẩn hóa dữ liệu work hours cho bảng và calendar
-  const normalizedRecords = (workHoursData || []).map((record: any) => ({
+  // Chuẩn hóa dữ liệu điểm danh cho bảng và calendar
+  const normalizedRecords = (attendanceRecords || []).map((record: any) => ({
     id: record.id,
     date: record.date,
     checkinTime: record.checkinTime,
@@ -414,245 +436,124 @@ export default function EmployeeDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="flex flex-col gap-6 lg:col-span-1">
-            <Card>
-              <CardHeader className="text-center">
-                <div className="flex justify-center mb-4">
-                  <Avatar className="h-24 w-24">
-                    <AvatarFallback className="text-xl bg-primary text-primary-foreground">
-                      {getInitials(employee.firstName, employee.lastName)}
-                    </AvatarFallback>
-                  </Avatar>
+        {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-1">
+            <CardHeader className="text-center">
+              <div className="flex justify-center mb-4">
+                <Avatar className="h-24 w-24">
+                  <AvatarFallback className="text-xl bg-primary text-primary-foreground">
+                    {getInitials(employee.firstName, employee.lastName)}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+              <CardTitle className="text-xl">
+                {employee.lastName} {employee.firstName}
+              </CardTitle>
+              <CardDescription>{employee.position || t('employees.notSpecified')}</CardDescription>
+              <div className="mt-2">{getStatusBadge(employee.status)}</div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">{t('employees.id')}</Label>
+                  <p className="font-medium">{employee.employeeId}</p>
                 </div>
-                <CardTitle className="text-xl">
-                  {employee.lastName} {employee.firstName}
-                </CardTitle>
-                <CardDescription>{employee.position || t('employees.notSpecified')}</CardDescription>
-                <div className="mt-2">{getStatusBadge(employee.status)}</div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <Label className="text-sm text-muted-foreground">{t('employees.id')}</Label>
-                    <p className="font-medium">{employee.employeeId}</p>
+
+                <Separator />
+
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">{t('employees.email')}</Label>
+                  <div className="flex items-center">
+                    <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <p className="font-medium">{employee.email}</p>
                   </div>
-                  <Separator />
-                  <div className="space-y-1">
-                    <Label className="text-sm text-muted-foreground">{t('employees.email')}</Label>
-                    <div className="flex items-center">
-                      <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
-                      <p className="font-medium">{employee.email}</p>
-                    </div>
-                  </div>
-                  {employee.phone && (
-                    <>
-                      <Separator />
-                      <div className="space-y-1">
-                        <Label className="text-sm text-muted-foreground">{t('employees.phone')}</Label>
-                        <div className="flex items-center">
-                          <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <p className="font-medium">{employee.phone}</p>
-                        </div>
+                </div>
+
+                {employee.phone && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1">
+                      <Label className="text-sm text-muted-foreground">{t('employees.phone')}</Label>
+                      <div className="flex items-center">
+                        <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
+                        <p className="font-medium">{employee.phone}</p>
                       </div>
-                    </>
-                  )}
-                  <Separator />
-                  <div className="space-y-1">
-                    <Label className="text-sm text-muted-foreground">{t('employees.department')}</Label>
-                    <p className="font-medium">{employee.departmentId}</p>
-                  </div>
-                  <Separator />
-                  <div className="space-y-1">
-                    <Label className="text-sm text-muted-foreground">{t('employees.joinDate')}</Label>
-                    <p className="font-medium">
-                      {employee.joinDate ?
-                        format(
-                          typeof employee.joinDate === 'string' ?
-                            new Date(employee.joinDate) :
-                            employee.joinDate,
-                          'PPP'
-                        ) :
-                        t('employees.notSpecified')
-                      }
-                    </p>
-                  </div>
+                    </div>
+                  </>
+                )}
+
+                <Separator />
+
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">{t('employees.department')}</Label>
+                  <p className="font-medium">{employee.departmentId}</p>
                 </div>
-              </CardContent>
-            </Card>
-            <MonthlyAttendanceCalendar
-              monthData={normalizedRecords}
-              currentMonth={date}
-              onMonthChange={setDate}
-              onDateClick={() => { }}
-              t={t}
-            />
-          </div>
+
+                <Separator />
+
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">{t('employees.joinDate')}</Label>
+                  <p className="font-medium">
+                    {employee.joinDate ?
+                      format(
+                        typeof employee.joinDate === 'string' ?
+                          new Date(employee.joinDate) :
+                          employee.joinDate,
+                        'PPP'
+                      ) :
+                      t('employees.notSpecified')
+                    }
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="lg:col-span-2">
             <Tabs defaultValue="attendance" className="space-y-4">
               <TabsList>
                 <TabsTrigger value="attendance">{t('employees.attendanceHistory')}</TabsTrigger>
                 <TabsTrigger value="profile">{t('employees.faceProfile')}</TabsTrigger>
               </TabsList>
+
               <TabsContent value="attendance">
                 <div className="flex flex-col gap-6 mb-6">
-                  {workHoursLoading ? (
-                    <div className="text-center py-8">Đang tải dữ liệu...</div>
-                  ) : normalizedRecords.length === 0 ? (
-                    <div className="text-center py-8">
-                      <CalendarIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-medium mb-2">{t('attendance.noRecords')}</h3>
-                      <p className="text-muted-foreground">{t('attendance.noRecordsForMonth')}</p>
-                    </div>
-                  ) : (
-                    <AttendanceTable
-                      data={normalizedRecords}
-                      isLoading={false}
-                      error={workHoursError ? workHoursError.message : null}
-                      onExport={null}
-                      searchTerm={""}
-                      onSearchChange={() => { }}
-                      date={date}
-                      onDateChange={setDate}
-                      statusFilter={"all"}
-                      onStatusFilterChange={() => { }}
-                      onClearFilters={() => { }}
-                      page={1}
-                      totalPages={1}
-                      onPageChange={() => { }}
-                      t={t}
-                    />
-                  )}
+                  <AttendanceTable
+                    data={normalizedRecords}
+                    isLoading={false}
+                    error={null}
+                    onExport={null}
+                    searchTerm={""}
+                    onSearchChange={() => { }}
+                    date={date}
+                    onDateChange={setDate}
+                    statusFilter={"all"}
+                    onStatusFilterChange={() => { }}
+                    onClearFilters={() => { }}
+                    page={1}
+                    totalPages={1}
+                    onPageChange={() => { }}
+                    t={t}
+                  />
+                  <MonthlyAttendanceCalendar
+                    monthData={normalizedRecords}
+                    currentMonth={date}
+                    onMonthChange={setDate}
+                    onDateClick={() => { }}
+                    t={t}
+                  />
+                </div>
+                <div className="mt-6">
+                  <EmployeeWorkHours employeeId={employee.id} />
                 </div>
               </TabsContent>
+
               <TabsContent value="profile">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{t('employees.faceRecognition')}</CardTitle>
-                    <CardDescription>
-                      {t('employees.faceRecognitionDesc')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col items-center">
-                    <div className="relative w-64 h-64 border-2 border-dashed border-muted-foreground/30 rounded-lg flex items-center justify-center mb-6">
-                      {employee.faceDescriptor ? (
-                        <div className="text-center">
-                          <User className="h-16 w-16 text-primary mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">{t('employees.faceProfileExists')}</p>
-                        </div>
-                      ) : (
-                        <div className="text-center">
-                          <User className="h-16 w-16 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-sm text-muted-foreground">{t('employees.noFaceProfile')}</p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4 w-full max-w-md">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button className="w-full" disabled={isLoading}>
-                            {employee.faceDescriptor ? t('employees.updateFaceProfile') : t('employees.uploadFaceImage')}
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
-                          <DialogHeader>
-                            <DialogTitle>{t('employees.faceRegistration')}</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="face-image">{t('employees.uploadFaceImage')}</Label>
-                              <div className="flex items-center gap-4">
-                                <Input
-                                  id="face-image"
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleFileUpload}
-                                  disabled={isLoading || !isModelsLoaded || isInitializing}
-                                  className="hidden"
-                                />
-                                <Button
-                                  variant="outline"
-                                  onClick={() => document.getElementById('face-image')?.click()}
-                                  disabled={isLoading || !isModelsLoaded || isInitializing}
-                                  className="w-full"
-                                >
-                                  {isLoading ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  ) : isInitializing ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  ) : !isModelsLoaded ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  ) : (
-                                    <Upload className="h-4 w-4 mr-2" />
-                                  )}
-                                  {isLoading ? t('common.processing') : isInitializing ? t('employees.modelsLoading') : !isModelsLoaded ? t('employees.modelsLoading') : t('employees.uploadFaceImage')}
-                                </Button>
-                              </div>
-
-                              <div className="text-center text-sm mt-2 text-muted-foreground">
-                                {isLoading && t('employees.extractingFeatures')}
-                                {isInitializing && t('employees.modelsLoading')}
-                                {!isModelsLoaded && !isInitializing && t('employees.modelsLoading')}
-                                {isModelsLoaded && !isLoading && !isInitializing && t('employees.uploadFaceHint')}
-                              </div>
-                            </div>
-
-                            <div className="relative">
-                              <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t" />
-                              </div>
-                              <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-background px-2 text-muted-foreground">
-                                  {t('common.or')}
-                                </span>
-                              </div>
-                            </div>
-
-                            <FaceRegistration
-                              employeeId={employee.id}
-                              onComplete={() => refetch()}
-                            />
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-
-                      {employee.faceDescriptor && (
-                        <Button
-                          variant="destructive"
-                          className="w-full"
-                          onClick={async () => {
-                            if (confirm(t('employees.confirmResetFace'))) {
-                              try {
-                                const res = await fetch(`/api/employees/${employee.id}/face-data`, {
-                                  method: 'DELETE',
-                                  headers: { 'Content-Type': 'application/json' }
-                                });
-
-                                if (!res.ok) {
-                                  throw new Error("Failed to reset face data");
-                                }
-
-                                i18nToast.success('employees.faceDataReset', 'employees.faceDataResetMessage');
-
-                                refetch();
-                              } catch (error) {
-                                console.error("Error resetting face data:", error);
-                                i18nToast.error('common.error', 'employees.faceResetError', { error: error instanceof Error ? error.message : "Failed to reset face data" });
-                              }
-                            }
-                          }}
-                        >
-                          {t('employees.resetFaceData')}
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                <AttendanceProfile employeeId={employee.id} type="employee" t={t} />
               </TabsContent>
             </Tabs>
           </div>
-        </div>
+        </div> */}
       </main>
     </div>
   );

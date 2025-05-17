@@ -3,40 +3,16 @@
 export const mockDepartments = [
     {
         id: 1,
-        name: "Human Resources",
-        description: "HR department",
+        name: "DS",
+        description: "Phòng Design",
         managerId: null,
         createdAt: new Date(),
         updatedAt: new Date()
     },
     {
         id: 2,
-        name: "Engineering",
-        description: "Engineering department",
-        managerId: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    },
-    {
-        id: 3,
-        name: "Marketing",
-        description: "Marketing department",
-        managerId: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    },
-    {
-        id: 4,
-        name: "Finance",
-        description: "Finance department",
-        managerId: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    },
-    {
-        id: 5,
-        name: "Sales",
-        description: "Sales department",
+        name: "HR",
+        description: "Phòng Nhân sự",
         managerId: null,
         createdAt: new Date(),
         updatedAt: new Date()

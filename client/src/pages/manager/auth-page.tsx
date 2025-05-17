@@ -71,47 +71,7 @@ export default function AuthPage() {
   return (
     <div className="flex min-h-screen bg-muted/30">
       <div className="flex flex-col md:flex-row w-full">
-        {/* Hero Section - Now on the left */}
-        <div className="hidden md:flex md:w-1/2 bg-primary items-center justify-center">
-          <div className="max-w-md text-white p-8">
-            <div className="flex items-center mb-6">
-              <User className="h-12 w-12 mr-4" />
-              <h1 className="text-3xl font-bold">FaceAttend</h1>
-            </div>
-            <h2 className="text-2xl font-bold mb-4">{t('auth.appTitle')}</h2>
-            <p className="mb-6">
-              {t('auth.appDescription')}
-            </p>
-            <div className="space-y-3">
-              <div className="flex items-center">
-                <div className="bg-white/20 p-2 rounded-full mr-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <span>{t('auth.feature1')}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="bg-white/20 p-2 rounded-full mr-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <span>{t('auth.feature2')}</span>
-              </div>
-              <div className="flex items-center">
-                <div className="bg-white/20 p-2 rounded-full mr-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <span>{t('auth.feature3')}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Form Section - Now on the right */}
+        {/* Form Section */}
         <div className="w-full md:w-1/2 flex items-center justify-center p-4 md:p-8">
           <Card className="w-full max-w-md">
             <CardHeader className="space-y-1">
@@ -175,6 +135,46 @@ export default function AuthPage() {
               </Form>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Hero Section */}
+        <div className="hidden md:flex md:w-1/2 bg-primary items-center justify-center">
+          <div className="max-w-md text-white p-8">
+            <div className="flex items-center mb-6">
+              <User className="h-12 w-12 mr-4" />
+              <h1 className="text-3xl font-bold">FaceAttend</h1>
+            </div>
+            <h2 className="text-2xl font-bold mb-4">{t('auth.appTitle')}</h2>
+            <p className="mb-6">
+              {t('auth.appDescription')}
+            </p>
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <div className="bg-white/20 p-2 rounded-full mr-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span>{t('auth.feature1')}</span>
+              </div>
+              <div className="flex items-center">
+                <div className="bg-white/20 p-2 rounded-full mr-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span>{t('auth.feature2')}</span>
+              </div>
+              <div className="flex items-center">
+                <div className="bg-white/20 p-2 rounded-full mr-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span>{t('auth.feature3')}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

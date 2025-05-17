@@ -33,7 +33,11 @@
         "info": "Info",
         "accounts": "Account Management",
         "salary": "Salary",
-        "leaveRequests": "Leave Requests"
+        "leaveRequests": "Leave Requests",
+        "more": "More",
+        "previous": "Previous",
+        "next": "Next",
+        "refresh": "Refresh"
     },
     "accounts": {
         "title": "User Accounts",

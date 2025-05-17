@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 export function ProtectedRoute({
   path,
   component: Component,
+  requiredRoles = [],
 }: {
   path: string;
-  component: () => React.JSX.Element;
+  component: () => React.ReactElement | null;
+  requiredRoles?: string[];
 }) {
   const { user, isLoading, refreshSession } = useAuth();
   const [location] = useLocation();
@@ -79,7 +81,38 @@ export function ProtectedRoute({
     );
   }
 
-  // Render component nếu đã đăng nhập
-  console.log("ProtectedRoute: User authenticated, rendering component for path:", path);
+  // Kiểm tra quyền truy cập dựa trên vai trò
+  // 1. Nếu path bắt đầu bằng /user thì chỉ employee mới có thể truy cập
+  // 2. Nếu path không bắt đầu bằng /user thì employee không thể truy cập
+  if (path.startsWith('/user') && user.role !== 'employee') {
+    console.log(`ProtectedRoute: Non-employee user (${user.role}) cannot access employee route ${path}`);
+    return (
+      <Route path={path}>
+        <Redirect to="/" />
+      </Route>
+    );
+  }
+
+  if (!path.startsWith('/user') && user.role === 'employee') {
+    console.log(`ProtectedRoute: Employee user cannot access admin/manager route ${path}`);
+    return (
+      <Route path={path}>
+        <Redirect to="/user" />
+      </Route>
+    );
+  }
+
+  // Kiểm tra các quyền bổ sung nếu được chỉ định
+  if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
+    console.log(`ProtectedRoute: User role ${user.role} not authorized for ${path}, required roles: ${requiredRoles.join(', ')}`);
+    return (
+      <Route path={path}>
+        <Redirect to={user.role === 'employee' ? '/user' : '/'} />
+      </Route>
+    );
+  }
+
+  // Render component nếu đã đăng nhập và có quyền
+  console.log(`ProtectedRoute: User authenticated with role ${user.role}, rendering component for path:`, path);
   return <Route path={path} component={Component} />;
 }

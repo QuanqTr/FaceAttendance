@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, hashPassword } from "./auth";
+import { setupAuth, hashPassword, comparePasswords } from "./auth";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import {
@@ -125,9 +125,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Threshold cho việc nhận diện (giá trị 0.4 có thể điều chỉnh)
       const threshold = 0.4;
       if (!bestMatch || bestDistance > threshold) {
+        console.log(`[Face-Recognition] Không thể nhận diện khuôn mặt: ${bestMatch ? `Độ tin cậy thấp (${bestDistance})` : 'Không tìm thấy khuôn mặt phù hợp'}`);
         return res.status(401).json({
           success: false,
-          message: "Không thể nhận diện khuôn mặt. Vui lòng thử lại."
+          message: "Không thể nhận diện khuôn mặt. Vui lòng đảm bảo khuôn mặt được nhìn thấy rõ trong khung hình."
         });
       }
 
@@ -156,14 +157,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Lấy các time logs của nhân viên trong ngày hôm nay
       const todayLogs = await storage.getEmployeeTimeLogs(employee.id, currentTime);
+      console.log(`[Face-Recognition] Đã lấy ${todayLogs.length} logs cho nhân viên ${employee.id}`);
 
       // Kiểm tra xem có thể thực hiện check-in/check-out không
       const logType = mode === 'check_in' ? 'checkin' as const : 'checkout' as const;
 
+      // TẠO ĐỐI TƯỢNG time log mới, CHƯA LƯU vào database
+      const timeLog = {
+        employeeId: employee.id,
+        type: logType,
+        logTime: currentTime,
+        source: 'face'
+      };
+
+      // Tạo thông tin để trả về cho client
+      let responseMessage = `Đã ${mode === 'check_in' ? 'check in' : 'check out'} thành công`;
+      const responseData: {
+        success: boolean;
+        message: string;
+        employee: {
+          id: number;
+          name: string;
+          department: { id: number; name: string } | null;
+          position: string | null;
+          confidence: number;
+        };
+        attendance?: {
+          id: number;
+          type: string;
+          time: Date;
+        };
+      } = {
+        success: true,
+        message: responseMessage,
+        employee: {
+          id: employee.id,
+          name: `${employee.firstName} ${employee.lastName}`,
+          department: department ? {
+            id: department.id,
+            name: department.name
+          } : null,
+          position: employee.position,
+          confidence: 1 - bestDistance
+        }
+      };
+
       if (logType === 'checkin') {
         // Kiểm tra xem nhân viên này đã check-in chưa check-out không
-        const hasUnpairedCheckin = todayLogs.some(log => {
-          if (log.type === 'checkin' && log.employeeId === employee.id) {
+        // Chỉ kiểm tra nếu có >= 1 check-in chưa có check-out tương ứng
+        const hasUnpairedCheckin = todayLogs.length > 0 && todayLogs.some(log => {
+          // Kiểm tra các check-in trong khoảng thời gian hợp lệ
+          if (log.type === 'checkin' && log.employeeId === employee.id &&
+            // Chỉ xét các check-in cách đây dưới 12 giờ
+            (currentTime.getTime() - log.logTime.getTime() < 12 * 60 * 60 * 1000)) {
+
             // Kiểm tra xem có checkout sau check-in này không
             const hasMatchingCheckout = todayLogs.some(checkout =>
               checkout.type === 'checkout' &&
@@ -177,6 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         if (hasUnpairedCheckin) {
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} đã có check-in chưa được ghép cặp`);
           return res.status(400).json({
             success: false,
             message: "Bạn đã check-in trước đó. Vui lòng check-out trước khi check-in lại."
@@ -188,19 +236,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(log => log.type === 'checkin' && log.employeeId === employee.id)
           .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
 
-        if (lastCheckin && (currentTime.getTime() - lastCheckin.logTime.getTime() < 60000)) {
-          return res.status(400).json({
-            success: false,
-            message: "Vui lòng đợi ít nhất 1 phút trước khi check-in lại."
-          });
+        if (lastCheckin) {
+          const timeDiff = currentTime.getTime() - lastCheckin.logTime.getTime();
+          const minutesDiff = Math.floor(timeDiff / 60000);
+
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} check-in, khoảng cách từ lần check-in trước: ${minutesDiff} phút`);
+
+          if (timeDiff < 60000) {
+            return res.status(400).json({
+              success: false,
+              message: "Vui lòng đợi ít nhất 1 phút trước khi check-in lại."
+            });
+          }
         }
       } else if (logType === 'checkout') {
         // Kiểm tra xem nhân viên này đã check-in chưa
         const hasCheckinToday = todayLogs.some(log =>
-          log.type === 'checkin' && log.employeeId === employee.id
+          log.type === 'checkin' && log.employeeId === employee.id &&
+          // Chỉ xét các check-in trong ngày hôm nay
+          (currentTime.getTime() - log.logTime.getTime() < 24 * 60 * 60 * 1000)
         );
 
         if (!hasCheckinToday) {
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} cố check-out khi chưa check-in`);
           return res.status(400).json({
             success: false,
             message: "Bạn chưa check-in hôm nay. Vui lòng check-in trước khi check-out."
@@ -210,6 +268,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Kiểm tra xem nhân viên này có check-in chưa được ghép cặp với checkout không
         const hasUnpairedCheckin = todayLogs.some(log => {
           if (log.type === 'checkin' && log.employeeId === employee.id) {
+            // Chỉ xét các check-in trong khoảng 16 giờ gần đây
+            if (currentTime.getTime() - log.logTime.getTime() > 16 * 60 * 60 * 1000) {
+              return false; // Bỏ qua check-in quá cũ
+            }
+
             const hasMatchingCheckout = todayLogs.some(checkout =>
               checkout.type === 'checkout' &&
               checkout.employeeId === employee.id &&
@@ -221,10 +284,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         if (!hasUnpairedCheckin) {
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} không có check-in nào cần ghép cặp`);
           return res.status(400).json({
             success: false,
             message: "Không có check-in nào cần check-out. Vui lòng check-in trước."
           });
+        }
+
+        // Tìm check-in gần nhất chưa có check-out tương ứng để log 
+        const lastUnpairedCheckin = todayLogs
+          .filter(log => log.type === 'checkin' && log.employeeId === employee.id)
+          .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())
+          .find(checkin => {
+            // Kiểm tra xem đã có check-out sau check-in này chưa
+            return !todayLogs.some(log =>
+              log.type === 'checkout' &&
+              log.logTime.getTime() > checkin.logTime.getTime()
+            );
+          });
+
+        if (lastUnpairedCheckin) {
+          const checkInTime = new Date(lastUnpairedCheckin.logTime);
+          const hoursDiff = ((currentTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)).toFixed(2);
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} check-out cho check-in lúc ${checkInTime.toLocaleTimeString('vi-VN')} (${hoursDiff} giờ trước)`);
         }
 
         // Kiểm tra thời gian giữa các lần check-out của nhân viên này (tối thiểu 1 phút)
@@ -232,45 +314,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(log => log.type === 'checkout' && log.employeeId === employee.id)
           .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
 
-        if (lastCheckout && (currentTime.getTime() - lastCheckout.logTime.getTime() < 60000)) {
-          return res.status(400).json({
-            success: false,
-            message: "Vui lòng đợi ít nhất 1 phút trước khi check-out lại."
-          });
+        if (lastCheckout) {
+          const timeDiff = currentTime.getTime() - lastCheckout.logTime.getTime();
+          const minutesDiff = Math.floor(timeDiff / 60000);
+
+          console.log(`[Face-Recognition] Nhân viên ${employee.id} check-out, khoảng cách từ lần check-out trước: ${minutesDiff} phút`);
+
+          if (timeDiff < 60000) {
+            return res.status(400).json({
+              success: false,
+              message: "Vui lòng đợi ít nhất 1 phút trước khi check-out lại."
+            });
+          }
         }
       }
 
-      // Tạo time log mới
-      const timeLog = {
-        employeeId: employee.id,
-        type: logType,
-        logTime: currentTime,
-        source: 'face'
-      };
+      console.log(`[Face-Recognition] Tạo time log mới: Nhân viên ${employee.id}, loại ${logType}, thời gian ${currentTime.toISOString()}`);
 
-      // Lưu time log
-      const createdTimeLog = await storage.createTimeLog(timeLog);
+      try {
+        // LƯU time log vào database
+        const createdTimeLog = await storage.createTimeLog(timeLog);
+        console.log(`[Face-Recognition] Đã tạo time log: ID=${createdTimeLog.id}, thành công`);
 
-      // Trả về kết quả
-      res.json({
-        success: true,
-        message: `Đã ${mode === 'check_in' ? 'check in' : 'check out'} thành công`,
-        employee: {
-          id: employee.id,
-          name: `${employee.firstName} ${employee.lastName}`,
-          department: department ? {
-            id: department.id,
-            name: department.name
-          } : null,
-          position: employee.position,
-          confidence: 1 - bestDistance
-        },
-        attendance: {
-          id: createdTimeLog.id,
-          type: createdTimeLog.type,
-          time: createdTimeLog.logTime
+        // Cập nhật work_hours nếu cần
+        let workHoursUpdated = true;
+        try {
+          // Logic cập nhật work_hours có thể thêm ở đây nếu cần
+        } catch (workHoursError) {
+          console.error(`[Face-Recognition] Lỗi khi cập nhật work_hours: ${workHoursError}`);
+          workHoursUpdated = false;
+          // Vẫn tiếp tục vì time log đã lưu thành công
         }
-      });
+
+        // Nếu có tạo time log thành công thì return thành công
+        if (createdTimeLog && createdTimeLog.id) {
+          // Nếu cập nhật work hours thất bại, thêm cảnh báo nhưng vẫn là thành công
+          if (!workHoursUpdated) {
+            responseData.message += " (có cảnh báo: thông tin giờ làm có thể chưa được cập nhật đầy đủ)";
+          }
+
+          // Thêm thông tin attendance vào response
+          responseData.attendance = {
+            id: createdTimeLog.id,
+            type: createdTimeLog.type,
+            time: createdTimeLog.logTime
+          };
+
+          // Trả về kết quả thành công
+          return res.status(201).json(responseData);
+        } else {
+          // Nếu không có ID của time log, xem như thất bại
+          throw new Error("Không thể tạo bản ghi điểm danh");
+        }
+      } catch (timeLogError) {
+        console.error(`[Face-Recognition] Lỗi nghiêm trọng khi lưu time log: ${timeLogError}`);
+        return res.status(500).json({
+          success: false,
+          message: "Đã xảy ra lỗi khi xử lý. Vui lòng thử lại sau."
+        });
+      }
     } catch (error) {
       console.error("Lỗi xử lý nhận diện khuôn mặt:", error);
 
@@ -384,32 +486,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dummyDepartments = [
         {
           id: 1,
-          name: "Human Resources",
-          description: "HR department",
+          name: "DS",
+          description: "Phòng Design",
           managerId: null,
           createdAt: new Date(),
           updatedAt: new Date()
         },
         {
           id: 2,
-          name: "Engineering",
-          description: "Engineering department",
-          managerId: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: 3,
-          name: "Marketing",
-          description: "Marketing department",
-          managerId: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: 4,
-          name: "Finance",
-          description: "Finance department",
+          name: "HR",
+          description: "Phòng Nhân sự",
           managerId: null,
           createdAt: new Date(),
           updatedAt: new Date()
@@ -856,8 +942,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const endOfDay = new Date(currentTime);
       endOfDay.setHours(23, 59, 59, 999);
 
-      // Lấy các time logs của nhân viên trong ngày hôm nay
+      // Lấy các time logs của nhân viên trong ngày hôm nay TRƯỚC KHI tạo log mới
       const todayLogs = await storage.getEmployeeTimeLogs(bestMatch.id, currentTime);
+      console.log(`[TimeLogs] Đã lấy ${todayLogs.length} logs cho nhân viên ${bestMatch.id}`);
 
       // Kiểm tra xem có thể thực hiện check-in/check-out không
       if (type === 'checkin') {
@@ -887,19 +974,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(log => log.type === 'checkin' && log.employeeId === bestMatch.id)
           .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
 
-        if (lastCheckin && (currentTime.getTime() - lastCheckin.logTime.getTime() < 60000)) {
-          return res.status(400).json({
-            message: "Vui lòng đợi ít nhất 1 phút trước khi check-in lại."
-          });
+        if (lastCheckin) {
+          const timeDiff = currentTime.getTime() - lastCheckin.logTime.getTime();
+          const minutesDiff = Math.floor(timeDiff / 60000);
+
+          console.log(`[Face-Recognition] Nhân viên ${bestMatch.id} check-in, khoảng cách từ lần check-in trước: ${minutesDiff} phút`);
+
+          if (timeDiff < 60000) {
+            return res.status(400).json({
+              success: false,
+              message: "Vui lòng đợi ít nhất 1 phút trước khi check-in lại."
+            });
+          }
         }
       } else if (type === 'checkout') {
         // Kiểm tra xem nhân viên này đã check-in chưa
         const hasCheckinToday = todayLogs.some(log =>
-          log.type === 'checkin' && log.employeeId === bestMatch.id
+          log.type === 'checkin' && log.employeeId === bestMatch.id &&
+          // Chỉ xét các check-in trong ngày hôm nay
+          (currentTime.getTime() - log.logTime.getTime() < 24 * 60 * 60 * 1000)
         );
 
         if (!hasCheckinToday) {
+          console.log(`[Face-Recognition] Nhân viên ${bestMatch.id} cố check-out khi chưa check-in`);
           return res.status(400).json({
+            success: false,
             message: "Bạn chưa check-in hôm nay. Vui lòng check-in trước khi check-out."
           });
         }
@@ -907,6 +1006,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Kiểm tra xem nhân viên này có check-in chưa được ghép cặp với checkout không
         const hasUnpairedCheckin = todayLogs.some(log => {
           if (log.type === 'checkin' && log.employeeId === bestMatch.id) {
+            // Chỉ xét các check-in trong khoảng 16 giờ gần đây
+            if (currentTime.getTime() - log.logTime.getTime() > 16 * 60 * 60 * 1000) {
+              return false; // Bỏ qua check-in quá cũ
+            }
+
             const hasMatchingCheckout = todayLogs.some(checkout =>
               checkout.type === 'checkout' &&
               checkout.employeeId === bestMatch.id &&
@@ -928,36 +1032,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(log => log.type === 'checkout' && log.employeeId === bestMatch.id)
           .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
 
-        if (lastCheckout && (currentTime.getTime() - lastCheckout.logTime.getTime() < 60000)) {
-          return res.status(400).json({
-            message: "Vui lòng đợi ít nhất 1 phút trước khi check-out lại."
-          });
+        if (lastCheckout) {
+          const timeDiff = currentTime.getTime() - lastCheckout.logTime.getTime();
+          const minutesDiff = Math.floor(timeDiff / 60000);
+
+          console.log(`[Face-Recognition] Nhân viên ${bestMatch.id} check-out, khoảng cách từ lần check-out trước: ${minutesDiff} phút`);
+
+          if (timeDiff < 60000) {
+            return res.status(400).json({
+              success: false,
+              message: "Vui lòng đợi ít nhất 1 phút trước khi check-out lại."
+            });
+          }
         }
       }
 
-      // Tạo time log mới
-      const timeLog = {
-        employeeId: bestMatch.id,
-        type: type === 'checkout' ? 'checkout' as const : 'checkin' as const,
-        logTime: currentTime,
-        source: 'face'
-      };
+      try {
+        // Tạo time log mới
+        const timeLog = {
+          employeeId: bestMatch.id,
+          type: type === 'checkout' ? 'checkout' as const : 'checkin' as const,
+          logTime: currentTime,
+          source: 'face'
+        };
 
-      const createdTimeLog = await storage.createTimeLog(timeLog);
+        const createdTimeLog = await storage.createTimeLog(timeLog);
 
-      // Lấy thông tin nhân viên để trả về
-      const employee = await storage.getEmployee(bestMatch.id);
-
-      res.status(201).json({
-        ...createdTimeLog,
-        employee: {
-          id: employee?.id,
-          employeeId: employee?.employeeId,
-          firstName: employee?.firstName,
-          lastName: employee?.lastName,
-          department: employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null
+        if (!createdTimeLog || !createdTimeLog.id) {
+          throw new Error("Không thể tạo bản ghi chấm công");
         }
-      });
+
+        // Lấy thông tin nhân viên để trả về
+        const employee = await storage.getEmployee(bestMatch.id);
+
+        // Nếu tạo time log thành công, trả về thành công
+        return res.status(201).json({
+          success: true,
+          message: `Đã ${type === 'checkout' ? 'check-out' : 'check-in'} thành công`,
+          ...createdTimeLog,
+          employee: {
+            id: employee?.id,
+            employeeId: employee?.employeeId,
+            firstName: employee?.firstName,
+            lastName: employee?.lastName,
+            department: employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null
+          }
+        });
+      } catch (timeLogError) {
+        console.error(`[Time-Logs] Lỗi khi lưu time log: ${timeLogError}`);
+        return res.status(500).json({
+          success: false,
+          message: "Đã xảy ra lỗi khi xử lý dữ liệu. Vui lòng thử lại sau."
+        });
+      }
     } catch (error) {
       console.error("Error creating time log:", error);
       next(error);
@@ -1299,10 +1426,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid employee ID" });
       }
 
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
       const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
       const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      const search = req.query.search as string | undefined;
+      const status = req.query.status as string | undefined;
 
       console.log(`[API] Fetching attendance records for employee ${id} from ${startDate?.toISOString() || 'all time'} to ${endDate?.toISOString() || 'present'}`);
+      console.log(`[API] Page: ${page}, Limit: ${limit}, Search: ${search}, Status: ${status}`);
 
       const records = await storage.getEmployeeAttendance(id, startDate, endDate);
 
@@ -1312,7 +1444,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[API] Sample record:`, JSON.stringify(records[0], null, 2));
       }
 
-      res.json(records);
+      // Lọc theo status nếu có
+      let filteredRecords = records;
+      if (status && status !== 'all') {
+        filteredRecords = records.filter(record => record.status === status);
+      }
+
+      // Lọc theo search term nếu có
+      if (search) {
+        const searchLower = search.toLowerCase();
+        filteredRecords = filteredRecords.filter(record => {
+          const dateStr = new Date(record.date).toLocaleDateString();
+          const timeStr = new Date(record.time).toLocaleTimeString();
+          return dateStr.includes(searchLower) || timeStr.includes(searchLower);
+        });
+      }
+
+      // Tính toán phân trang
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
+
+      res.json({
+        items: paginatedRecords,
+        total: filteredRecords.length,
+        page,
+        limit,
+        totalPages: Math.ceil(filteredRecords.length / limit)
+      });
     } catch (error) {
       console.error(`[API] Error fetching attendance records:`, error);
       next(error);
@@ -1751,17 +1910,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Chuyển descriptor thành chuỗi JSON để lưu vào database
       const descriptorJson = JSON.stringify(descriptorArray);
 
-      // Cập nhật thông tin nhân viên với descriptor
-      const updatedEmployee = await storage.updateEmployee(employeeId, {
-        faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
-      });
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employeeId, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
 
-      console.log("Đã cập nhật thành công nhân viên ID:", employeeId);
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
 
-      return res.status(201).json({
-        message: "Đã lưu dữ liệu khuôn mặt thành công",
-        employee: updatedEmployee
-      });
+        console.log("Đã cập nhật thành công nhân viên ID:", employeeId);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu nhân viên:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
     } catch (error) {
       console.error("Lỗi khi lưu dữ liệu khuôn mặt:", error);
       res.status(500).json({
@@ -1812,6 +1984,196 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(204).send();
     } catch (error) {
+      next(error);
+    }
+  });
+
+  // User face profile endpoints
+  // Get user face profile data
+  app.get("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xem thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      const employee = user.employeeId ? await storage.getEmployee(user.employeeId) : null;
+
+      // Trả về thông tin face profile
+      res.json({
+        hasFaceProfile: employee ? !!employee.faceDescriptor : false,
+        message: employee?.faceDescriptor
+          ? "Đã đăng ký dữ liệu khuôn mặt"
+          : "Chưa đăng ký dữ liệu khuôn mặt"
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Save user face profile data
+  app.post("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng cập nhật thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Kiểm tra xem có descriptor không
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Cần có dữ liệu khuôn mặt" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      // Lấy thông tin nhân viên
+      const employee = await storage.getEmployee(user.employeeId);
+
+      if (!employee) {
+        return res.status(404).json({ message: "Không tìm thấy thông tin nhân viên" });
+      }
+
+      console.log("Đã tìm thấy nhân viên ID:", employee.id);
+      console.log("Kiểu dữ liệu faceDescriptor:", typeof faceDescriptor);
+
+      // Xử lý descriptor từ chuỗi thành mảng nếu cần
+      let descriptorArray = faceDescriptor;
+
+      // Kiểm tra nếu descriptor là chuỗi, thì parse thành mảng
+      if (typeof faceDescriptor === 'string') {
+        try {
+          // Nếu đó là chuỗi JSON, parse thành mảng
+          if (faceDescriptor.startsWith('[') && faceDescriptor.endsWith(']')) {
+            descriptorArray = JSON.parse(faceDescriptor);
+          } else {
+            // Nếu đó là chuỗi số phân tách bởi dấu phẩy, chuyển thành mảng số
+            descriptorArray = faceDescriptor.split(',').map(Number);
+          }
+          console.log("Đã parse chuỗi faceDescriptor thành mảng");
+        } catch (e) {
+          console.error("Lỗi khi parse faceDescriptor:", e);
+          return res.status(400).json({ message: "Dữ liệu khuôn mặt không hợp lệ" });
+        }
+      }
+
+      // Chuyển descriptor thành chuỗi JSON để lưu vào database
+      const descriptorJson = JSON.stringify(descriptorArray);
+
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employee.id, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
+
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã cập nhật thành công dữ liệu khuôn mặt cho nhân viên ID:", employee.id);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu khuôn mặt:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu khuôn mặt người dùng:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Không thể lưu dữ liệu khuôn mặt"
+      });
+    }
+  });
+
+  // Delete user face profile data
+  app.delete("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xóa thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      try {
+        // Xóa dữ liệu khuôn mặt của nhân viên
+        const updated = await storage.updateEmployee(user.employeeId, {
+          faceDescriptor: null
+        });
+
+        if (!updated) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã xóa dữ liệu khuôn mặt cho nhân viên ID:", user.employeeId);
+
+        return res.status(200).json({
+          success: true,
+          message: "Đã xóa dữ liệu khuôn mặt thành công"
+        });
+      } catch (deleteError) {
+        console.error("Lỗi khi xóa dữ liệu khuôn mặt:", deleteError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể xóa dữ liệu khuôn mặt"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi xóa dữ liệu khuôn mặt người dùng:", error);
       next(error);
     }
   });
@@ -2098,6 +2460,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error(`Error updating user with ID ${req.params.id}:`, error);
       res.status(500).json({ message: `Failed to update user with ID ${req.params.id}` });
+    }
+  });
+
+  // Update user password (for regular users to update their own password)
+  app.put("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
+    }
+  });
+
+  // Same endpoint but with PATCH method for flexibility
+  app.patch("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
     }
   });
 

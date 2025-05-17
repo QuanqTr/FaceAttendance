@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
-      console.log("Attempting login with:", credentials.username);
+      console.log("Attempting login...");
       try {
         const res = await fetch("/api/login", {
           method: "POST",
@@ -124,8 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, 100);
       } else {
         console.log("No valid redirect URL found, redirecting to dashboard");
+        const dashboardUrl = data.role === 'employee' ? '/user' : '/';
         setTimeout(() => {
-          window.location.replace("/");
+          window.location.replace(dashboardUrl);
         }, 100);
       }
     },

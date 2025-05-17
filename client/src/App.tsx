@@ -26,10 +26,26 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import React from "react";
 
+// User pages
+import UserDashboard from "@/pages/user/index";
+import UserAttendanceHistory from "@/pages/user/attendance-history";
+import UserProfile from "@/pages/user/profile";
+import UserLeaveRequests from "@/pages/user/leave-requests";
+import UserSalary from "@/pages/user/salary";
+import UserSettings from "@/pages/user/settings";
+
 // Đảm bảo mỗi component export mặc định một React component
 const AuthPageComponent = () => <AuthPage />;
 const FaceRecognitionLiveComponent = () => <FaceRecognitionLive />;
 const NotFoundComponent = () => <NotFound />;
+
+// Đảm bảo các component user luôn trả về một React element
+const UserDashboardComponent = () => <UserDashboard />;
+const UserAttendanceHistoryComponent = () => <UserAttendanceHistory />;
+const UserProfileComponent = () => <UserProfile />;
+const UserLeaveRequestsComponent = () => <UserLeaveRequests />;
+const UserSalaryComponent = () => <UserSalary />;
+const UserSettingsComponent = () => <UserSettings />;
 
 function Router(): React.ReactElement {
   return (
@@ -37,21 +53,32 @@ function Router(): React.ReactElement {
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Switch>
-          <ProtectedRoute path="/" component={Dashboard} />
-          <ProtectedRoute path="/attendance" component={Attendance} />
-          <ProtectedRoute path="/employees" component={Employees} />
-          <ProtectedRoute path="/employees/new" component={EmployeeForm} />
-          <ProtectedRoute path="/employees/:id" component={EmployeeDetail} />
-          <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} />
-          <ProtectedRoute path="/accounts" component={AccountsPage} />
-          <ProtectedRoute path="/accounts/new" component={AccountFormPage} />
-          <ProtectedRoute path="/accounts/:id/edit" component={AccountFormPage} />
-          <ProtectedRoute path="/leave-requests" component={LeaveRequestsPage} />
-          <ProtectedRoute path="/leave-requests/new" component={LeaveRequestFormPage} />
-          <ProtectedRoute path="/salary" component={SalaryPage} />
-          <ProtectedRoute path="/salary/new" component={SalaryFormPage} />
-          <ProtectedRoute path="/reports" component={Reports} />
-          <ProtectedRoute path="/settings" component={Settings} />
+          {/* Admin & Manager Routes */}
+          <ProtectedRoute path="/" component={Dashboard} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/attendance" component={Attendance} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/employees" component={Employees} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/employees/new" component={EmployeeForm} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/employees/:id" component={EmployeeDetail} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/accounts" component={AccountsPage} requiredRoles={["admin"]} />
+          <ProtectedRoute path="/accounts/new" component={AccountFormPage} requiredRoles={["admin"]} />
+          <ProtectedRoute path="/accounts/:id/edit" component={AccountFormPage} requiredRoles={["admin"]} />
+          <ProtectedRoute path="/leave-requests" component={LeaveRequestsPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/leave-requests/new" component={LeaveRequestFormPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/salary" component={SalaryPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/salary/new" component={SalaryFormPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/reports" component={Reports} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/settings" component={Settings} requiredRoles={["admin", "manager"]} />
+
+          {/* Employee Routes */}
+          <ProtectedRoute path="/user" component={UserDashboardComponent} />
+          <ProtectedRoute path="/user/attendance-history" component={UserAttendanceHistoryComponent} />
+          <ProtectedRoute path="/user/profile" component={UserProfileComponent} />
+          <ProtectedRoute path="/user/leave-requests" component={UserLeaveRequestsComponent} />
+          <ProtectedRoute path="/user/salary" component={UserSalaryComponent} />
+          <ProtectedRoute path="/user/settings" component={UserSettingsComponent} />
+
+          {/* Public Routes */}
           <Route path="/auth" component={AuthPageComponent} />
           <Route path="/face-recognition-live" component={FaceRecognitionLiveComponent} />
           <Route component={NotFoundComponent} />

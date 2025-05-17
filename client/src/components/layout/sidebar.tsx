@@ -11,7 +11,10 @@ import {
   Users2,
   Calendar,
   DollarSign,
-  UserCog
+  UserCog,
+  History,
+  UserCircle,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -47,6 +50,13 @@ export function Sidebar() {
   const { user, logoutMutation } = useAuth();
   const { t } = useTranslation();
 
+  // Hide sidebar on auth page
+  if (location === '/auth') {
+    return null;
+  }
+
+  const isEmployee = user?.role === "employee";
+
   const handleLogout = () => {
     logoutMutation.mutate();
   };
@@ -74,71 +84,127 @@ export function Sidebar() {
 
         <nav>
           <ul>
-            <SidebarLink
-              href="/"
-              icon={<LayoutDashboard className="h-5 w-5" />}
-              isActive={isActive('/')}
-            >
-              {t('common.dashboard')}
-            </SidebarLink>
+            {isEmployee ? (
+              // Menu dành cho nhân viên
+              <>
+                <SidebarLink
+                  href="/user"
+                  icon={<LayoutDashboard className="h-5 w-5" />}
+                  isActive={isActive('/user') && !location.includes('/user/')}
+                >
+                  {t('common.dashboard')}
+                </SidebarLink>
 
-            <SidebarLink
-              href="/attendance"
-              icon={<ClipboardList className="h-5 w-5" />}
-              isActive={isActive('/attendance')}
-            >
-              {t('common.attendance')}
-            </SidebarLink>
+                <SidebarLink
+                  href="/user/attendance-history"
+                  icon={<History className="h-5 w-5" />}
+                  isActive={isActive('/user/attendance-history')}
+                >
+                  {t('common.attendance')}
+                </SidebarLink>
 
-            <SidebarLink
-              href="/employees"
-              icon={<Users2 className="h-5 w-5" />}
-              isActive={isActive('/employees')}
-            >
-              {t('common.employees')}
-            </SidebarLink>
+                <SidebarLink
+                  href="/user/profile"
+                  icon={<UserCircle className="h-5 w-5" />}
+                  isActive={isActive('/user/profile')}
+                >
+                  {t('common.profile')}
+                </SidebarLink>
 
-            {user?.role === 'admin' && (
-              <SidebarLink
-                href="/accounts"
-                icon={<UserCog className="h-5 w-5" />}
-                isActive={isActive('/accounts')}
-              >
-                {t('common.accounts') || 'Account Management'}
-              </SidebarLink>
+                <SidebarLink
+                  href="/user/leave-requests"
+                  icon={<Calendar className="h-5 w-5" />}
+                  isActive={isActive('/user/leave-requests')}
+                >
+                  {t('common.leaveRequests')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/user/salary"
+                  icon={<DollarSign className="h-5 w-5" />}
+                  isActive={isActive('/user/salary')}
+                >
+                  {t('common.salary')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/user/settings"
+                  icon={<Settings className="h-5 w-5" />}
+                  isActive={isActive('/user/settings')}
+                >
+                  {t('common.settings')}
+                </SidebarLink>
+              </>
+            ) : (
+              // Menu dành cho admin và manager
+              <>
+                <SidebarLink
+                  href="/"
+                  icon={<LayoutDashboard className="h-5 w-5" />}
+                  isActive={isActive('/')}
+                >
+                  {t('common.dashboard')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/attendance"
+                  icon={<ClipboardList className="h-5 w-5" />}
+                  isActive={isActive('/attendance')}
+                >
+                  {t('common.attendance')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/employees"
+                  icon={<Users2 className="h-5 w-5" />}
+                  isActive={isActive('/employees')}
+                >
+                  {t('common.employees')}
+                </SidebarLink>
+
+                {user?.role === 'admin' && (
+                  <SidebarLink
+                    href="/accounts"
+                    icon={<UserCog className="h-5 w-5" />}
+                    isActive={isActive('/accounts')}
+                  >
+                    {t('common.accounts') || 'Account Management'}
+                  </SidebarLink>
+                )}
+
+                <SidebarLink
+                  href="/leave-requests"
+                  icon={<Calendar className="h-5 w-5" />}
+                  isActive={isActive('/leave-requests')}
+                >
+                  {t('common.leaveRequests')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/salary"
+                  icon={<DollarSign className="h-5 w-5" />}
+                  isActive={isActive('/salary')}
+                >
+                  {t('common.salary')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/reports"
+                  icon={<ClipboardList className="h-5 w-5" />}
+                  isActive={isActive('/reports')}
+                >
+                  {t('common.reports')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/settings"
+                  icon={<Settings className="h-5 w-5" />}
+                  isActive={isActive('/settings')}
+                >
+                  {t('common.settings')}
+                </SidebarLink>
+              </>
             )}
-
-            <SidebarLink
-              href="/leave-requests"
-              icon={<Calendar className="h-5 w-5" />}
-              isActive={isActive('/leave-requests')}
-            >
-              {t('common.leaveRequests')}
-            </SidebarLink>
-
-            <SidebarLink
-              href="/salary"
-              icon={<DollarSign className="h-5 w-5" />}
-              isActive={isActive('/salary')}
-            >
-              {t('common.salary')}
-            </SidebarLink>
-
-            <SidebarLink
-              href="/reports"
-              icon={<ClipboardList className="h-5 w-5" />}
-              isActive={isActive('/reports')}
-            >
-              {t('common.reports')}
-            </SidebarLink>
-
-            <SidebarLink
-              href="/settings"
-              icon={<Settings className="h-5 w-5" />}
-              isActive={isActive('/settings')}
-            >
-              {t('common.settings')}
-            </SidebarLink>
           </ul>
         </nav>
       </div>

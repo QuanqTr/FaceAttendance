@@ -7,9 +7,12 @@ import { AttendanceRecognition } from "@/components/dashboard/attendance-recogni
 import { WeeklyAttendanceChart } from "@/components/dashboard/weekly-attendance-chart";
 import { DepartmentStats } from "@/components/dashboard/department-stats";
 import { EmployeeTable } from "@/components/dashboard/employee-table";
+import { useAuth } from "@/hooks/use-auth";
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 export default function Dashboard() {
   const { t } = useTranslation();
+  const { user } = useAuth();
 
   // Fetch daily attendance summary
   const { data: dailySummary, isLoading: isSummaryLoading } = useQuery({
@@ -20,6 +23,28 @@ export default function Dashboard() {
       return await res.json();
     }
   });
+
+  // Fetch weekly stats
+  const { data: weeklyStats } = useQuery({
+    queryKey: ["/api/stats/weekly"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats/weekly");
+      if (!res.ok) throw new Error("Failed to fetch weekly stats");
+      return await res.json();
+    }
+  });
+
+  // Fetch department stats for pie chart
+  const { data: departmentStats } = useQuery({
+    queryKey: ["/api/stats/departments"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats/departments");
+      if (!res.ok) throw new Error("Failed to fetch department stats");
+      return await res.json();
+    }
+  });
+
+  const COLORS = ['#1E88E5', '#E53935', '#FFC107', '#26A69A', '#8E24AA', '#43A047'];
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -74,10 +99,60 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Attendance Recognition */}
-          <div className="lg:col-span-2">
-            <AttendanceRecognition />
-          </div>
+          {/* Attendance Recognition chỉ cho admin */}
+          {user?.role === "admin" && (
+            <div className="lg:col-span-2">
+              <AttendanceRecognition />
+            </div>
+          )}
+
+          {/* Biểu đồ thống kê cho manager */}
+          {user?.role === "manager" && (
+            <>
+              <div className="lg:col-span-2 bg-white rounded shadow p-4">
+                <h2 className="text-lg font-bold mb-2">{t('dashboard.weeklyAttendance')}</h2>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={weeklyStats || []} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="present" fill="#1E88E5" name={t('attendance.present')} />
+                      <Bar dataKey="late" fill="#FFC107" name={t('attendance.late')} />
+                      <Bar dataKey="absent" fill="#E53935" name={t('attendance.absent')} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="bg-white rounded shadow p-4">
+                <h2 className="text-lg font-bold mb-2">{t('dashboard.departmentAttendance')}</h2>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={departmentStats || []}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="presentPercentage"
+                      >
+                        {(departmentStats || []).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value}%`, t('dashboard.attendanceRate')]} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Recent Activity */}
           <div>

@@ -7,15 +7,20 @@ const API_MOCKS: Record<string, any> = {
   "/api/employees": { employees: mockEmployees, total: mockEmployees.length }
 };
 
-async function throwIfResNotOk(res: Response) {
+export interface ApiResponse extends Response {
+  data?: any;
+  errorData?: any;
+}
+
+async function throwIfResNotOk(res: Response, preReadText?: string): Promise<any> {
   if (!res.ok) {
     if (res.status === 401) {
       throw new Error(`401: ${res.statusText || "Unauthorized - Session expired"}`);
     }
 
     try {
-      // Thử đọc response text
-      const text = await res.text();
+      // Sử dụng text đã đọc trước đó nếu có, nếu không đọc từ response
+      const text = preReadText || await res.text();
 
       // Kiểm tra nếu đây là HTML thay vì JSON
       if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
@@ -25,7 +30,11 @@ async function throwIfResNotOk(res: Response) {
       // Thử parse JSON nếu có
       try {
         const jsonData = JSON.parse(text);
-        // Nếu có thông báo lỗi cụ thể từ API, sử dụng nó
+        // Trả về dữ liệu JSON nếu được yêu cầu
+        if (preReadText === undefined) {
+          return jsonData; // Trả về dữ liệu khi được gọi để lấy dữ liệu
+        }
+
         if (jsonData && jsonData.message) {
           throw new Error(`${res.status}: ${jsonData.message}`);
         }
@@ -43,13 +52,14 @@ async function throwIfResNotOk(res: Response) {
       throw new Error(`${res.status}: ${res.statusText || "Unknown error"}`);
     }
   }
+  return null;
 }
 
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
-): Promise<Response> {
+): Promise<ApiResponse> {
   try {
     const res = await fetch(url, {
       method,
@@ -58,13 +68,72 @@ export async function apiRequest(
       credentials: "include",
     });
 
-    await throwIfResNotOk(res);
-    return res;
+    const enhancedResponse = res as ApiResponse;
+
+    // Xử lý response không ok
+    if (!res.ok) {
+      // Đọc text từ response chỉ một lần
+      const responseText = await res.text();
+
+      try {
+        // Parse JSON từ text đã đọc
+        const errorData = JSON.parse(responseText);
+        enhancedResponse.errorData = errorData;
+
+        // Tạo error object với response property
+        const error = new Error(`${res.status}: ${errorData.message || res.statusText}`);
+        Object.defineProperty(error, 'response', {
+          value: enhancedResponse,
+          enumerable: true,
+          configurable: true
+        });
+        throw error;
+      } catch (parseError) {
+        // Nếu không parse được JSON
+        const error = new Error(`${res.status}: ${responseText || res.statusText}`);
+        Object.defineProperty(error, 'response', {
+          value: enhancedResponse,
+          enumerable: true,
+          configurable: true
+        });
+        throw error;
+      }
+    }
+
+    // Thêm data property nếu response là JSON
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const responseData = await res.json();
+      enhancedResponse.data = responseData;
+    }
+
+    return enhancedResponse;
   } catch (error) {
     console.error(`API Request error (${method} ${url}):`, error);
     throw error;
   }
 }
+
+// Helper methods for common HTTP methods
+apiRequest.get = async (url: string): Promise<ApiResponse> => {
+  return apiRequest('GET', url);
+};
+
+apiRequest.post = async (url: string, data?: unknown): Promise<ApiResponse> => {
+  return apiRequest('POST', url, data);
+};
+
+apiRequest.put = async (url: string, data?: unknown): Promise<ApiResponse> => {
+  return apiRequest('PUT', url, data);
+};
+
+apiRequest.delete = async (url: string): Promise<ApiResponse> => {
+  return apiRequest('DELETE', url);
+};
+
+apiRequest.patch = async (url: string, data?: unknown): Promise<ApiResponse> => {
+  return apiRequest('PATCH', url, data);
+};
 
 // Trả về giá trị mock nếu URL khớp với key trong API_MOCKS
 function getMockDataForUrl(url: string): any | null {

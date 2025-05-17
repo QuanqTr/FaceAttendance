@@ -8,19 +8,20 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 
 interface HeaderProps {
   title: string;
+  description?: string;
   showSearch?: boolean;
   onSearch?: (value: string) => void;
   searchPlaceholder?: string;
 }
 
-export function Header({ title, showSearch = false, onSearch, searchPlaceholder }: HeaderProps) {
+export function Header({ title, description, showSearch = false, onSearch, searchPlaceholder }: HeaderProps) {
   const { user } = useAuth();
   const { t } = useTranslation();
 
   const initials = user?.fullName
     ? user.fullName
       .split(' ')
-      .map((n) => n[0])
+      .map((n: string) => n[0])
       .join('')
       .toUpperCase()
     : 'U';
@@ -28,11 +29,14 @@ export function Header({ title, showSearch = false, onSearch, searchPlaceholder 
   return (
     <div className="border-b bg-background sticky top-0 z-10">
       <div className="flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-2 md:hidden">
-          <Menu className="h-5 w-5" />
-          <h1 className="text-xl font-bold">{title}</h1>
+        <div className="flex flex-col justify-center">
+          <div className="flex items-center gap-2 md:hidden">
+            <Menu className="h-5 w-5" />
+            <h1 className="text-xl font-bold">{title}</h1>
+          </div>
+          <h1 className="text-xl font-bold hidden md:block">{title}</h1>
+          {description && <p className="text-sm text-muted-foreground hidden md:block">{description}</p>}
         </div>
-        <h1 className="text-xl font-bold hidden md:block">{title}</h1>
 
         <div className="flex items-center gap-2 md:gap-4">
           {showSearch && (
