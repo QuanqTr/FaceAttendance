@@ -24,9 +24,7 @@ import { leaveRequestTypeEnum } from "@shared/schema";
 
 // Form schema for leave request
 const formSchema = z.object({
-  employeeId: z.number({
-    required_error: "Employee is required",
-  }),
+  employeeIds: z.array(z.number()).min(1, "Chọn ít nhất 1 nhân viên"),
   startDate: z.date({
     required_error: "Start date is required",
   }),
@@ -54,7 +52,14 @@ export default function LeaveRequestForm() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const i18nToast = useI18nToast();
-  const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<{
+    id: number;
+    name: string;
+    departmentId?: number;
+    departmentName?: string;
+    departmentDescription?: string;
+  } | null>(null);
+  const [isLoadingEmployeeDetails, setIsLoadingEmployeeDetails] = useState(false);
 
   // Get list of employees for dropdown
   const { data: employees = [], isLoading: employeesLoading } = useQuery({
@@ -62,7 +67,47 @@ export default function LeaveRequestForm() {
     queryFn: async () => {
       const res = await fetch("/api/employees");
       if (!res.ok) throw new Error("Failed to fetch employees");
-      return res.json();
+      const employeesList = await res.json();
+
+      // Fetch all departments to have names ready
+      try {
+        const deptRes = await fetch("/api/departments");
+        if (deptRes.ok) {
+          const departments = await deptRes.json();
+
+          // Đảm bảo employees luôn là mảng
+          let arr = [];
+          if (employeesList && typeof employeesList === 'object') {
+            if (Array.isArray(employeesList.employees)) arr = employeesList.employees;
+            else if (Array.isArray(employeesList.items)) arr = employeesList.items;
+            else if (Array.isArray(employeesList)) arr = employeesList;
+          }
+
+          return arr.map((emp: any) => {
+            if (emp.departmentId) {
+              const dept = departments.find((d: any) => d.id === emp.departmentId);
+              if (dept) {
+                return {
+                  ...emp,
+                  departmentName: dept.name,
+                  departmentDescription: dept.description
+                };
+              }
+            }
+            return emp;
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching departments:", error);
+      }
+
+      // Fallback: đảm bảo luôn trả về mảng
+      if (employeesList && typeof employeesList === 'object') {
+        if (Array.isArray(employeesList.employees)) return employeesList.employees;
+        if (Array.isArray(employeesList.items)) return employeesList.items;
+        if (Array.isArray(employeesList)) return employeesList;
+      }
+      return [];
     }
   });
 
@@ -70,6 +115,7 @@ export default function LeaveRequestForm() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      employeeIds: [],
       startDate: new Date(),
       endDate: new Date(),
       type: "vacation",
@@ -80,14 +126,75 @@ export default function LeaveRequestForm() {
   // Mutation to create a leave request
   const createMutation = useMutation({
     mutationFn: async (data: FormValues) => {
-      const response = await apiRequest("POST", "/api/leave-requests", data);
-      return response.json();
+      const results = [];
+      for (const empId of data.employeeIds) {
+        const formattedData = {
+          ...data,
+          employeeId: empId,
+          startDate: data.startDate instanceof Date ? data.startDate.toISOString().split('T')[0] : data.startDate,
+          endDate: data.endDate instanceof Date ? data.endDate.toISOString().split('T')[0] : data.endDate,
+        };
+        // Xóa employeeIds nếu có
+        if ('employeeIds' in formattedData) {
+          delete (formattedData as any).employeeIds;
+        }
+        try {
+          const res = await apiRequest("POST", "/api/leave-requests", formattedData);
+          let responseData: any = null;
+          let isJson = true;
+          try {
+            responseData = await res.clone().json();
+          } catch {
+            isJson = false;
+          }
+          if (res.ok) {
+            results.push({
+              empId,
+              success: true,
+              data: responseData,
+              employeeName: employees.find((e: any) => e.id === empId)?.firstName + ' ' +
+                employees.find((e: any) => e.id === empId)?.lastName
+            });
+          } else {
+            results.push({
+              empId,
+              success: false,
+              error: isJson && responseData && responseData.message ? responseData.message : 'Unknown error',
+              employeeName: employees.find((e: any) => e.id === empId)?.firstName + ' ' +
+                employees.find((e: any) => e.id === empId)?.lastName
+            });
+          }
+        } catch (error: any) {
+          results.push({
+            empId,
+            success: false,
+            error: error.message || 'Unknown error',
+            employeeName: employees.find((e: any) => e.id === empId)?.firstName + ' ' +
+              employees.find((e: any) => e.id === empId)?.lastName
+          });
+        }
+      }
+      return results;
     },
-    onSuccess: () => {
-      i18nToast.success('common.success', 'leaveRequests.createSuccess');
-      // Invalidate the queries to refresh the data
+    onSuccess: (results) => {
+      const successResults = results.filter((r: any) => r.success);
+      const failResults = results.filter((r: any) => !r.success);
+
+      if (successResults.length > 0) {
+        const successMessage = successResults.length === 1
+          ? `Tạo thành công đơn nghỉ phép cho ${successResults[0].employeeName}`
+          : `Tạo thành công ${successResults.length} đơn nghỉ phép`;
+        i18nToast.success('common.success', successMessage);
+      }
+
+      if (failResults.length > 0) {
+        const errorDetails = failResults.map((r: any) =>
+          `${r.employeeName}: ${r.error}`
+        ).join('\n');
+        i18nToast.error('common.error', `Có ${failResults.length} đơn nghỉ phép bị lỗi:\n${errorDetails}`);
+      }
+
       queryClient.invalidateQueries({ queryKey: ["/api/leave-requests"] });
-      // Navigate back to the leave requests page
       navigate("/leave-requests");
     },
     onError: (error: Error) => {
@@ -97,27 +204,59 @@ export default function LeaveRequestForm() {
 
   // Form submission handler
   const onSubmit = (data: FormValues) => {
-    // Format dates to ISO string and keep only the date part
-    const formattedData = {
-      ...data,
-      startDate: data.startDate instanceof Date ? data.startDate.toISOString().split('T')[0] : data.startDate,
-      endDate: data.endDate instanceof Date ? data.endDate.toISOString().split('T')[0] : data.endDate,
-    };
-
-    // Use create mutation with the original data that has Date objects
     createMutation.mutate(data);
   };
 
   // Handle employee selection
-  const handleEmployeeSelect = (employeeId: string) => {
+  const handleEmployeeSelect = async (employeeId: string) => {
     const id = parseInt(employeeId);
     const employee = employees.find((e: any) => e.id === id);
     if (employee) {
-      form.setValue("employeeId", id);
+      form.setValue("employeeIds", [id]);
+
+      // Set initial data from the list
       setSelectedEmployee({
         id: employee.id,
-        name: `${employee.firstName} ${employee.lastName}`
+        name: `${employee.firstName} ${employee.lastName}`,
+        departmentId: employee.departmentId
       });
+
+      // Fetch detailed employee information
+      try {
+        setIsLoadingEmployeeDetails(true);
+        const response = await fetch(`/api/employees/${id}`);
+        if (response.ok) {
+          const employeeDetails = await response.json();
+
+          // Update with department details if available
+          let departmentName = "";
+          let departmentDescription = "";
+          if (employeeDetails.departmentId) {
+            try {
+              const deptResponse = await fetch(`/api/departments/${employeeDetails.departmentId}`);
+              if (deptResponse.ok) {
+                const deptDetails = await deptResponse.json();
+                departmentName = deptDetails.name;
+                departmentDescription = deptDetails.description || "";
+              }
+            } catch (error) {
+              console.error("Error fetching department details:", error);
+            }
+          }
+
+          setSelectedEmployee({
+            id: employeeDetails.id,
+            name: `${employeeDetails.firstName} ${employeeDetails.lastName}`,
+            departmentId: employeeDetails.departmentId,
+            departmentName: departmentName,
+            departmentDescription: departmentDescription
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching employee details:", error);
+      } finally {
+        setIsLoadingEmployeeDetails(false);
+      }
     }
   };
 
@@ -140,43 +279,45 @@ export default function LeaveRequestForm() {
                 {/* Employee selection */}
                 <FormField
                   control={form.control}
-                  name="employeeId"
+                  name="employeeIds"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('leaveRequests.employeeName')}</FormLabel>
-                      <Select
-                        disabled={employeesLoading || employees.length === 0}
-                        onValueChange={handleEmployeeSelect}
-                        value={field.value?.toString()}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('leaveRequests.selectEmployee')}>
-                              {selectedEmployee?.name || t('leaveRequests.selectEmployee')}
-                            </SelectValue>
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {employeesLoading ? (
-                            <div className="flex items-center justify-center p-4">
-                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : employees.length === 0 ? (
-                            <div className="p-2 text-center text-muted-foreground">
-                              {t('leaveRequests.noEmployeesFound')}
-                            </div>
-                          ) : (
-                            employees.map((employee: any) => (
-                              <SelectItem
-                                key={employee.id}
-                                value={employee.id.toString()}
-                              >
-                                {employee.firstName} {employee.lastName}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <div className="border rounded-md p-2 max-h-60 overflow-y-auto bg-background">
+                        {employeesLoading ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : !Array.isArray(employees) || employees.length === 0 ? (
+                          <div className="p-2 text-center text-muted-foreground">
+                            {t('leaveRequests.noEmployeesFound')}
+                          </div>
+                        ) : (
+                          employees.map((employee: any) => (
+                            <label key={employee.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                value={employee.id}
+                                checked={field.value.includes(employee.id)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    field.onChange([...field.value, employee.id]);
+                                  } else {
+                                    field.onChange(field.value.filter((id: number) => id !== employee.id));
+                                  }
+                                }}
+                              />
+                              <span>{employee.firstName} {employee.lastName}</span>
+                              {employee.departmentId && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  {t('employees.department')}: {employee.departmentName || ''}
+                                  {employee.departmentDescription && ` - ${employee.departmentDescription}`}
+                                </span>
+                              )}
+                            </label>
+                          ))
+                        )}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

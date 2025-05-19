@@ -100,7 +100,36 @@ export default function Employees() {
     queryFn: async () => {
       const res = await fetch(`/api/employees?${queryParams}`);
       if (!res.ok) throw new Error("Failed to fetch employees");
-      return await res.json();
+      const responseData = await res.json();
+
+      // Đảm bảo dữ liệu nhân viên đầy đủ
+      if (responseData && responseData.employees) {
+        responseData.employees = responseData.employees.map((employee: any) => {
+          // Nếu API trả về snake_case format, chuyển về camelCase
+          if (employee.first_name && !employee.firstName) {
+            return {
+              ...employee,
+              firstName: employee.first_name || 'Unknown',
+              lastName: employee.last_name || 'Unknown',
+              employeeId: employee.employee_id || employee.employeeId || '',
+              departmentId: employee.department_id !== undefined ? employee.department_id : employee.departmentId,
+              createdAt: employee.created_at || employee.createdAt || new Date().toISOString(),
+              updatedAt: employee.updated_at || employee.updatedAt || new Date().toISOString(),
+              joinDate: employee.join_date || employee.joinDate || new Date().toISOString(),
+              faceDescriptor: employee.face_descriptor || employee.faceDescriptor || null
+            };
+          }
+
+          // Đảm bảo firstName và lastName luôn có giá trị
+          if (!employee.firstName) employee.firstName = 'Unknown';
+          if (!employee.lastName) employee.lastName = 'Unknown';
+          if (!employee.employeeId) employee.employeeId = '';
+
+          return employee;
+        });
+      }
+
+      return responseData;
     }
   });
 

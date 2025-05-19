@@ -107,6 +107,18 @@ export default function EmployeeDetail() {
     enabled: !!employeeId,
   });
 
+  // Lấy thông tin chi tiết phòng ban
+  const { data: department, isLoading: departmentLoading } = useQuery({
+    queryKey: [`/api/departments/${employee?.departmentId}`],
+    queryFn: async () => {
+      if (!employee?.departmentId) return null;
+      const res = await fetch(`/api/departments/${employee.departmentId}`);
+      if (!res.ok) return null; // Không báo lỗi, chỉ trả về null
+      return await res.json();
+    },
+    enabled: !!employee?.departmentId,
+  });
+
   const isValidDate = date instanceof Date && !isNaN(date.getTime());
   const { data: workHoursData, isLoading: workHoursLoading, error: workHoursError } = useQuery({
     queryKey: isValidDate ? [`/api/work-hours/employee/${employeeId}`, format(date, 'yyyy-MM')] : [],
@@ -460,7 +472,18 @@ export default function EmployeeDetail() {
                   <Separator />
                   <div className="space-y-1">
                     <Label className="text-sm text-muted-foreground">{t('employees.department')}</Label>
-                    <p className="font-medium">{employee.departmentId}</p>
+                    <p className="font-medium">
+                      {departmentLoading ? (
+                        <span className="text-xs text-muted-foreground">Đang tải...</span>
+                      ) : department ? (
+                        <>
+                          {department.name}
+                          {department.description && <div className="text-sm text-muted-foreground mt-1">{department.description}</div>}
+                        </>
+                      ) : (
+                        employee.departmentId || t('employees.notSpecified')
+                      )}
+                    </p>
                   </div>
                   <Separator />
                   <div className="space-y-1">

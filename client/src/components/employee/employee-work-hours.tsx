@@ -254,6 +254,8 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
                 return { label: t('status.earlyLeave'), color: 'bg-orange-100 text-orange-800 hover:bg-orange-200' };
             case 'absent':
                 return { label: t('status.absent'), color: 'bg-red-100 text-red-800 hover:bg-red-200' };
+            case 'leave':
+                return { label: t('attendance.leave'), color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' };
             default:
                 return { label: status, color: 'bg-gray-200' };
         }

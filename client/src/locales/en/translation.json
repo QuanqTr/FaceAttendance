@@ -60,7 +60,9 @@
         "profile": "Profile",
         "more": "More",
         "previous": "Previous",
-        "export": "Export"
+        "export": "Export",
+        "notSpecified": "Not specified",
+        "notProvided": "Not provided"
     },
     "user": {
         "dashboard": {
@@ -492,7 +494,9 @@
         "noRecordsForMonth": "No attendance records found for this month.",
         "todayAttendance": "Today's Attendance",
         "recordAttendance": "Record Attendance",
-        "workHours": "Work Hours"
+        "workHours": "Work Hours",
+        "leave": "Nghỉ phép",
+        "weekend": "Weekend"
     },
     "leaveRequests": {
         "title": "Leave Requests",
@@ -509,6 +513,7 @@
         "pending": "Pending",
         "approved": "Approved",
         "rejected": "Rejected",
+        "cancelled": "Cancelled",
         "sick": "Sick Leave",
         "vacation": "Vacation",
         "personal": "Personal Leave",
@@ -526,7 +531,31 @@
         "noRequestsYet": "There are no leave requests in the system yet.",
         "noRequestsInStatus": "There are no {{status}} leave requests.",
         "createSuccess": "Leave request created successfully",
-        "createError": "Failed to create leave request: {{error}}"
+        "createError": "Failed to create leave request: {{error}}",
+        "approveSuccess": "Leave request approved",
+        "rejectSuccess": "Leave request rejected",
+        "cancelSuccess": "Leave request cancelled",
+        "requestUpdated": "The request has been updated successfully",
+        "requestCancelled": "The request has been cancelled successfully",
+        "requestNotFound": "Leave request not found",
+        "requestDetails": "Leave Request Details",
+        "employeeInfo": "Employee Information",
+        "leaveDetails": "Leave Details",
+        "name": "Name",
+        "position": "Position",
+        "department": "Department",
+        "employeeId": "Employee ID",
+        "submittedOn": "Submitted On",
+        "usedDays": "Used days",
+        "availableDays": "Available days",
+        "leaveBalance": "Leave Balance",
+        "rejectionReason": "Rejection Reason",
+        "approvalInfo": "Approval Information",
+        "approvedOn": "Approved On",
+        "rejectRequest": "Reject Request",
+        "rejectRequestDescription": "Please provide a reason for rejecting this leave request.",
+        "rejectionReasonPlaceholder": "Enter reason for rejection...",
+        "confirmReject": "Reject Request"
     },
     "salary": {
         "title": "Salary Management",
@@ -646,6 +675,7 @@
         "late": "Late",
         "earlyLeave": "Early Leave",
         "absent": "Absent",
+        "leave": "Leave",
         "unknown": "Unknown"
     },
     "employee": {

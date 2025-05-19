@@ -919,7 +919,10 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
       }
 
       // Detect faces with landmarks and descriptors
-      const detections = await faceapi.detectAllFaces(videoRef.current, new faceapi.SsdMobilenetv1Options())
+      const detections = await faceapi.detectAllFaces(
+        videoRef.current,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })
+      )
         .withFaceLandmarks()
         .withFaceDescriptors();
 

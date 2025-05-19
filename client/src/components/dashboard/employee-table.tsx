@@ -10,7 +10,7 @@ import { Employee } from "@shared/schema";
 type EmployeeWithAttendance = {
   employee: Employee;
   attendance?: {
-    status: 'present' | 'absent' | 'late';
+    status: 'present' | 'absent' | 'late' | 'leave';
     clockIn?: string;
     clockOut?: string;
   };
@@ -72,7 +72,7 @@ export function EmployeeTable() {
     }
   });
 
-  const getStatusBadge = (status?: 'present' | 'absent' | 'late') => {
+  const getStatusBadge = (status?: 'present' | 'absent' | 'late' | 'leave') => {
     if (!status) return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
         Not Recorded
@@ -96,6 +96,12 @@ export function EmployeeTable() {
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
             Late
+          </span>
+        );
+      case 'leave':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            Leave
           </span>
         );
     }

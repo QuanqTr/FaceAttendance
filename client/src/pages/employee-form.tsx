@@ -273,8 +273,17 @@ export default function EmployeeForm() {
   // Create employee mutation
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
-      const res = await apiRequest("POST", "/api/employees", data);
-      return await res.json();
+      try {
+        const res = await apiRequest("POST", "/api/employees", data);
+        // Chỉ xử lý response nếu thành công
+        if (res.ok) {
+          return res;
+        }
+        throw new Error(`Không thể tạo nhân viên: ${res.status} ${res.statusText}`);
+      } catch (error) {
+        console.error("Lỗi khi tạo nhân viên:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       i18nToast.success('employees.createSuccess', 'employees.createSuccessMessage');
@@ -289,8 +298,17 @@ export default function EmployeeForm() {
   // Update employee mutation
   const updateMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
-      const res = await apiRequest("PUT", `/api/employees/${employeeId}`, data);
-      return await res.json();
+      try {
+        const res = await apiRequest("PUT", `/api/employees/${employeeId}`, data);
+        // Chỉ xử lý response nếu thành công
+        if (res.ok) {
+          return res;
+        }
+        throw new Error(`Không thể cập nhật nhân viên: ${res.status} ${res.statusText}`);
+      } catch (error) {
+        console.error("Lỗi khi cập nhật nhân viên:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       i18nToast.success('employees.updateSuccess', 'employees.updateSuccessMessage');
@@ -314,17 +332,35 @@ export default function EmployeeForm() {
       return;
     }
 
-    // Format date as YYYY-MM-DD string
-    const formattedData = {
-      ...data,
-      joinDate: parseJoinDate(data.joinDate),
-    };
-    console.log("Formatted data:", formattedData);
+    try {
+      // Format date as YYYY-MM-DD string
+      const formattedData = {
+        ...data,
+        joinDate: parseJoinDate(data.joinDate),
+      };
+      console.log("Formatted data:", formattedData);
 
-    if (isEditMode && employeeId) {
-      updateMutation.mutate(formattedData);
-    } else {
-      createMutation.mutate(formattedData);
+      // Chuyển đổi dữ liệu để đảm bảo định dạng chính xác
+      const cleanedData = {
+        firstName: String(formattedData.firstName || ""),
+        lastName: String(formattedData.lastName || ""),
+        email: String(formattedData.email || ""),
+        employeeId: String(formattedData.employeeId || ""),
+        departmentId: Number(formattedData.departmentId),
+        position: String(formattedData.position || ""),
+        phone: String(formattedData.phone || ""),
+        joinDate: String(formattedData.joinDate || ""),
+        status: String(formattedData.status || "active")
+      };
+
+      if (isEditMode && employeeId) {
+        updateMutation.mutate(cleanedData as any);
+      } else {
+        createMutation.mutate(cleanedData as any);
+      }
+    } catch (error) {
+      console.error("Lỗi khi xử lý dữ liệu form:", error);
+      i18nToast.error('common.error', 'Đã xảy ra lỗi khi xử lý dữ liệu');
     }
   };
 
@@ -515,7 +551,7 @@ export default function EmployeeForm() {
                           <FormLabel>{t('employees.status')}</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            value={field.value}
+                            value={field.value as string}
                           >
                             <FormControl>
                               <SelectTrigger>

@@ -172,8 +172,8 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                 return { label: t('status.earlyLeave'), color: 'bg-orange-100 text-orange-800 hover:bg-orange-200' };
             case 'absent':
                 return { label: t('status.absent'), color: 'bg-red-100 text-red-800 hover:bg-red-200' };
-            case 'error':
-                return { label: t('status.error'), color: 'bg-gray-100 text-gray-800 hover:bg-gray-200' };
+            case 'leave':
+                return { label: t('attendance.leave'), color: 'bg-blue-100 text-blue-800 hover:bg-blue-200' };
             default:
                 return { label: status || t('status.unknown'), color: 'bg-gray-200' };
         }
@@ -240,6 +240,7 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                                         <SelectItem value="late">{t('status.late')}</SelectItem>
                                         <SelectItem value="early_leave">{t('status.earlyLeave')}</SelectItem>
                                         <SelectItem value="absent">{t('status.absent')}</SelectItem>
+                                        <SelectItem value="leave">{t('attendance.leave')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

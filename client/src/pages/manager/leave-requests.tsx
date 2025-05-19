@@ -9,18 +9,20 @@ import { Loader2, Plus, Calendar, FileCheck, FileX, FileQuestion } from "lucide-
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { LeaveRequest } from "@shared/schema";
+import { EnrichedLeaveRequest } from "@shared/schema";
+import axios from "axios";
+import { useToast } from "@/components/ui/use-toast";
 import { useTranslation } from "react-i18next";
 
 export default function LeaveRequestsPage() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const { t } = useTranslation();
 
-  // Get leave requests
-  const { data: leaveRequests, isLoading } = useQuery<LeaveRequest[]>({
-    queryKey: ["/api/leave-requests", activeTab !== "all" ? activeTab : undefined],
+  // Get leave requests for managers (includes employee and department details)
+  const { data: leaveRequests, isLoading } = useQuery<EnrichedLeaveRequest[]>({
+    queryKey: ["/api/leave-requests/manager", activeTab !== "all" ? activeTab : undefined],
     queryFn: async () => {
-      const url = new URL("/api/leave-requests", window.location.origin);
+      const url = new URL("/api/leave-requests/manager", window.location.origin);
       if (activeTab !== "all") {
         url.searchParams.append("status", activeTab);
       }
@@ -56,14 +58,23 @@ export default function LeaveRequestsPage() {
     }
   };
 
+  const renderDepartmentBadge = (department: { id: number; name: string; description: string | null } | null | undefined) => {
+    if (!department) return null;
+    return (
+      <Badge variant="outline" className="bg-blue-50 text-blue-700 ml-2">
+        {department.name} {department.description ? `- ${department.description}` : ''}
+      </Badge>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <Header title={t('leaveRequests.title')} />
+      <Header title={t('leaveRequests.manageTitle')} />
 
       <div className="p-4 space-y-4 flex-1 overflow-auto">
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-semibold">{t('leaveRequests.title')}</h1>
-          <Link href="/leave-requests/new">
+          <h1 className="text-xl font-semibold">{t('leaveRequests.manageTitle')}</h1>
+          <Link href="/manager/leave-requests/new">
             <Button className="gap-2">
               <Plus className="h-4 w-4" />
               {t('leaveRequests.newRequest')}
@@ -123,7 +134,7 @@ export default function LeaveRequestsPage() {
                           ? t('leaveRequests.noRequestsYet')
                           : t('leaveRequests.noRequestsInStatus', { status: t(`leaveRequests.${activeTab}`) })}
                       </p>
-                      <Link href="/leave-requests/new">
+                      <Link href="/manager/leave-requests/new">
                         <Button variant="outline" className="mt-4">
                           {t('leaveRequests.newRequest')}
                         </Button>
@@ -136,11 +147,20 @@ export default function LeaveRequestsPage() {
                       <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                           <div className="space-y-2">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="font-medium">{t('leaveRequests.requestId', { id: request.id })}</h3>
                               {renderStatusBadge(request.status)}
                               {renderLeaveTypeIcon(request.type)}
                             </div>
+
+                            {/* Employee information */}
+                            {request.employee && (
+                              <p className="text-sm font-medium">
+                                {request.employee.firstName} {request.employee.lastName}
+                                {renderDepartmentBadge(request.employee.department)}
+                              </p>
+                            )}
+
                             <p className="text-sm text-muted-foreground">
                               <strong>{t('leaveRequests.dateRange')}:</strong> {format(new Date(request.startDate), 'MMM dd, yyyy')} - {format(new Date(request.endDate), 'MMM dd, yyyy')}
                             </p>
@@ -150,7 +170,7 @@ export default function LeaveRequestsPage() {
                               </p>
                             )}
                           </div>
-                          <Link href={`/leave-requests/${request.id}`}>
+                          <Link href={`/manager/leave-requests/${request.id}`}>
                             <Button variant="outline" size="sm">{t('common.view')}</Button>
                           </Link>
                         </div>

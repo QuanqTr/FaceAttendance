@@ -108,8 +108,8 @@ export function AttendanceTable({
                                     <TableCell>{record.overtimeHours ? `${record.overtimeHours} giờ` : "-"}</TableCell>
                                     <TableCell>{record.regularHours && record.overtimeHours ? `${record.regularHours + record.overtimeHours} giờ` : record.regularHours ? `${record.regularHours} giờ` : "-"}</TableCell>
                                     <TableCell>
-                                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${record.status === 'normal' ? 'bg-green-300 text-green-900 border-green-600' : record.status === 'absent' ? 'bg-red-300 text-red-900 border-red-600' : record.status === 'late' ? 'bg-yellow-300 text-yellow-900 border-yellow-600' : 'bg-gray-100 text-gray-800 border-gray-300'}`}>
-                                            {record.status === 'normal' ? 'Đi làm' : record.status === 'absent' ? t('attendance.absent') : record.status === 'late' ? t('attendance.late') : t(`attendance.${record.status}`)}
+                                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${record.status === 'normal' ? 'bg-green-300 text-green-900 border-green-600' : record.status === 'absent' ? 'bg-red-300 text-red-900 border-red-600' : record.status === 'late' ? 'bg-yellow-300 text-yellow-900 border-yellow-600' : record.status === 'leave' ? 'bg-blue-300 text-blue-900 border-blue-600' : 'bg-gray-100 text-gray-800 border-gray-300'}`}>
+                                            {record.status === 'normal' ? 'Đi làm' : record.status === 'absent' ? t('attendance.absent') : record.status === 'late' ? t('attendance.late') : record.status === 'leave' ? t('attendance.leave') : t(`attendance.${record.status}`)}
                                         </div>
                                     </TableCell>
                                 </TableRow>

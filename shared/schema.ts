@@ -16,7 +16,7 @@ export const attendanceTypeEnum = pgEnum('attendance_type', ['in', 'out']);
 export const timeLogTypeEnum = pgEnum('time_log_type', ['checkin', 'checkout']);
 
 // Enum for leave request status
-export const leaveRequestStatusEnum = pgEnum('leave_request_status', ['pending', 'approved', 'rejected']);
+export const leaveRequestStatusEnum = pgEnum('leave_request_status', ['pending', 'approved', 'rejected', 'cancelled']);
 
 // Enum for leave request type
 export const leaveRequestTypeEnum = pgEnum('leave_request_type', ['sick', 'vacation', 'personal', 'other']);
@@ -47,7 +47,6 @@ export const departments = pgTable("departments", {
   description: text("description"),
   managerId: integer("manager_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const departmentsRelations = relations(departments, ({ one, many }) => ({
@@ -234,7 +233,7 @@ export const workHoursRelations = relations(workHours, ({ one }) => ({
 
 // Create insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
-export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,
   createdAt: true,
@@ -308,3 +307,30 @@ export type InsertWorkHours = z.infer<typeof insertWorkHoursSchema>;
 // Login schema (subset of InsertUser)
 export const loginSchema = insertUserSchema.pick({ username: true, password: true });
 export type LoginData = z.infer<typeof loginSchema>;
+
+export type EnrichedLeaveRequest = {
+  id: number;
+  employeeId: number;
+  createdAt: Date;
+  updatedAt: Date;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  type: "sick" | "vacation" | "personal" | "other";
+  startDate: string;
+  endDate: string;
+  reason: string | null;
+  approvedById: number | null;
+  approvedAt: Date | null;
+  rejectionReason?: string | null;
+
+  // Add employee property for manager view
+  employee?: {
+    id?: number;
+    firstName?: string;
+    lastName?: string;
+    department?: {
+      id: number;
+      name: string;
+      description: string | null;
+    } | null;
+  };
+};

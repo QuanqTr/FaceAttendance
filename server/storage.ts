@@ -131,6 +131,19 @@ export interface IStorage {
       checkoutTime?: Date;
     }
   ): Promise<void>;
+
+  // New methods
+  getAllLeaveRequestsWithEmployeeDetails(page: number, limit: number, status?: string): Promise<LeaveRequest[]>;
+  getEmployeeByUserId(userId: number): Promise<Employee | undefined>;
+  getEmployeeLeaveRequestsByYear(employeeId: number, year: number, status?: string): Promise<LeaveRequest[]>;
+}
+
+export interface Department {
+  id: number;
+  name: string;
+  description: string | null;
+  managerId: number | null;
+  createdAt: Date;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -165,10 +178,46 @@ export class DatabaseStorage implements IStorage {
   // Department methods
   async getDepartment(id: number): Promise<Department | undefined> {
     try {
-      const [department] = await db.select().from(departments).where(eq(departments.id, id));
-      return department;
+      console.log(`Attempting to fetch department with ID: ${id}, type: ${typeof id}`);
+
+      // Ensure id is properly converted to a number
+      const departmentId = Number(id);
+      console.log(`Converted ID: ${departmentId}, type: ${typeof departmentId}`);
+
+      if (isNaN(departmentId)) {
+        console.error(`Invalid department ID: ${id}`);
+        return undefined;
+      }
+
+      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
+      // Import modules thay vì sử dụng require
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      const result = await pool.query('SELECT id, name, description, manager_id, created_at FROM departments WHERE id = $1', [departmentId]);
+      console.log(`Direct SQL query result:`, result.rows);
+
+      if (result.rows && result.rows.length > 0) {
+        // Map kết quả trả về từ DB sang đúng kiểu Department
+        const department: Department = {
+          id: Number(result.rows[0].id),
+          name: result.rows[0].name,
+          description: result.rows[0].description,
+          managerId: result.rows[0].manager_id,
+          createdAt: new Date(result.rows[0].created_at)
+        };
+
+        console.log(`Department found:`, department);
+        return department;
+      }
+
+      console.log(`No department found with ID ${departmentId}`);
+      return undefined;
     } catch (error) {
-      console.error("Error fetching department:", error);
+      console.error(`Error fetching department with ID ${id}:`, error);
       return undefined;
     }
   }
@@ -176,10 +225,28 @@ export class DatabaseStorage implements IStorage {
   async getAllDepartments(): Promise<Department[]> {
     try {
       console.log("Fetching departments from database");
-      // Use ORM to fetch departments
-      const result = await db.select().from(departments);
-      console.log("Departments fetched:", JSON.stringify(result));
-      return result;
+
+      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
+      // Import modules thay vì sử dụng require
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      const result = await pool.query('SELECT id, name, description, manager_id, created_at FROM departments ORDER BY id');
+      console.log(`Found ${result.rows.length} departments`);
+
+      // Map kết quả trả về từ DB sang đúng kiểu Department[]
+      const departments: Department[] = result.rows.map(row => ({
+        id: Number(row.id),
+        name: row.name,
+        description: row.description,
+        managerId: row.manager_id,
+        createdAt: new Date(row.created_at)
+      }));
+
+      return departments;
     } catch (error) {
       console.error("Error fetching all departments:", error);
       return [];
@@ -187,27 +254,135 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDepartment(department: InsertDepartment): Promise<Department> {
-    const [newDepartment] = await db
-      .insert(departments)
-      .values(department)
-      .returning();
-    return newDepartment;
+    try {
+      console.log(`Creating department: ${JSON.stringify(department)}`);
+
+      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
+      // Import modules thay vì sử dụng require
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      const result = await pool.query(
+        'INSERT INTO departments (name, description, created_at) VALUES ($1, $2, NOW()) RETURNING id, name, description, manager_id, created_at',
+        [department.name, department.description || null]
+      );
+
+      if (!result.rows || result.rows.length === 0) {
+        throw new Error("Không thể tạo phòng ban");
+      }
+
+      // Map kết quả trả về từ DB sang đúng kiểu Department
+      const newDepartment: Department = {
+        id: Number(result.rows[0].id),
+        name: result.rows[0].name,
+        description: result.rows[0].description,
+        managerId: result.rows[0].manager_id,
+        createdAt: new Date(result.rows[0].created_at)
+      };
+
+      console.log(`Department created: ${JSON.stringify(newDepartment)}`);
+      return newDepartment;
+    } catch (error) {
+      console.error("Error creating department:", error);
+      throw error;
+    }
   }
 
   async updateDepartment(id: number, department: Partial<InsertDepartment>): Promise<Department | undefined> {
-    const [updatedDepartment] = await db
-      .update(departments)
-      .set(department)
-      .where(eq(departments.id, id))
-      .returning();
-    return updatedDepartment;
+    try {
+      console.log(`Updating department ${id}: ${JSON.stringify(department)}`);
+
+      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
+      // Import modules thay vì sử dụng require
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      // Xây dựng câu lệnh SQL động dựa trên các trường cần cập nhật
+      let updateFields = [];
+      let params = [];
+      let paramIndex = 1;
+
+      if (department.name !== undefined) {
+        updateFields.push(`name = $${paramIndex}`);
+        params.push(department.name);
+        paramIndex++;
+      }
+
+      if (department.description !== undefined) {
+        updateFields.push(`description = $${paramIndex}`);
+        params.push(department.description);
+        paramIndex++;
+      }
+
+      if (department.managerId !== undefined) {
+        updateFields.push(`manager_id = $${paramIndex}`);
+        params.push(department.managerId);
+        paramIndex++;
+      }
+
+      // Nếu không có trường nào cần cập nhật, trả về phòng ban hiện tại
+      if (updateFields.length === 0) {
+        return await this.getDepartment(id);
+      }
+
+      // Thêm tham số id vào cuối
+      params.push(id);
+
+      // Thực hiện truy vấn cập nhật
+      const result = await pool.query(
+        `UPDATE departments SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING id, name, description, manager_id, created_at`,
+        params
+      );
+
+      if (!result.rows || result.rows.length === 0) {
+        console.log(`Không tìm thấy phòng ban ID ${id} để cập nhật`);
+        return undefined;
+      }
+
+      // Map kết quả trả về từ DB sang đúng kiểu Department
+      const updatedDepartment: Department = {
+        id: Number(result.rows[0].id),
+        name: result.rows[0].name,
+        description: result.rows[0].description,
+        managerId: result.rows[0].manager_id,
+        createdAt: new Date(result.rows[0].created_at)
+      };
+
+      console.log(`Department updated: ${JSON.stringify(updatedDepartment)}`);
+      return updatedDepartment;
+    } catch (error) {
+      console.error(`Error updating department ${id}:`, error);
+      return undefined;
+    }
   }
 
   async deleteDepartment(id: number): Promise<boolean> {
-    const result = await db
-      .delete(departments)
-      .where(eq(departments.id, id));
-    return true;
+    try {
+      console.log(`Deleting department: ${id}`);
+
+      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      const result = await pool.query('DELETE FROM departments WHERE id = $1 RETURNING id', [id]);
+
+      const isDeleted = result.rows && result.rows.length > 0;
+      console.log(`Department deletion result: ${isDeleted ? 'success' : 'not found'}`);
+
+      return isDeleted;
+    } catch (error) {
+      console.error(`Error deleting department ${id}:`, error);
+      return false;
+    }
   }
 
   // Employee methods
@@ -986,6 +1161,104 @@ export class DatabaseStorage implements IStorage {
       .delete(leaveRequests)
       .where(eq(leaveRequests.id, id));
     return true;
+  }
+
+  // Implement the methods for leave request management with employee details
+  async getAllLeaveRequestsWithEmployeeDetails(page: number = 1, limit: number = 10, status?: string): Promise<LeaveRequest[]> {
+    try {
+      const offset = (page - 1) * limit;
+
+      // Create a base query with join to employees table
+      let query = db
+        .select({
+          lr: leaveRequests,
+          e: {
+            id: employees.id,
+            firstName: employees.firstName,
+            lastName: employees.lastName,
+            departmentId: employees.departmentId,
+            position: employees.position,
+          },
+        })
+        .from(leaveRequests)
+        .leftJoin(employees, eq(leaveRequests.employeeId, employees.id))
+        .orderBy(desc(leaveRequests.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      // Apply status filter if provided
+      if (status && status !== 'all') {
+        query = query.where(eq(leaveRequests.status, status));
+      }
+
+      const results = await query;
+
+      // Transform results to match expected LeaveRequest type
+      return results.map(row => ({
+        ...row.lr,
+        employee: {
+          id: row.e.id,
+          firstName: row.e.firstName,
+          lastName: row.e.lastName,
+          departmentId: row.e.departmentId,
+          position: row.e.position
+        }
+      }));
+    } catch (error) {
+      console.error('Error fetching leave requests with employee details:', error);
+      return [];
+    }
+  }
+
+  // Lấy nhân viên theo user ID
+  async getEmployeeByUserId(userId: number): Promise<Employee | undefined> {
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+
+      if (!user || !user.employeeId) {
+        return undefined;
+      }
+
+      const [employee] = await db.select().from(employees).where(eq(employees.id, user.employeeId));
+      return employee;
+    } catch (error) {
+      console.error('Error fetching employee by user ID:', error);
+      return undefined;
+    }
+  }
+
+  // Lấy đơn nghỉ phép của nhân viên theo năm và trạng thái
+  async getEmployeeLeaveRequestsByYear(employeeId: number, year: number, status?: string): Promise<LeaveRequest[]> {
+    try {
+      // Create start and end date for the specified year
+      const startDate = new Date(year, 0, 1);  // January 1
+      const endDate = new Date(year + 1, 0, 1); // January 1 of next year
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      let query = db
+        .select()
+        .from(leaveRequests)
+        .where(
+          and(
+            eq(leaveRequests.employeeId, employeeId),
+            gte(leaveRequests.startDate, startDateStr),
+            lt(leaveRequests.startDate, endDateStr)
+          )
+        )
+        .orderBy(desc(leaveRequests.startDate));
+
+      // Add status filter if provided
+      if (status) {
+        query = query.where(eq(leaveRequests.status, status));
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error fetching employee leave requests by year:', error);
+      return [];
+    }
   }
 
   // Salary Methods

@@ -110,7 +110,7 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
   };
 
   const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase() || 'N/A';
   };
 
   return (

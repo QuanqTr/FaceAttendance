@@ -1,0 +1,8 @@
+-- Script SQL để thêm phòng ban
+INSERT INTO departments (name, description, created_at, updated_at)
+VALUES ('DS', 'Phòng Design', NOW(), NOW()), ('HR', 'Phòng Nhân sự', NOW(), NOW()), ('IT', 'Phòng Công nghệ Thông tin', NOW(), NOW())
+ON CONFLICT (name) DO NOTHING;
+-- API Endpoints để debug
+-- 1. Lấy thông tin phòng ban theo ID: http://localhost:5000/api/departments/direct/1
+-- 2. Thêm phòng ban: curl -X POST http://localhost:5000/api/departments/create-simple -H "Content-Type: application/json" -d "{\"name\":\"DS\",\"description\":\"Phòng Design\"}"
+-- 3. Lay tat ca phong ban: http://localhost:5000/api/departments

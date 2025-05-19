@@ -30,7 +30,7 @@ type AttendanceRecord = {
   date: string;
   timeIn?: string;
   timeOut?: string;
-  status: 'present' | 'absent' | 'late';
+  status: 'present' | 'absent' | 'late' | 'leave';
 };
 
 type AttendanceLogProps = {
@@ -82,6 +82,8 @@ export function AttendanceLog({ records, isLoading, date, showSearch = true }: A
         return <Badge variant="destructive">{t('attendance.absent')}</Badge>;
       case 'late':
         return <Badge className="bg-amber-500 hover:bg-amber-600">{t('attendance.late')}</Badge>;
+      case 'leave':
+        return <Badge className="bg-blue-500 hover:bg-blue-600">{t('attendance.leave')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }

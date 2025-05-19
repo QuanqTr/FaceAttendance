@@ -14,6 +14,8 @@ import EmployeeDetail from "@/pages/employee-detail";
 import EmployeeForm from "@/pages/employee-form";
 import LeaveRequestsPage from "@/pages/leave-requests";
 import LeaveRequestFormPage from "@/pages/leave-request-form";
+import LeaveRequestDetailsPage from "@/pages/leave-request-details";
+import ManagerLeaveRequestsPage from "@/pages/manager/leave-requests";
 import SalaryPage from "@/pages/salary";
 import SalaryFormPage from "@/pages/salary-form";
 import AccountsPage from "@/pages/accounts";
@@ -65,6 +67,8 @@ function Router(): React.ReactElement {
           <ProtectedRoute path="/accounts/:id/edit" component={AccountFormPage} requiredRoles={["admin"]} />
           <ProtectedRoute path="/leave-requests" component={LeaveRequestsPage} requiredRoles={["admin", "manager"]} />
           <ProtectedRoute path="/leave-requests/new" component={LeaveRequestFormPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/leave-requests/:id" component={LeaveRequestDetailsPage} requiredRoles={["admin", "manager"]} />
+          <ProtectedRoute path="/manager/leave-requests" component={ManagerLeaveRequestsPage} requiredRoles={["admin", "manager"]} />
           <ProtectedRoute path="/salary" component={SalaryPage} requiredRoles={["admin", "manager"]} />
           <ProtectedRoute path="/salary/new" component={SalaryFormPage} requiredRoles={["admin", "manager"]} />
           <ProtectedRoute path="/reports" component={Reports} requiredRoles={["admin", "manager"]} />
@@ -75,6 +79,7 @@ function Router(): React.ReactElement {
           <ProtectedRoute path="/user/attendance-history" component={UserAttendanceHistoryComponent} />
           <ProtectedRoute path="/user/profile" component={UserProfileComponent} />
           <ProtectedRoute path="/user/leave-requests" component={UserLeaveRequestsComponent} />
+          <ProtectedRoute path="/user/leave-requests/:id" component={LeaveRequestDetailsPage} />
           <ProtectedRoute path="/user/salary" component={UserSalaryComponent} />
           <ProtectedRoute path="/user/settings" component={UserSettingsComponent} />
 

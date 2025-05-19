@@ -581,6 +581,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // API endpoint để khởi tạo dữ liệu phòng ban mặc định nếu chưa có
+  app.post("/api/departments/initialize", async (req, res, next) => {
+    try {
+      // Kiểm tra xem đã có phòng ban nào chưa
+      const existingDepartments = await storage.getAllDepartments();
+
+      if (existingDepartments && existingDepartments.length > 0) {
+        return res.status(200).json({
+          message: "Dữ liệu phòng ban đã tồn tại",
+          departments: existingDepartments
+        });
+      }
+
+      // Tạo các phòng ban mặc định
+      const defaultDepartments = [
+        {
+          name: "DS",
+          description: "Phòng Design",
+        },
+        {
+          name: "HR",
+          description: "Phòng Nhân sự",
+        },
+        {
+          name: "IT",
+          description: "Phòng Công nghệ Thông tin",
+        },
+        {
+          name: "MKT",
+          description: "Phòng Marketing",
+        }
+      ];
+
+      // Lưu các phòng ban vào cơ sở dữ liệu
+      const createdDepartments = [];
+
+      for (const dept of defaultDepartments) {
+        try {
+          const createdDept = await storage.createDepartment(dept);
+          createdDepartments.push(createdDept);
+        } catch (error) {
+          console.error(`Error creating department ${dept.name}:`, error);
+        }
+      }
+
+      res.status(201).json({
+        message: "Đã khởi tạo dữ liệu phòng ban mặc định",
+        departments: createdDepartments
+      });
+    } catch (error) {
+      console.error("Error initializing departments:", error);
+      res.status(500).json({ message: "Failed to initialize departments" });
+    }
+  });
+
+  // Thêm API endpoint để tạo phòng ban trực tiếp (KHÔNG yêu cầu đăng nhập)
+  app.post("/api/departments/create-simple", async (req, res, next) => {
+    try {
+      const { name, description } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ message: "Tên phòng ban là bắt buộc" });
+      }
+
+      console.log(`Attempting to create department: ${name}, ${description}`);
+
+      // Dùng truy vấn SQL trực tiếp để tạo phòng ban
+      const { Pool } = await import('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      const result = await pool.query(
+        'INSERT INTO departments (name, description, created_at) VALUES ($1, $2, NOW()) RETURNING *',
+        [name, description || null]
+      );
+
+      if (result.rows && result.rows.length > 0) {
+        const newDepartment = {
+          id: Number(result.rows[0].id),
+          name: result.rows[0].name,
+          description: result.rows[0].description,
+          managerId: result.rows[0].manager_id,
+          createdAt: result.rows[0].created_at
+        };
+
+        console.log("Department created successfully:", newDepartment);
+        return res.status(201).json(newDepartment);
+      } else {
+        throw new Error("Không thể tạo phòng ban");
+      }
+    } catch (error) {
+      console.error("Error creating department:", error);
+      res.status(500).json({
+        message: "Không thể tạo phòng ban",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Employee routes
   app.get("/api/employees", async (req, res, next) => {
     try {
@@ -728,13 +829,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertEmployeeSchema.parse(req.body);
       const employee = await storage.createEmployee(validatedData);
-      res.status(201).json(employee);
+      return res.status(201).json(employee);
     } catch (error) {
       if (error instanceof z.ZodError) {
         const validationError = fromZodError(error);
         return res.status(400).json({ message: validationError.message });
       }
-      next(error);
+      console.error("Lỗi khi tạo nhân viên:", error);
+      return res.status(500).json({ message: "Không thể tạo nhân viên" });
     }
   });
 
@@ -770,13 +872,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Employee not found" });
       }
 
-      res.json(employee);
+      return res.json(employee);
     } catch (error) {
       if (error instanceof z.ZodError) {
         const validationError = fromZodError(error);
         return res.status(400).json({ message: validationError.message });
       }
-      next(error);
+      console.error("Lỗi khi cập nhật nhân viên:", error);
+      return res.status(500).json({ message: "Không thể cập nhật nhân viên" });
     }
   });
 
@@ -1635,6 +1738,234 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const leaveRequests = await storage.getEmployeeLeaveRequests(id, status);
       res.json(leaveRequests);
     } catch (error) {
+      next(error);
+    }
+  });
+
+  // API endpoints dành riêng cho quản lý - MUST COME BEFORE PARAMETERIZED ROUTES
+  app.get("/api/leave-requests/manager", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Kiểm tra xem người dùng có quyền quản lý không
+      const user = req.user as Express.User;
+      if (!user || (user.role !== 'manager' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Access denied. Manager or admin role required." });
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const status = req.query.status as string | undefined;
+
+      // Lấy tất cả đơn nghỉ phép và join với thông tin nhân viên để hiển thị
+      const leaveRequests = await storage.getAllLeaveRequestsWithEmployeeDetails(page, limit, status);
+      res.json(leaveRequests);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // API duyệt đơn nghỉ phép
+  app.put("/api/leave-requests/:id/approve", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Kiểm tra quyền hạn (chỉ manager hoặc admin mới được duyệt)
+      const user = req.user as Express.User;
+      if (!user || (user.role !== 'manager' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Access denied. Manager or admin role required." });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid leave request ID" });
+      }
+
+      // Kiểm tra xem đơn nghỉ phép có tồn tại không
+      const existingRequest = await storage.getLeaveRequest(id);
+      if (!existingRequest) {
+        return res.status(404).json({ message: "Leave request not found" });
+      }
+
+      // Kiểm tra trạng thái hiện tại của đơn
+      if (existingRequest.status !== 'pending') {
+        return res.status(400).json({
+          message: `Cannot approve leave request that is ${existingRequest.status}. Only pending requests can be approved.`
+        });
+      }
+
+      // Cập nhật trạng thái đơn nghỉ phép
+      const updatedRequest = await storage.updateLeaveRequest(id, {
+        status: 'approved',
+        approvedById: user.id,
+        approvedAt: new Date()
+      });
+
+      // Cập nhật số ngày nghỉ phép đã sử dụng của nhân viên (nếu cần)
+      // TODO: Implement leave balance update logic here
+
+      res.json({
+        success: true,
+        message: "Leave request approved successfully",
+        request: updatedRequest
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // API từ chối đơn nghỉ phép
+  app.put("/api/leave-requests/:id/reject", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Kiểm tra quyền hạn (chỉ manager hoặc admin mới được từ chối)
+      const user = req.user as Express.User;
+      if (!user || (user.role !== 'manager' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Access denied. Manager or admin role required." });
+      }
+
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid leave request ID" });
+      }
+
+      // Kiểm tra nội dung yêu cầu
+      const rejectionSchema = z.object({
+        reason: z.string().optional()
+      });
+
+      const { reason } = rejectionSchema.parse(req.body);
+
+      // Kiểm tra xem đơn nghỉ phép có tồn tại không
+      const existingRequest = await storage.getLeaveRequest(id);
+      if (!existingRequest) {
+        return res.status(404).json({ message: "Leave request not found" });
+      }
+
+      // Kiểm tra trạng thái hiện tại của đơn
+      if (existingRequest.status !== 'pending') {
+        return res.status(400).json({
+          message: `Cannot reject leave request that is ${existingRequest.status}. Only pending requests can be rejected.`
+        });
+      }
+
+      // Cập nhật trạng thái đơn nghỉ phép
+      const updatedRequest = await storage.updateLeaveRequest(id, {
+        status: 'rejected',
+        approvedById: user.id,
+        approvedAt: new Date(),
+        // Lưu lý do từ chối vào trường reason của đơn
+        reason: reason || "No reason provided"
+      });
+
+      res.json({
+        success: true,
+        message: "Leave request rejected successfully",
+        request: updatedRequest
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
+    }
+  });
+
+  // API hủy đơn nghỉ phép (dành cho nhân viên)
+  app.patch("/api/leave-requests/:id/cancel", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const user = req.user as Express.User;
+      const id = parseInt(req.params.id);
+
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid leave request ID" });
+      }
+
+      // Kiểm tra xem đơn nghỉ phép có tồn tại không
+      const existingRequest = await storage.getLeaveRequest(id);
+      if (!existingRequest) {
+        return res.status(404).json({ message: "Leave request not found" });
+      }
+
+      // Kiểm tra quyền hủy đơn (chỉ người tạo đơn hoặc admin mới được hủy)
+      const employee = await storage.getEmployeeByUserId(user.id);
+
+      if (!employee && user.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied." });
+      }
+
+      if (user.role !== 'admin' && employee && employee.id !== existingRequest.employeeId) {
+        return res.status(403).json({ message: "You can only cancel your own leave requests." });
+      }
+
+      // Kiểm tra trạng thái hiện tại của đơn
+      if (existingRequest.status !== 'pending') {
+        return res.status(400).json({
+          message: `Cannot cancel leave request that is ${existingRequest.status}. Only pending requests can be cancelled.`
+        });
+      }
+
+      // Cập nhật trạng thái đơn nghỉ phép
+      const updatedRequest = await storage.updateLeaveRequest(id, {
+        // Sử dụng giá trị 'pending' để tạm thời fix lỗi TypeScript, sau này cần cập nhật schema để hỗ trợ 'cancelled'
+        status: 'pending' as any,
+        // Thêm ghi chú là đơn đã bị hủy vào trường reason
+        reason: "*** CANCELLED BY USER ***" + (existingRequest.reason ? ` - Original reason: ${existingRequest.reason}` : "")
+      });
+
+      res.json({
+        success: true,
+        message: "Leave request cancelled successfully",
+        request: updatedRequest
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  });
+
+  // API lấy thông tin số ngày nghỉ phép còn lại
+  app.get("/api/leave-balance/:employeeId", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      // Kiểm tra quyền truy cập
+      const user = req.user as Express.User;
+      const employee = await storage.getEmployeeByUserId(user.id);
+
+      // Chỉ cho phép người dùng xem thông tin của chính họ hoặc quản lý/admin
+      if (user.role !== 'manager' && user.role !== 'admin') {
+        if (!employee || employee.id !== employeeId) {
+          return res.status(403).json({ message: "Access denied." });
+        }
+      }
+
+      // TODO: Implement actual leave balance calculation logic
+      // Đây là data mẫu, cần thay thế bằng logic thực tế từ cơ sở dữ liệu
+      const currentYear = new Date().getFullYear();
+
+      // Lấy tất cả đơn nghỉ phép đã được duyệt của nhân viên trong năm hiện tại
+      const approvedLeaves = await storage.getEmployeeLeaveRequestsByYear(employeeId, currentYear, 'approved');
+
+      // Tính tổng số ngày đã nghỉ
+      let usedDays = 0;
+      for (const leave of approvedLeaves) {
+        const start = new Date(leave.startDate);
+        const end = new Date(leave.endDate);
+        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        usedDays += days;
+      }
+
+      // Giả sử mỗi nhân viên có 12 ngày nghỉ phép một năm
+      const totalDays = 12;
+      const availableDays = Math.max(0, totalDays - usedDays);
+
+      res.json({
+        employeeId,
+        year: currentYear,
+        total: totalDays,
+        used: usedDays,
+        available: availableDays
+      });
+    } catch (error: any) {
       next(error);
     }
   });
@@ -2616,6 +2947,2745 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error(`Error deleting user with ID ${req.params.id}:`, error);
       res.status(500).json({ message: `Failed to delete user with ID ${req.params.id}` });
+    }
+  });
+
+  // Leave Request Routes
+  app.get('/api/leave-requests', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      const leaveRequests = await storage.getEmployeeLeaveRequests(employee.id, status as string);
+      res.json(leaveRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Add these new endpoints for manager approval/rejection
+  app.get('/api/leave-requests/manager', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can view all leave requests' });
+      }
+
+      // Get all leave requests with employee details
+      const leaveRequests = await storage.getAllLeaveRequestsWithEmployeeDetails(1, 100, status as string);
+
+      // For each request, fetch the employee details
+      const enrichedRequests = await Promise.all(leaveRequests.map(async (request) => {
+        const employee = await storage.getEmployee(request.employeeId);
+        return {
+          ...request,
+          employee: {
+            id: employee?.id,
+            firstName: employee?.firstName,
+            lastName: employee?.lastName,
+            department: employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null
+          }
+        };
+      }));
+
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests for manager:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Endpoint to approve a leave request
+  app.put('/api/leave-requests/:id/approve', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can approve leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be approved
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be approved' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'approved',
+        approvedById: userId,
+        approvedAt: new Date()
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error approving leave request:', error);
+      res.status(500).json({ error: 'Failed to approve leave request' });
+    }
+  });
+
+  // Endpoint to reject a leave request
+  app.put('/api/leave-requests/:id/reject', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const { reason } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can reject leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be rejected
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be rejected' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'rejected',
+        approvedById: userId, // Storing the manager who rejected it
+        approvedAt: new Date(),
+        rejectionReason: reason || null
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error rejecting leave request:', error);
+      res.status(500).json({ error: 'Failed to reject leave request' });
+    }
+  });
+
+  // Endpoint for employee to cancel their pending leave request
+  app.patch('/api/leave-requests/:id/cancel', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get employee by user ID
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Verify that this leave request belongs to the employee
+      if (leaveRequest.employeeId !== employee.id) {
+        return res.status(403).json({ error: 'Unauthorized. This is not your leave request' });
+      }
+
+      // Only pending requests can be cancelled
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'cancelled'
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error cancelling leave request:', error);
+      res.status(500).json({ error: 'Failed to cancel leave request' });
+    }
+  });
+
+  // Endpoint to check leave balance for an employee
+  app.get('/api/leave-balance/:employeeId', ensureAuthenticated, async (req, res) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get the current year
+      const currentYear = new Date().getFullYear();
+
+      // Get all approved leave requests for the employee in the current year
+      const leaveRequests = await storage.getEmployeeLeaveRequestsByYear(employeeId, currentYear, 'approved');
+
+      // Calculate used leave days
+      const usedDays = leaveRequests.reduce((total, request) => {
+        const startDate = new Date(request.startDate);
+        const endDate = new Date(request.endDate);
+        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return total + days;
+      }, 0);
+
+      // Assume a total of 15 days per year (you can adjust this based on your business rules)
+      const totalDays = 15;
+      const availableDays = Math.max(0, totalDays - usedDays);
+
+      res.json({
+        total: totalDays,
+        used: usedDays,
+        available: availableDays
+      });
+    } catch (error) {
+      console.error('Error checking leave balance:', error);
+      res.status(500).json({ error: 'Failed to check leave balance' });
+    }
+  });
+
+  // Salary routes
+  app.get("/api/salary-records", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+
+      const salaryRecords = await storage.getAllSalaryRecords(page, limit, year, month);
+      res.json(salaryRecords);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/salary-records", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const salaryData = insertSalaryRecordSchema.parse(req.body);
+
+      // Get employee to check if they exist
+      const employee = await storage.getEmployee(salaryData.employeeId);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Check if there's already a salary record for this employee, month and year
+      const existingRecords = await storage.getEmployeeSalaryRecords(salaryData.employeeId, salaryData.year);
+      const duplicate = existingRecords.find(r => r.month === salaryData.month);
+
+      if (duplicate) {
+        return res.status(400).json({
+          message: `Salary record already exists for ${employee.firstName} ${employee.lastName} for ${salaryData.month}/${salaryData.year}`
+        });
+      }
+
+      const salaryRecord = await storage.createSalaryRecord(salaryData);
+      res.status(201).json(salaryRecord);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
+    }
+  });
+
+  app.get("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      const salaryRecord = await storage.getSalaryRecord(id);
+      if (!salaryRecord) {
+        return res.status(404).json({ message: "Salary record not found" });
+      }
+
+      res.json(salaryRecord);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      const salaryRecord = await storage.updateSalaryRecord(id, req.body);
+      if (!salaryRecord) {
+        return res.status(404).json({ message: "Salary record not found" });
+      }
+
+      res.json(salaryRecord);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      await storage.deleteSalaryRecord(id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/salary-records/employee/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const salaryRecords = await storage.getEmployeeSalaryRecords(id, year);
+      res.json(salaryRecords);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/stats/salary/:year", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ message: "Invalid year" });
+      }
+
+      const salaryStats = await storage.getSalaryStats(year);
+      res.json(salaryStats);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Face recognition routes
+  app.post("/api/face-recognition", async (req, res, next) => {
+    try {
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Face descriptor is required" });
+      }
+
+      // Find employee with matching face descriptor using storage
+      let employee = null;
+
+      try {
+        // Get all employees and find match in memory
+        const { employees: employeesList } = await storage.getAllEmployees();
+        employee = employeesList.find(emp => emp.faceDescriptor === faceDescriptor);
+      } catch (dbError) {
+        console.error("Error querying employee by face descriptor:", dbError);
+        return res.status(500).json({ message: "Error verifying face data" });
+      }
+
+      if (!employee) {
+        return res.status(401).json({ message: "Face recognition failed. No matching employee found." });
+      }
+
+      // Get department data if available
+      const department = employee.departmentId ?
+        await storage.getDepartment(employee.departmentId) : null;
+
+      res.json({
+        success: true,
+        employee: {
+          ...employee,
+          department
+        }
+      });
+    } catch (error) {
+      console.error("Face recognition error:", error);
+      next(error);
+    }
+  });
+
+  // Face registration route
+  app.post("/api/face-registration", async (req, res, next) => {
+    try {
+      const { employeeId, descriptor, joinDate } = req.body;
+
+      if (!employeeId || !descriptor) {
+        return res.status(400).json({
+          message: "Employee ID and face descriptor are required"
+        });
+      }
+
+      // Find the employee first
+      const employee = await storage.getEmployee(employeeId);
+
+      if (!employee) {
+        return res.status(404).json({
+          message: "Employee not found"
+        });
+      }
+
+      // Build update object with provided fields
+      const updateData: any = {
+        faceDescriptor: descriptor
+      };
+
+      // Add joinDate if provided - format properly for date field (YYYY-MM-DD)
+      if (joinDate) {
+        // Chuyển đổi thành định dạng date không có giờ
+        try {
+          const dateObj = new Date(joinDate);
+          // Format as YYYY-MM-DD string
+          const dateStr = dateObj.toISOString().split('T')[0];
+          updateData.joinDate = dateStr;
+          console.log(`Setting join date for employee ${employeeId} to:`, dateStr);
+        } catch (error) {
+          console.error("Error formatting join date:", error);
+        }
+      }
+
+      // Update the employee's data
+      const updatedEmployee = await storage.updateEmployee(employeeId, updateData);
+
+      return res.status(201).json({
+        message: "Face data registered successfully",
+        employee: updatedEmployee
+      });
+    } catch (error) {
+      console.error("Error registering face data:", error);
+      next(error);
+    }
+  });
+
+  // Upload face image and save face profile
+  app.post("/api/employees/:id/face-profile", async (req, res, next) => {
+    try {
+      const employeeId = parseInt(req.params.id);
+
+      console.log("Nhận request upload khuôn mặt cho nhân viên:", employeeId);
+      // Xóa log request body để không hiện thông tin nhạy cảm
+
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "ID nhân viên không hợp lệ" });
+      }
+
+      // Kiểm tra xem có descriptor không
+      const { descriptor } = req.body;
+
+      if (!descriptor) {
+        return res.status(400).json({ message: "Cần có dữ liệu khuôn mặt" });
+      }
+
+      // Tìm nhân viên
+      const employee = await storage.getEmployee(employeeId);
+
+      if (!employee) {
+        return res.status(404).json({ message: "Không tìm thấy nhân viên" });
+      }
+
+      console.log("Đã tìm thấy nhân viên:", employee.firstName, employee.lastName);
+      console.log("Kiểu dữ liệu descriptor:", typeof descriptor);
+
+      // Không cần parse nếu descriptor đã là array
+      let descriptorArray = descriptor;
+
+      // Kiểm tra nếu descriptor là chuỗi, thì parse
+      if (typeof descriptor === 'string') {
+        try {
+          descriptorArray = JSON.parse(descriptor);
+          console.log("Đã parse chuỗi descriptor thành mảng");
+        } catch (e) {
+          console.error("Lỗi khi parse descriptor:", e);
+          return res.status(400).json({ message: "Dữ liệu khuôn mặt không hợp lệ" });
+        }
+      }
+
+      console.log("Thông tin descriptor:", {
+        type: typeof descriptorArray,
+        isArray: Array.isArray(descriptorArray),
+        length: Array.isArray(descriptorArray) ? descriptorArray.length : 'N/A'
+      });
+
+      // Chuyển descriptor thành chuỗi JSON để lưu vào database
+      const descriptorJson = JSON.stringify(descriptorArray);
+
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employeeId, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
+
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã cập nhật thành công nhân viên ID:", employeeId);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu nhân viên:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu khuôn mặt:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Không thể lưu dữ liệu khuôn mặt"
+      });
+    }
+  });
+
+  // Get employee face data route (repurposed to just return faceDescriptor)
+  app.get("/api/employees/:id/face-data", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      // Check if employee exists
+      const employee = await storage.getEmployee(id);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Return face descriptor data
+      res.json({
+        id: employee.id,
+        employeeId: employee.id,
+        descriptor: employee.faceDescriptor,
+        isActive: !!employee.faceDescriptor
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Reset employee face data
+  app.delete("/api/employees/:employeeId/face-data", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      // Update employee to remove face descriptor
+      await storage.updateEmployee(employeeId, {
+        faceDescriptor: null
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // User face profile endpoints
+  // Get user face profile data
+  app.get("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xem thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      const employee = user.employeeId ? await storage.getEmployee(user.employeeId) : null;
+
+      // Trả về thông tin face profile
+      res.json({
+        hasFaceProfile: employee ? !!employee.faceDescriptor : false,
+        message: employee?.faceDescriptor
+          ? "Đã đăng ký dữ liệu khuôn mặt"
+          : "Chưa đăng ký dữ liệu khuôn mặt"
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Save user face profile data
+  app.post("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng cập nhật thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Kiểm tra xem có descriptor không
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Cần có dữ liệu khuôn mặt" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      // Lấy thông tin nhân viên
+      const employee = await storage.getEmployee(user.employeeId);
+
+      if (!employee) {
+        return res.status(404).json({ message: "Không tìm thấy thông tin nhân viên" });
+      }
+
+      console.log("Đã tìm thấy nhân viên ID:", employee.id);
+      console.log("Kiểu dữ liệu faceDescriptor:", typeof faceDescriptor);
+
+      // Xử lý descriptor từ chuỗi thành mảng nếu cần
+      let descriptorArray = faceDescriptor;
+
+      // Kiểm tra nếu descriptor là chuỗi, thì parse thành mảng
+      if (typeof faceDescriptor === 'string') {
+        try {
+          // Nếu đó là chuỗi JSON, parse thành mảng
+          if (faceDescriptor.startsWith('[') && faceDescriptor.endsWith(']')) {
+            descriptorArray = JSON.parse(faceDescriptor);
+          } else {
+            // Nếu đó là chuỗi số phân tách bởi dấu phẩy, chuyển thành mảng số
+            descriptorArray = faceDescriptor.split(',').map(Number);
+          }
+          console.log("Đã parse chuỗi faceDescriptor thành mảng");
+        } catch (e) {
+          console.error("Lỗi khi parse faceDescriptor:", e);
+          return res.status(400).json({ message: "Dữ liệu khuôn mặt không hợp lệ" });
+        }
+      }
+
+      // Chuyển descriptor thành chuỗi JSON để lưu vào database
+      const descriptorJson = JSON.stringify(descriptorArray);
+
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employee.id, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
+
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã cập nhật thành công dữ liệu khuôn mặt cho nhân viên ID:", employee.id);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu khuôn mặt:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu khuôn mặt người dùng:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Không thể lưu dữ liệu khuôn mặt"
+      });
+    }
+  });
+
+  // Delete user face profile data
+  app.delete("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xóa thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      try {
+        // Xóa dữ liệu khuôn mặt của nhân viên
+        const updated = await storage.updateEmployee(user.employeeId, {
+          faceDescriptor: null
+        });
+
+        if (!updated) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã xóa dữ liệu khuôn mặt cho nhân viên ID:", user.employeeId);
+
+        return res.status(200).json({
+          success: true,
+          message: "Đã xóa dữ liệu khuôn mặt thành công"
+        });
+      } catch (deleteError) {
+        console.error("Lỗi khi xóa dữ liệu khuôn mặt:", deleteError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể xóa dữ liệu khuôn mặt"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi xóa dữ liệu khuôn mặt người dùng:", error);
+      next(error);
+    }
+  });
+
+  app.post("/api/attendance/verify", async (req, res, next) => {
+    try {
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Face descriptor is required" });
+      }
+
+      // Chuyển đổi descriptor từ string về array
+      const descriptorArray = faceDescriptor.split(',').map(Number);
+
+      // Lấy danh sách tất cả nhân viên có face descriptor
+      const employeesWithFace = await storage.getEmployeesWithFaceDescriptor();
+
+      if (!employeesWithFace || employeesWithFace.length === 0) {
+        return res.status(404).json({
+          message: "Không tìm thấy nhân viên nào có dữ liệu khuôn mặt"
+        });
+      }
+
+      // Tìm nhân viên phù hợp nhất với descriptor
+      let bestMatch = null;
+      let bestDistance = 1.0; // Giá trị ban đầu cao (khoảng cách lớn)
+
+      for (const employee of employeesWithFace) {
+        if (!employee.faceDescriptor) continue;
+
+        // Chuyển đổi descriptor của nhân viên từ string về array
+        let employeeDescriptor;
+        try {
+          // Thử parse JSON nếu là chuỗi JSON
+          if (employee.faceDescriptor.startsWith('[') || employee.faceDescriptor.startsWith('{')) {
+            employeeDescriptor = JSON.parse(employee.faceDescriptor);
+          } else {
+            // Nếu không phải JSON, giả định là chuỗi phân tách bằng dấu phẩy
+            employeeDescriptor = employee.faceDescriptor.split(',').map(Number);
+          }
+        } catch (error) {
+          console.error(`Error parsing face descriptor for employee ${employee.id}:`, error);
+          continue;
+        }
+
+        // Tính khoảng cách Euclidean giữa hai descriptor
+        const distance = calculateEuclideanDistance(descriptorArray, employeeDescriptor);
+
+        // Nếu khoảng cách nhỏ hơn, cập nhật best match
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMatch = employee;
+        }
+      }
+
+      // Threshold cho việc nhận diện (giá trị 0.6 có thể điều chỉnh)
+      const threshold = 0.6;
+      if (!bestMatch || bestDistance > threshold) {
+        return res.status(401).json({
+          message: "Không thể nhận diện khuôn mặt. Vui lòng thử lại."
+        });
+      }
+
+      res.json({
+        verified: true,
+        employee: {
+          id: bestMatch.id,
+          firstName: bestMatch.firstName,
+          lastName: bestMatch.lastName,
+          employeeId: bestMatch.employeeId,
+          confidence: 1 - bestDistance
+        }
+      });
+    } catch (error) {
+      console.error("Error verifying face:", error);
+      next(error);
+    }
+  });
+
+  // User/Account management routes
+  app.get("/api/users", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const user = req.user as Express.User;
+      if (user.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Get all user accounts
+      const userAccounts = await db.select().from(users);
+
+      // Remove password field from response
+      const safeUserAccounts = userAccounts.map(({ password, ...userData }) => userData);
+
+      res.json(safeUserAccounts);
+    } catch (error) {
+      console.error("Error fetching user accounts:", error);
+      res.status(500).json({ message: "Failed to fetch user accounts" });
+    }
+  });
+
+  app.get("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin or the user is fetching their own data
+      const user = req.user as Express.User;
+      const requestedId = parseInt(req.params.id);
+
+      if (isNaN(requestedId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (user.role !== "admin" && user.id !== requestedId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Get user account
+      const userAccount = await storage.getUser(requestedId);
+
+      if (!userAccount) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Remove password field from response
+      const { password, ...safeUserData } = userAccount;
+
+      res.json(safeUserData);
+    } catch (error) {
+      console.error(`Error fetching user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to fetch user with ID ${req.params.id}` });
+    }
+  });
+
+  // Create user account
+  app.post("/api/users", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Validate input
+      const userSchema = z.object({
+        username: z.string().min(3).max(50),
+        password: z.string().min(6),
+        role: z.enum(["admin", "manager", "employee"]),
+        employeeId: z.number().optional().nullable(),
+      });
+
+      const userData = userSchema.parse(req.body);
+
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      // If employeeId is provided, check if it exists
+      let fullName = "System User";
+      if (userData.employeeId !== undefined && userData.employeeId !== null) {
+        const employee = await storage.getEmployee(userData.employeeId);
+        if (!employee) {
+          return res.status(400).json({ message: "Employee not found" });
+        }
+        fullName = `${employee.lastName} ${employee.firstName}`;
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(userData.password);
+
+      // Create user account with proper typing
+      const newUser = {
+        username: userData.username,
+        password: hashedPassword,
+        role: userData.role,
+        employeeId: userData.employeeId,
+        fullName: fullName,
+        createdAt: new Date(),
+      } as any; // Use type assertion to bypass TypeScript error
+
+      const createdUser = await storage.createUser(newUser);
+
+      // Remove password from response
+      const { password, ...safeUserData } = createdUser;
+
+      res.status(201).json(safeUserData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error("Error creating user:", error);
+      res.status(500).json({ message: "Failed to create user account" });
+    }
+  });
+
+  // Update user account
+  app.put("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updateUserSchema = z.object({
+        username: z.string().min(3).max(50).optional(),
+        password: z.string().min(6).optional(),
+        role: z.enum(["admin", "manager", "employee"]).optional(),
+        employeeId: z.number().optional().nullable(),
+      });
+
+      const userData = updateUserSchema.parse(req.body);
+
+      // Check if username is being changed and already exists
+      if (userData.username && userData.username !== existingUser.username) {
+        const userWithSameUsername = await storage.getUserByUsername(userData.username);
+        if (userWithSameUsername && userWithSameUsername.id !== userId) {
+          return res.status(400).json({ message: "Username already exists" });
+        }
+      }
+
+      // Prepare update data
+      const updateData: Partial<User> = {};
+
+      if (userData.username) updateData.username = userData.username;
+      if (userData.role) updateData.role = userData.role;
+
+      // Only update employeeId if it changed
+      if (userData.employeeId !== undefined) {
+        // If employeeId is provided, check if it exists
+        if (userData.employeeId !== null) {
+          const employee = await storage.getEmployee(userData.employeeId);
+          if (!employee) {
+            return res.status(400).json({ message: "Employee not found" });
+          }
+          updateData.employeeId = userData.employeeId;
+          updateData.fullName = `${employee.lastName} ${employee.firstName}`;
+        } else {
+          // Remove employee association
+          updateData.employeeId = null;
+          updateData.fullName = existingUser.fullName; // Keep existing name
+        }
+      }
+
+      // Hash password if provided
+      if (userData.password) {
+        updateData.password = await hashPassword(userData.password);
+      }
+
+      // Update user in database
+      const updatedUser = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update user" });
+      }
+
+      // Remove password from response
+      const { password, ...safeUserData } = updatedUser[0];
+
+      res.json(safeUserData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update user with ID ${req.params.id}` });
+    }
+  });
+
+  // Update user password (for regular users to update their own password)
+  app.put("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
+    }
+  });
+
+  // Same endpoint but with PATCH method for flexibility
+  app.patch("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
+    }
+  });
+
+  // Delete user account
+  app.delete("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Prevent deleting your own account
+      if (currentUser.id === userId) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+
+      // Check if user exists
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Delete user
+      await db.delete(users).where(eq(users.id, userId));
+
+      res.status(200).json({ message: "User account deleted successfully" });
+    } catch (error) {
+      console.error(`Error deleting user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to delete user with ID ${req.params.id}` });
+    }
+  });
+
+  // Leave Request Routes
+  app.get('/api/leave-requests', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      const leaveRequests = await storage.getEmployeeLeaveRequests(employee.id, status as string);
+      res.json(leaveRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Add these new endpoints for manager approval/rejection
+  app.get('/api/leave-requests/manager', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can view all leave requests' });
+      }
+
+      // Get all leave requests with employee details
+      const leaveRequests = await storage.getAllLeaveRequestsWithEmployeeDetails(1, 100, status as string);
+
+      // For each request, fetch the employee details
+      const enrichedRequests = await Promise.all(leaveRequests.map(async (request) => {
+        const employee = await storage.getEmployee(request.employeeId);
+        return {
+          ...request,
+          employee: {
+            id: employee?.id,
+            firstName: employee?.firstName,
+            lastName: employee?.lastName,
+            department: employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null
+          }
+        };
+      }));
+
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests for manager:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Endpoint to approve a leave request
+  app.put('/api/leave-requests/:id/approve', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can approve leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be approved
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be approved' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'approved',
+        approvedById: userId,
+        approvedAt: new Date()
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error approving leave request:', error);
+      res.status(500).json({ error: 'Failed to approve leave request' });
+    }
+  });
+
+  // Endpoint to reject a leave request
+  app.put('/api/leave-requests/:id/reject', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const { reason } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can reject leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be rejected
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be rejected' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'rejected',
+        approvedById: userId, // Storing the manager who rejected it
+        approvedAt: new Date(),
+        rejectionReason: reason || null
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error rejecting leave request:', error);
+      res.status(500).json({ error: 'Failed to reject leave request' });
+    }
+  });
+
+  // Endpoint for employee to cancel their pending leave request
+  app.patch('/api/leave-requests/:id/cancel', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get employee by user ID
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Verify that this leave request belongs to the employee
+      if (leaveRequest.employeeId !== employee.id) {
+        return res.status(403).json({ error: 'Unauthorized. This is not your leave request' });
+      }
+
+      // Only pending requests can be cancelled
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'cancelled'
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error cancelling leave request:', error);
+      res.status(500).json({ error: 'Failed to cancel leave request' });
+    }
+  });
+
+  // Endpoint to check leave balance for an employee
+  app.get('/api/leave-balance/:employeeId', ensureAuthenticated, async (req, res) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get the current year
+      const currentYear = new Date().getFullYear();
+
+      // Get all approved leave requests for the employee in the current year
+      const leaveRequests = await storage.getEmployeeLeaveRequestsByYear(employeeId, currentYear, 'approved');
+
+      // Calculate used leave days
+      const usedDays = leaveRequests.reduce((total, request) => {
+        const startDate = new Date(request.startDate);
+        const endDate = new Date(request.endDate);
+        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return total + days;
+      }, 0);
+
+      // Assume a total of 15 days per year (you can adjust this based on your business rules)
+      const totalDays = 15;
+      const availableDays = Math.max(0, totalDays - usedDays);
+
+      res.json({
+        total: totalDays,
+        used: usedDays,
+        available: availableDays
+      });
+    } catch (error) {
+      console.error('Error checking leave balance:', error);
+      res.status(500).json({ error: 'Failed to check leave balance' });
+    }
+  });
+
+  // Salary routes
+  app.get("/api/salary-records", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+
+      const salaryRecords = await storage.getAllSalaryRecords(page, limit, year, month);
+      res.json(salaryRecords);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/salary-records", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const salaryData = insertSalaryRecordSchema.parse(req.body);
+
+      // Get employee to check if they exist
+      const employee = await storage.getEmployee(salaryData.employeeId);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Check if there's already a salary record for this employee, month and year
+      const existingRecords = await storage.getEmployeeSalaryRecords(salaryData.employeeId, salaryData.year);
+      const duplicate = existingRecords.find(r => r.month === salaryData.month);
+
+      if (duplicate) {
+        return res.status(400).json({
+          message: `Salary record already exists for ${employee.firstName} ${employee.lastName} for ${salaryData.month}/${salaryData.year}`
+        });
+      }
+
+      const salaryRecord = await storage.createSalaryRecord(salaryData);
+      res.status(201).json(salaryRecord);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      next(error);
+    }
+  });
+
+  app.get("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      const salaryRecord = await storage.getSalaryRecord(id);
+      if (!salaryRecord) {
+        return res.status(404).json({ message: "Salary record not found" });
+      }
+
+      res.json(salaryRecord);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.put("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      const salaryRecord = await storage.updateSalaryRecord(id, req.body);
+      if (!salaryRecord) {
+        return res.status(404).json({ message: "Salary record not found" });
+      }
+
+      res.json(salaryRecord);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/salary-records/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid salary record ID" });
+      }
+
+      await storage.deleteSalaryRecord(id);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/salary-records/employee/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const salaryRecords = await storage.getEmployeeSalaryRecords(id, year);
+      res.json(salaryRecords);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/stats/salary/:year", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) {
+        return res.status(400).json({ message: "Invalid year" });
+      }
+
+      const salaryStats = await storage.getSalaryStats(year);
+      res.json(salaryStats);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Face recognition routes
+  app.post("/api/face-recognition", async (req, res, next) => {
+    try {
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Face descriptor is required" });
+      }
+
+      // Find employee with matching face descriptor using storage
+      let employee = null;
+
+      try {
+        // Get all employees and find match in memory
+        const { employees: employeesList } = await storage.getAllEmployees();
+        employee = employeesList.find(emp => emp.faceDescriptor === faceDescriptor);
+      } catch (dbError) {
+        console.error("Error querying employee by face descriptor:", dbError);
+        return res.status(500).json({ message: "Error verifying face data" });
+      }
+
+      if (!employee) {
+        return res.status(401).json({ message: "Face recognition failed. No matching employee found." });
+      }
+
+      // Get department data if available
+      const department = employee.departmentId ?
+        await storage.getDepartment(employee.departmentId) : null;
+
+      res.json({
+        success: true,
+        employee: {
+          ...employee,
+          department
+        }
+      });
+    } catch (error) {
+      console.error("Face recognition error:", error);
+      next(error);
+    }
+  });
+
+  // Face registration route
+  app.post("/api/face-registration", async (req, res, next) => {
+    try {
+      const { employeeId, descriptor, joinDate } = req.body;
+
+      if (!employeeId || !descriptor) {
+        return res.status(400).json({
+          message: "Employee ID and face descriptor are required"
+        });
+      }
+
+      // Find the employee first
+      const employee = await storage.getEmployee(employeeId);
+
+      if (!employee) {
+        return res.status(404).json({
+          message: "Employee not found"
+        });
+      }
+
+      // Build update object with provided fields
+      const updateData: any = {
+        faceDescriptor: descriptor
+      };
+
+      // Add joinDate if provided - format properly for date field (YYYY-MM-DD)
+      if (joinDate) {
+        // Chuyển đổi thành định dạng date không có giờ
+        try {
+          const dateObj = new Date(joinDate);
+          // Format as YYYY-MM-DD string
+          const dateStr = dateObj.toISOString().split('T')[0];
+          updateData.joinDate = dateStr;
+          console.log(`Setting join date for employee ${employeeId} to:`, dateStr);
+        } catch (error) {
+          console.error("Error formatting join date:", error);
+        }
+      }
+
+      // Update the employee's data
+      const updatedEmployee = await storage.updateEmployee(employeeId, updateData);
+
+      return res.status(201).json({
+        message: "Face data registered successfully",
+        employee: updatedEmployee
+      });
+    } catch (error) {
+      console.error("Error registering face data:", error);
+      next(error);
+    }
+  });
+
+  // Upload face image and save face profile
+  app.post("/api/employees/:id/face-profile", async (req, res, next) => {
+    try {
+      const employeeId = parseInt(req.params.id);
+
+      console.log("Nhận request upload khuôn mặt cho nhân viên:", employeeId);
+      // Xóa log request body để không hiện thông tin nhạy cảm
+
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "ID nhân viên không hợp lệ" });
+      }
+
+      // Kiểm tra xem có descriptor không
+      const { descriptor } = req.body;
+
+      if (!descriptor) {
+        return res.status(400).json({ message: "Cần có dữ liệu khuôn mặt" });
+      }
+
+      // Tìm nhân viên
+      const employee = await storage.getEmployee(employeeId);
+
+      if (!employee) {
+        return res.status(404).json({ message: "Không tìm thấy nhân viên" });
+      }
+
+      console.log("Đã tìm thấy nhân viên:", employee.firstName, employee.lastName);
+      console.log("Kiểu dữ liệu descriptor:", typeof descriptor);
+
+      // Không cần parse nếu descriptor đã là array
+      let descriptorArray = descriptor;
+
+      // Kiểm tra nếu descriptor là chuỗi, thì parse
+      if (typeof descriptor === 'string') {
+        try {
+          descriptorArray = JSON.parse(descriptor);
+          console.log("Đã parse chuỗi descriptor thành mảng");
+        } catch (e) {
+          console.error("Lỗi khi parse descriptor:", e);
+          return res.status(400).json({ message: "Dữ liệu khuôn mặt không hợp lệ" });
+        }
+      }
+
+      console.log("Thông tin descriptor:", {
+        type: typeof descriptorArray,
+        isArray: Array.isArray(descriptorArray),
+        length: Array.isArray(descriptorArray) ? descriptorArray.length : 'N/A'
+      });
+
+      // Chuyển descriptor thành chuỗi JSON để lưu vào database
+      const descriptorJson = JSON.stringify(descriptorArray);
+
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employeeId, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
+
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã cập nhật thành công nhân viên ID:", employeeId);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu nhân viên:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu khuôn mặt:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Không thể lưu dữ liệu khuôn mặt"
+      });
+    }
+  });
+
+  // Get employee face data route (repurposed to just return faceDescriptor)
+  app.get("/api/employees/:id/face-data", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      // Check if employee exists
+      const employee = await storage.getEmployee(id);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // Return face descriptor data
+      res.json({
+        id: employee.id,
+        employeeId: employee.id,
+        descriptor: employee.faceDescriptor,
+        isActive: !!employee.faceDescriptor
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Reset employee face data
+  app.delete("/api/employees/:employeeId/face-data", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+
+      if (isNaN(employeeId)) {
+        return res.status(400).json({ message: "Invalid employee ID" });
+      }
+
+      // Update employee to remove face descriptor
+      await storage.updateEmployee(employeeId, {
+        faceDescriptor: null
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // User face profile endpoints
+  // Get user face profile data
+  app.get("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xem thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      const employee = user.employeeId ? await storage.getEmployee(user.employeeId) : null;
+
+      // Trả về thông tin face profile
+      res.json({
+        hasFaceProfile: employee ? !!employee.faceDescriptor : false,
+        message: employee?.faceDescriptor
+          ? "Đã đăng ký dữ liệu khuôn mặt"
+          : "Chưa đăng ký dữ liệu khuôn mặt"
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Save user face profile data
+  app.post("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng cập nhật thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Kiểm tra xem có descriptor không
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Cần có dữ liệu khuôn mặt" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      // Lấy thông tin nhân viên
+      const employee = await storage.getEmployee(user.employeeId);
+
+      if (!employee) {
+        return res.status(404).json({ message: "Không tìm thấy thông tin nhân viên" });
+      }
+
+      console.log("Đã tìm thấy nhân viên ID:", employee.id);
+      console.log("Kiểu dữ liệu faceDescriptor:", typeof faceDescriptor);
+
+      // Xử lý descriptor từ chuỗi thành mảng nếu cần
+      let descriptorArray = faceDescriptor;
+
+      // Kiểm tra nếu descriptor là chuỗi, thì parse thành mảng
+      if (typeof faceDescriptor === 'string') {
+        try {
+          // Nếu đó là chuỗi JSON, parse thành mảng
+          if (faceDescriptor.startsWith('[') && faceDescriptor.endsWith(']')) {
+            descriptorArray = JSON.parse(faceDescriptor);
+          } else {
+            // Nếu đó là chuỗi số phân tách bởi dấu phẩy, chuyển thành mảng số
+            descriptorArray = faceDescriptor.split(',').map(Number);
+          }
+          console.log("Đã parse chuỗi faceDescriptor thành mảng");
+        } catch (e) {
+          console.error("Lỗi khi parse faceDescriptor:", e);
+          return res.status(400).json({ message: "Dữ liệu khuôn mặt không hợp lệ" });
+        }
+      }
+
+      // Chuyển descriptor thành chuỗi JSON để lưu vào database
+      const descriptorJson = JSON.stringify(descriptorArray);
+
+      try {
+        // Cập nhật thông tin nhân viên với descriptor
+        const updatedEmployee = await storage.updateEmployee(employee.id, {
+          faceDescriptor: descriptorJson as any // Use type assertion to bypass TypeScript error
+        });
+
+        if (!updatedEmployee) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã cập nhật thành công dữ liệu khuôn mặt cho nhân viên ID:", employee.id);
+
+        return res.status(201).json({
+          success: true,
+          message: "Đã lưu dữ liệu khuôn mặt thành công",
+          employee: updatedEmployee
+        });
+      } catch (updateError) {
+        console.error("Lỗi khi cập nhật dữ liệu khuôn mặt:", updateError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể lưu dữ liệu khuôn mặt vào hệ thống"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu khuôn mặt người dùng:", error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Không thể lưu dữ liệu khuôn mặt"
+      });
+    }
+  });
+
+  // Delete user face profile data
+  app.delete("/api/users/:id/face-profile", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "ID người dùng không hợp lệ" });
+      }
+
+      // Kiểm tra đã đăng nhập và chỉ cho phép người dùng xóa thông tin của chính họ
+      if (!req.user || req.user.id !== userId) {
+        return res.status(403).json({ message: "Không có quyền truy cập" });
+      }
+
+      // Lấy thông tin người dùng
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "Không tìm thấy người dùng" });
+      }
+
+      // Kiểm tra xem người dùng có liên kết với nhân viên không
+      if (!user.employeeId) {
+        return res.status(400).json({ message: "Tài khoản không liên kết với nhân viên" });
+      }
+
+      try {
+        // Xóa dữ liệu khuôn mặt của nhân viên
+        const updated = await storage.updateEmployee(user.employeeId, {
+          faceDescriptor: null
+        });
+
+        if (!updated) {
+          throw new Error("Không thể cập nhật dữ liệu nhân viên");
+        }
+
+        console.log("Đã xóa dữ liệu khuôn mặt cho nhân viên ID:", user.employeeId);
+
+        return res.status(200).json({
+          success: true,
+          message: "Đã xóa dữ liệu khuôn mặt thành công"
+        });
+      } catch (deleteError) {
+        console.error("Lỗi khi xóa dữ liệu khuôn mặt:", deleteError);
+        return res.status(500).json({
+          success: false,
+          message: "Không thể xóa dữ liệu khuôn mặt"
+        });
+      }
+    } catch (error) {
+      console.error("Lỗi khi xóa dữ liệu khuôn mặt người dùng:", error);
+      next(error);
+    }
+  });
+
+  app.post("/api/attendance/verify", async (req, res, next) => {
+    try {
+      const { faceDescriptor } = req.body;
+
+      if (!faceDescriptor) {
+        return res.status(400).json({ message: "Face descriptor is required" });
+      }
+
+      // Chuyển đổi descriptor từ string về array
+      const descriptorArray = faceDescriptor.split(',').map(Number);
+
+      // Lấy danh sách tất cả nhân viên có face descriptor
+      const employeesWithFace = await storage.getEmployeesWithFaceDescriptor();
+
+      if (!employeesWithFace || employeesWithFace.length === 0) {
+        return res.status(404).json({
+          message: "Không tìm thấy nhân viên nào có dữ liệu khuôn mặt"
+        });
+      }
+
+      // Tìm nhân viên phù hợp nhất với descriptor
+      let bestMatch = null;
+      let bestDistance = 1.0; // Giá trị ban đầu cao (khoảng cách lớn)
+
+      for (const employee of employeesWithFace) {
+        if (!employee.faceDescriptor) continue;
+
+        // Chuyển đổi descriptor của nhân viên từ string về array
+        let employeeDescriptor;
+        try {
+          // Thử parse JSON nếu là chuỗi JSON
+          if (employee.faceDescriptor.startsWith('[') || employee.faceDescriptor.startsWith('{')) {
+            employeeDescriptor = JSON.parse(employee.faceDescriptor);
+          } else {
+            // Nếu không phải JSON, giả định là chuỗi phân tách bằng dấu phẩy
+            employeeDescriptor = employee.faceDescriptor.split(',').map(Number);
+          }
+        } catch (error) {
+          console.error(`Error parsing face descriptor for employee ${employee.id}:`, error);
+          continue;
+        }
+
+        // Tính khoảng cách Euclidean giữa hai descriptor
+        const distance = calculateEuclideanDistance(descriptorArray, employeeDescriptor);
+
+        // Nếu khoảng cách nhỏ hơn, cập nhật best match
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMatch = employee;
+        }
+      }
+
+      // Threshold cho việc nhận diện (giá trị 0.6 có thể điều chỉnh)
+      const threshold = 0.6;
+      if (!bestMatch || bestDistance > threshold) {
+        return res.status(401).json({
+          message: "Không thể nhận diện khuôn mặt. Vui lòng thử lại."
+        });
+      }
+
+      res.json({
+        verified: true,
+        employee: {
+          id: bestMatch.id,
+          firstName: bestMatch.firstName,
+          lastName: bestMatch.lastName,
+          employeeId: bestMatch.employeeId,
+          confidence: 1 - bestDistance
+        }
+      });
+    } catch (error) {
+      console.error("Error verifying face:", error);
+      next(error);
+    }
+  });
+
+  // User/Account management routes
+  app.get("/api/users", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const user = req.user as Express.User;
+      if (user.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Get all user accounts
+      const userAccounts = await db.select().from(users);
+
+      // Remove password field from response
+      const safeUserAccounts = userAccounts.map(({ password, ...userData }) => userData);
+
+      res.json(safeUserAccounts);
+    } catch (error) {
+      console.error("Error fetching user accounts:", error);
+      res.status(500).json({ message: "Failed to fetch user accounts" });
+    }
+  });
+
+  app.get("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin or the user is fetching their own data
+      const user = req.user as Express.User;
+      const requestedId = parseInt(req.params.id);
+
+      if (isNaN(requestedId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (user.role !== "admin" && user.id !== requestedId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Get user account
+      const userAccount = await storage.getUser(requestedId);
+
+      if (!userAccount) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Remove password field from response
+      const { password, ...safeUserData } = userAccount;
+
+      res.json(safeUserData);
+    } catch (error) {
+      console.error(`Error fetching user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to fetch user with ID ${req.params.id}` });
+    }
+  });
+
+  // Create user account
+  app.post("/api/users", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Validate input
+      const userSchema = z.object({
+        username: z.string().min(3).max(50),
+        password: z.string().min(6),
+        role: z.enum(["admin", "manager", "employee"]),
+        employeeId: z.number().optional().nullable(),
+      });
+
+      const userData = userSchema.parse(req.body);
+
+      // Check if username already exists
+      const existingUser = await storage.getUserByUsername(userData.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      // If employeeId is provided, check if it exists
+      let fullName = "System User";
+      if (userData.employeeId !== undefined && userData.employeeId !== null) {
+        const employee = await storage.getEmployee(userData.employeeId);
+        if (!employee) {
+          return res.status(400).json({ message: "Employee not found" });
+        }
+        fullName = `${employee.lastName} ${employee.firstName}`;
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(userData.password);
+
+      // Create user account with proper typing
+      const newUser = {
+        username: userData.username,
+        password: hashedPassword,
+        role: userData.role,
+        employeeId: userData.employeeId,
+        fullName: fullName,
+        createdAt: new Date(),
+      } as any; // Use type assertion to bypass TypeScript error
+
+      const createdUser = await storage.createUser(newUser);
+
+      // Remove password from response
+      const { password, ...safeUserData } = createdUser;
+
+      res.status(201).json(safeUserData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error("Error creating user:", error);
+      res.status(500).json({ message: "Failed to create user account" });
+    }
+  });
+
+  // Update user account
+  app.put("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updateUserSchema = z.object({
+        username: z.string().min(3).max(50).optional(),
+        password: z.string().min(6).optional(),
+        role: z.enum(["admin", "manager", "employee"]).optional(),
+        employeeId: z.number().optional().nullable(),
+      });
+
+      const userData = updateUserSchema.parse(req.body);
+
+      // Check if username is being changed and already exists
+      if (userData.username && userData.username !== existingUser.username) {
+        const userWithSameUsername = await storage.getUserByUsername(userData.username);
+        if (userWithSameUsername && userWithSameUsername.id !== userId) {
+          return res.status(400).json({ message: "Username already exists" });
+        }
+      }
+
+      // Prepare update data
+      const updateData: Partial<User> = {};
+
+      if (userData.username) updateData.username = userData.username;
+      if (userData.role) updateData.role = userData.role;
+
+      // Only update employeeId if it changed
+      if (userData.employeeId !== undefined) {
+        // If employeeId is provided, check if it exists
+        if (userData.employeeId !== null) {
+          const employee = await storage.getEmployee(userData.employeeId);
+          if (!employee) {
+            return res.status(400).json({ message: "Employee not found" });
+          }
+          updateData.employeeId = userData.employeeId;
+          updateData.fullName = `${employee.lastName} ${employee.firstName}`;
+        } else {
+          // Remove employee association
+          updateData.employeeId = null;
+          updateData.fullName = existingUser.fullName; // Keep existing name
+        }
+      }
+
+      // Hash password if provided
+      if (userData.password) {
+        updateData.password = await hashPassword(userData.password);
+      }
+
+      // Update user in database
+      const updatedUser = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update user" });
+      }
+
+      // Remove password from response
+      const { password, ...safeUserData } = updatedUser[0];
+
+      res.json(safeUserData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update user with ID ${req.params.id}` });
+    }
+  });
+
+  // Update user password (for regular users to update their own password)
+  app.put("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
+    }
+  });
+
+  // Same endpoint but with PATCH method for flexibility
+  app.patch("/api/users/:id/password", ensureAuthenticated, async (req, res, next) => {
+    try {
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      // Users can only update their own password unless they are admin
+      if (currentUser.id !== userId && currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: You can only update your own password" });
+      }
+
+      // Get the user to update
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Validate input
+      const updatePasswordSchema = z.object({
+        currentPassword: z.string().min(6),
+        newPassword: z.string().min(6),
+      });
+
+      const passwordData = updatePasswordSchema.parse(req.body);
+
+      // Verify the current password is correct
+      const isPasswordValid = await comparePasswords(passwordData.currentPassword, existingUser.password);
+      if (!isPasswordValid) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(passwordData.newPassword);
+
+      // Update password in database
+      const updatedUser = await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId))
+        .returning();
+
+      if (!updatedUser || updatedUser.length === 0) {
+        return res.status(500).json({ message: "Failed to update password" });
+      }
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const validationError = fromZodError(error);
+        return res.status(400).json({ message: validationError.message });
+      }
+      console.error(`Error updating password for user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to update password` });
+    }
+  });
+
+  // Delete user account
+  app.delete("/api/users/:id", ensureAuthenticated, async (req, res, next) => {
+    try {
+      // Check if user is admin
+      const currentUser = req.user as Express.User;
+      const userId = parseInt(req.params.id);
+
+      if (isNaN(userId)) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+
+      if (currentUser.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admin access required" });
+      }
+
+      // Prevent deleting your own account
+      if (currentUser.id === userId) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+
+      // Check if user exists
+      const existingUser = await storage.getUser(userId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Delete user
+      await db.delete(users).where(eq(users.id, userId));
+
+      res.status(200).json({ message: "User account deleted successfully" });
+    } catch (error) {
+      console.error(`Error deleting user with ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to delete user with ID ${req.params.id}` });
+    }
+  });
+
+  // Leave Request Routes
+  app.get('/api/leave-requests', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      const leaveRequests = await storage.getEmployeeLeaveRequests(employee.id, status as string);
+      res.json(leaveRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Add these new endpoints for manager approval/rejection
+  app.get('/api/leave-requests/manager', ensureAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can view all leave requests' });
+      }
+
+      // Get all leave requests with employee details
+      const leaveRequests = await storage.getAllLeaveRequestsWithEmployeeDetails(1, 100, status as string);
+
+      // For each request, fetch the employee details
+      const enrichedRequests = await Promise.all(leaveRequests.map(async (request) => {
+        const employee = await storage.getEmployee(request.employeeId);
+        return {
+          ...request,
+          employee: {
+            id: employee?.id,
+            firstName: employee?.firstName,
+            lastName: employee?.lastName,
+            department: employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null
+          }
+        };
+      }));
+
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error('Error fetching leave requests for manager:', error);
+      res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  });
+
+  // Endpoint to approve a leave request
+  app.put('/api/leave-requests/:id/approve', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can approve leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be approved
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be approved' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'approved',
+        approvedById: userId,
+        approvedAt: new Date()
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error approving leave request:', error);
+      res.status(500).json({ error: 'Failed to approve leave request' });
+    }
+  });
+
+  // Endpoint to reject a leave request
+  app.put('/api/leave-requests/:id/reject', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+      const { reason } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Check if user is admin or manager
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin' && user?.role !== 'manager') {
+        return res.status(403).json({ error: 'Unauthorized. Only managers can reject leave requests' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Only pending requests can be rejected
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be rejected' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'rejected',
+        approvedById: userId, // Storing the manager who rejected it
+        approvedAt: new Date(),
+        rejectionReason: reason || null
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error rejecting leave request:', error);
+      res.status(500).json({ error: 'Failed to reject leave request' });
+    }
+  });
+
+  // Endpoint for employee to cancel their pending leave request
+  app.patch('/api/leave-requests/:id/cancel', ensureAuthenticated, async (req, res) => {
+    try {
+      const requestId = parseInt(req.params.id);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get employee by user ID
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      // Get the leave request
+      const leaveRequest = await storage.getLeaveRequest(requestId);
+      if (!leaveRequest) {
+        return res.status(404).json({ error: 'Leave request not found' });
+      }
+
+      // Verify that this leave request belongs to the employee
+      if (leaveRequest.employeeId !== employee.id) {
+        return res.status(403).json({ error: 'Unauthorized. This is not your leave request' });
+      }
+
+      // Only pending requests can be cancelled
+      if (leaveRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+      }
+
+      // Update the leave request
+      const updatedRequest = await storage.updateLeaveRequest(requestId, {
+        status: 'cancelled'
+      });
+
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error('Error cancelling leave request:', error);
+      res.status(500).json({ error: 'Failed to cancel leave request' });
+    }
+  });
+
+  // Endpoint to check leave balance for an employee
+  app.get('/api/leave-balance/:employeeId', ensureAuthenticated, async (req, res) => {
+    try {
+      const employeeId = parseInt(req.params.employeeId);
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      // Get the current year
+      const currentYear = new Date().getFullYear();
+
+      // Get all approved leave requests for the employee in the current year
+      const leaveRequests = await storage.getEmployeeLeaveRequestsByYear(employeeId, currentYear, 'approved');
+
+      // Calculate used leave days
+      const usedDays = leaveRequests.reduce((total, request) => {
+        const startDate = new Date(request.startDate);
+        const endDate = new Date(request.endDate);
+        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return total + days;
+      }, 0);
+
+      // Assume a total of 15 days per year (you can adjust this based on your business rules)
+      const totalDays = 15;
+      const availableDays = Math.max(0, totalDays - usedDays);
+
+      res.json({
+        total: totalDays,
+        used: usedDays,
+        available: availableDays
+      });
+    } catch (error) {
+      console.error('Error checking leave balance:', error);
+      res.status(500).json({ error: 'Failed to check leave balance' });
+    }
+  });
+
+  // Endpoint kiểm tra phòng ban trực tiếp với SQL để debug
+  app.get("/api/departments/direct/:id", async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid department ID" });
+      }
+
+      // Dùng truy vấn SQL trực tiếp để lấy thông tin phòng ban
+      const { Pool } = require('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      console.log(`Executing direct SQL query for department ID: ${id}`);
+      const result = await pool.query('SELECT * FROM departments WHERE id = $1', [id]);
+
+      if (result.rows && result.rows.length > 0) {
+        const department = {
+          id: Number(result.rows[0].id),
+          name: result.rows[0].name,
+          description: result.rows[0].description,
+          managerId: result.rows[0].manager_id,
+          createdAt: result.rows[0].created_at,
+          updatedAt: result.rows[0].updated_at
+        };
+
+        console.log("Department found by direct SQL:", department);
+        return res.json(department);
+      } else {
+        console.log(`No department found with ID ${id} by direct SQL`);
+        return res.status(404).json({ message: "Department not found" });
+      }
+    } catch (error) {
+      console.error(`Error retrieving department with direct SQL, ID ${req.params.id}:`, error);
+      res.status(500).json({ message: `Failed to retrieve department with ID ${req.params.id}` });
+    }
+  });
+
+  // Endpoint kiểm tra kết nối trực tiếp với SQL để debug
+  app.get("/api/debug/test-db-connection", async (req, res, next) => {
+    try {
+      console.log("Testing direct database connection");
+      const { Pool } = require('pg');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000
+      });
+
+      // Log cấu hình kết nối
+      console.log("Database connection config:", {
+        connectionString: process.env.DATABASE_URL && process.env.DATABASE_URL.split('@')[1], // Chỉ hiển thị hostname, không hiển thị password
+        config: pool.options
+      });
+
+      // Kiểm tra kết nối
+      const client = await pool.connect();
+      console.log("Database connection successful");
+
+      // Kiểm tra truy vấn đơn giản
+      const departmentResult = await client.query('SELECT * FROM departments WHERE id = 1');
+      console.log("Department query result:", departmentResult.rows);
+
+      client.release();
+
+      res.json({
+        connectionSuccess: true,
+        departments: departmentResult.rows,
+        config: {
+          url: process.env.DATABASE_URL ? `...@${process.env.DATABASE_URL.split('@')[1]}` : 'not set',
+          host: pool.options.host,
+          database: pool.options.database,
+          port: pool.options.port
+        }
+      });
+    } catch (error) {
+      console.error("Database connection error:", error);
+      res.status(500).json({
+        connectionSuccess: false,
+        error: error.message,
+        stack: error.stack,
+        config: {
+          url: process.env.DATABASE_URL ? `...@${process.env.DATABASE_URL.split('@')[1]}` : 'not set'
+        }
+      });
     }
   });
 
