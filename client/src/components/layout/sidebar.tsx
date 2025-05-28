@@ -14,7 +14,8 @@ import {
   UserCog,
   History,
   UserCircle,
-  FileText
+  FileText,
+  Building
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -120,14 +121,6 @@ export function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink
-                  href="/user/salary"
-                  icon={<DollarSign className="h-5 w-5" />}
-                  isActive={isActive('/user/salary')}
-                >
-                  {t('common.salary')}
-                </SidebarLink>
-
-                <SidebarLink
                   href="/user/settings"
                   icon={<Settings className="h-5 w-5" />}
                   isActive={isActive('/user/settings')}
@@ -181,11 +174,11 @@ export function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink
-                  href="/salary"
-                  icon={<DollarSign className="h-5 w-5" />}
-                  isActive={isActive('/salary')}
+                  href="/departments"
+                  icon={<Building className="h-5 w-5" />}
+                  isActive={isActive('/departments')}
                 >
-                  {t('common.salary')}
+                  {t('common.departments')}
                 </SidebarLink>
 
                 <SidebarLink

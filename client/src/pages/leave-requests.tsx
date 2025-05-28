@@ -1,62 +1,60 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Header } from "@/components/layout/header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Plus, Calendar, FileCheck, FileX, FileQuestion } from "lucide-react";
+import { Plus, Calendar, FileCheck, FileX, FileQuestion } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { format } from "date-fns";
-import { LeaveRequest } from "@shared/schema";
+import { LeaveRequest, Employee, Department } from "@shared/schema";
 import { useTranslation } from "react-i18next";
-import { useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LeaveRequestsPage() {
-  const [activeTab, setActiveTab] = useState<string>("all");
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { user } = useAuth();
+  const [_, navigate] = useLocation();
+
+  if (!user) {
+    navigate("/auth");
+    return null;
+  }
+
+  const { toast } = useToast();
 
   const { data: allDepartments = [] } = useQuery({
     queryKey: ["/api/departments"],
     queryFn: async () => {
-      const res = await fetch("/api/departments");
+      const res = await fetch("/api/departments", { credentials: "include" });
       if (!res.ok) return [];
-      return res.json();
+      return await res.json();
     }
   });
 
   const { data: leaveRequests, isLoading, refetch } = useQuery<LeaveRequest[]>({
-    queryKey: ["/api/leave-requests", { activeTab, page, pageSize, departmentFilter, typeFilter, statusFilter }],
+    queryKey: ["/api/leave-requests"],
     queryFn: async () => {
-      const url = new URL("/api/leave-requests", window.location.origin);
-      if (activeTab !== "all") url.searchParams.append("status", activeTab);
-      if (departmentFilter !== "all") url.searchParams.append("departmentId", departmentFilter);
-      if (typeFilter !== "all") url.searchParams.append("type", typeFilter);
-      if (statusFilter !== "all") url.searchParams.append("status", statusFilter);
-      url.searchParams.append("page", String(page));
-      url.searchParams.append("limit", String(pageSize));
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error("Failed to fetch leave requests");
-      return res.json();
+      const res = await fetch("/api/leave-requests", { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.statusText}`);
+      return await res.json();
     }
   });
 
   const { data: totalCount = 0 } = useQuery({
-    queryKey: ["/api/leave-requests/count", { activeTab, departmentFilter, typeFilter, statusFilter }],
+    queryKey: ["/api/leave-requests/count"],
     queryFn: async () => {
-      const url = new URL("/api/leave-requests/count", window.location.origin);
-      if (activeTab !== "all") url.searchParams.append("status", activeTab);
-      if (departmentFilter !== "all") url.searchParams.append("departmentId", departmentFilter);
-      if (typeFilter !== "all") url.searchParams.append("type", typeFilter);
-      if (statusFilter !== "all") url.searchParams.append("status", statusFilter);
-      const res = await fetch(url.toString());
+      const res = await fetch("/api/leave-requests/count", { credentials: "include" });
       if (!res.ok) return 0;
       const data = await res.json();
       return data.count || 0;
@@ -72,10 +70,13 @@ export default function LeaveRequestsPage() {
     queryFn: async () => {
       const result: Record<number, any> = {};
       for (const id of employeeIds) {
-        const res = await fetch(`/api/employees/${id}`);
-        if (res.ok) {
-          const emp = await res.json();
-          result[id] = emp;
+        try {
+          const res = await fetch(`/api/employees/${id}`, { credentials: "include" });
+          if (res.ok) {
+            result[id] = await res.json();
+          }
+        } catch (error) {
+          console.error(`Failed to fetch employee ${id}:`, error);
         }
       }
       return result;
@@ -90,10 +91,13 @@ export default function LeaveRequestsPage() {
     queryFn: async () => {
       const result: Record<number, any> = {};
       for (const id of departmentIds) {
-        const res = await fetch(`/api/departments/${id}`);
-        if (res.ok) {
-          const dept = await res.json();
-          result[id] = dept;
+        try {
+          const res = await fetch(`/api/departments/${id}`, { credentials: "include" });
+          if (res.ok) {
+            result[id] = await res.json();
+          }
+        } catch (error) {
+          console.error(`Failed to fetch department ${id}:`, error);
         }
       }
       return result;
@@ -170,7 +174,7 @@ export default function LeaveRequestsPage() {
             <SelectContent>
               <SelectItem value="all">{t('common.all')}</SelectItem>
               {allDepartments.map((dept: any) => (
-                <SelectItem key={dept.id} value={String(dept.id)}>{dept.description}</SelectItem>
+                <SelectItem key={dept.id} value={String(dept.id)}>{dept.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -233,7 +237,7 @@ export default function LeaveRequestsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue="all" value={statusFilter} onValueChange={setStatusFilter}>
           <TabsList className="grid w-full md:w-auto grid-cols-4">
             <TabsTrigger value="all" className="flex items-center gap-2">
               <Calendar className="h-4 w-4" />
@@ -254,7 +258,7 @@ export default function LeaveRequestsPage() {
           </TabsList>
 
           {/* Leave Requests List */}
-          <TabsContent value={activeTab} className="mt-4">
+          <TabsContent value={statusFilter} className="mt-4">
             {isLoading ? (
               // Skeleton loading state
               <div className="space-y-4">
@@ -281,9 +285,9 @@ export default function LeaveRequestsPage() {
                       <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
                       <h3 className="text-lg font-medium">{t('common.noData')}</h3>
                       <p className="text-muted-foreground">
-                        {activeTab === "all"
+                        {statusFilter === "all"
                           ? t('leaveRequests.noRequestsYet')
-                          : t('leaveRequests.noRequestsInStatus', { status: t(`leaveRequests.${activeTab}`) })}
+                          : t('leaveRequests.noRequestsInStatus', { status: t(`leaveRequests.${statusFilter}`) })}
                       </p>
                       <Link href="/leave-requests/new">
                         <Button variant="outline" className="mt-4">
@@ -315,7 +319,7 @@ export default function LeaveRequestsPage() {
                                   <strong>{t('employees.employeeId')}:</strong> {employee.id} <br />
                                   <strong>{t('employees.name')}:</strong> {employee.firstName} {employee.lastName} <br />
                                   {department && (
-                                    <span><strong>{t('employees.department')}:</strong> {department.description}</span>
+                                    <span><strong>{t('employees.department')}:</strong> {department.name}</span>
                                   )}
                                 </p>
                               )}

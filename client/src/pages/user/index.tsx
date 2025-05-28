@@ -386,48 +386,6 @@ export default function UserDashboard() {
                             </Button>
                         </CardFooter>
                     </Card>
-
-                    {/* Last Salary Card */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">
-                                {t("user.dashboard.salary")}
-                            </CardTitle>
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">
-                                {formatCurrency(employeeData?.salary || 0)}
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                {t("user.dashboard.baseSalary")}
-                            </p>
-
-                            <div className="mt-4 space-y-1">
-                                <div className="text-sm flex justify-between">
-                                    <span>{t("salary.lastPayment")}:</span>
-                                    <span className="font-medium">
-                                        {format(new Date(), "MM/yyyy")}
-                                    </span>
-                                </div>
-
-                                <div className="text-sm flex justify-between">
-                                    <span>{t("salary.netAmount")}:</span>
-                                    <span className="font-medium">
-                                        {formatCurrency((employeeData?.salary || 0) * 0.8)}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button variant="outline" className="w-full" asChild>
-                                <Link href="/user/salary">
-                                    <FileText className="mr-2 h-4 w-4" />
-                                    {t("user.dashboard.viewPayslips")}
-                                </Link>
-                            </Button>
-                        </CardFooter>
-                    </Card>
                 </div>
 
                 {/* Quick Actions and Announcements */}
@@ -514,16 +472,6 @@ export default function UserDashboard() {
                                     <div className="flex items-center">
                                         <Calendar className="mr-2 h-4 w-4" />
                                         {t("user.dashboard.applyLeave")}
-                                    </div>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Link>
-                            </Button>
-
-                            <Button variant="outline" className="justify-between" asChild>
-                                <Link href="/user/salary">
-                                    <div className="flex items-center">
-                                        <FileText className="mr-2 h-4 w-4" />
-                                        {t("user.dashboard.viewSalary")}
                                     </div>
                                     <ChevronRight className="h-4 w-4" />
                                 </Link>

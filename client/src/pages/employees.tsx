@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useTranslation } from "react-i18next";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Employees() {
   const [_, navigate] = useLocation();
@@ -54,9 +55,9 @@ export default function Employees() {
   const { data: departments } = useQuery({
     queryKey: ["/api/departments"],
     queryFn: async () => {
-      const res = await fetch("/api/departments");
+      const res = await apiRequest("GET", "/api/departments");
       if (!res.ok) throw new Error("Failed to fetch departments");
-      return await res.json();
+      return res.data;
     }
   });
 
@@ -98,38 +99,9 @@ export default function Employees() {
   const { data, isLoading, refetch } = useQuery<{ employees: Employee[], total: number }>({
     queryKey: ["/api/employees", queryParams],
     queryFn: async () => {
-      const res = await fetch(`/api/employees?${queryParams}`);
+      const res = await apiRequest("GET", `/api/employees?${queryParams}`);
       if (!res.ok) throw new Error("Failed to fetch employees");
-      const responseData = await res.json();
-
-      // Đảm bảo dữ liệu nhân viên đầy đủ
-      if (responseData && responseData.employees) {
-        responseData.employees = responseData.employees.map((employee: any) => {
-          // Nếu API trả về snake_case format, chuyển về camelCase
-          if (employee.first_name && !employee.firstName) {
-            return {
-              ...employee,
-              firstName: employee.first_name || 'Unknown',
-              lastName: employee.last_name || 'Unknown',
-              employeeId: employee.employee_id || employee.employeeId || '',
-              departmentId: employee.department_id !== undefined ? employee.department_id : employee.departmentId,
-              createdAt: employee.created_at || employee.createdAt || new Date().toISOString(),
-              updatedAt: employee.updated_at || employee.updatedAt || new Date().toISOString(),
-              joinDate: employee.join_date || employee.joinDate || new Date().toISOString(),
-              faceDescriptor: employee.face_descriptor || employee.faceDescriptor || null
-            };
-          }
-
-          // Đảm bảo firstName và lastName luôn có giá trị
-          if (!employee.firstName) employee.firstName = 'Unknown';
-          if (!employee.lastName) employee.lastName = 'Unknown';
-          if (!employee.employeeId) employee.employeeId = '';
-
-          return employee;
-        });
-      }
-
-      return responseData;
+      return res.data;
     }
   });
 

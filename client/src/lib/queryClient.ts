@@ -15,7 +15,7 @@ export interface ApiResponse extends Response {
 async function throwIfResNotOk(res: Response, preReadText?: string): Promise<any> {
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error(`401: ${res.statusText || "Unauthorized - Session expired"}`);
+      throw new Error("Phiên đăng nhập đã hết hạn");
     }
 
     try {
@@ -24,7 +24,7 @@ async function throwIfResNotOk(res: Response, preReadText?: string): Promise<any
 
       // Kiểm tra nếu đây là HTML thay vì JSON
       if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-        throw new Error(`${res.status}: Server returned HTML instead of JSON (possible server error)`);
+        throw new Error("Lỗi server - vui lòng thử lại sau");
       }
 
       // Thử parse JSON nếu có
@@ -36,20 +36,39 @@ async function throwIfResNotOk(res: Response, preReadText?: string): Promise<any
         }
 
         if (jsonData && jsonData.message) {
-          throw new Error(`${res.status}: ${jsonData.message}`);
+          // Làm sạch message
+          let cleanMessage = jsonData.message;
+          cleanMessage = cleanMessage.replace(/^message\s*:\s*/i, '');
+          cleanMessage = cleanMessage.replace(/^\s*["']\s*/, '').replace(/\s*["']\s*$/, '');
+          throw new Error(cleanMessage);
         }
       } catch (jsonError) {
         // Nếu không parse được JSON, sử dụng text gốc
         console.error("Could not parse error response as JSON:", jsonError);
       }
 
-      throw new Error(`${res.status}: ${text || res.statusText}`);
+      // Làm sạch text response
+      let cleanText = text || res.statusText || "Đã xảy ra lỗi";
+
+      // Nếu text chứa JSON string, cố gắng extract message
+      if (cleanText.includes('message')) {
+        const messageMatch = cleanText.match(/"message"\s*:\s*"([^"]+)"/);
+        if (messageMatch) {
+          cleanText = messageMatch[1];
+        }
+      }
+
+      // Loại bỏ các ký tự JSON không cần thiết
+      cleanText = cleanText.replace(/^\s*[{\[\]}\s]*/, '').replace(/[}\]\s]*\s*$/, '');
+      cleanText = cleanText.replace(/^\s*["']\s*/, '').replace(/\s*["']\s*$/, '');
+
+      throw new Error(cleanText);
     } catch (error) {
       if (error instanceof Error) {
         throw error; // Nếu đã là Error object, throw lại
       }
       // Nếu không đọc được response text
-      throw new Error(`${res.status}: ${res.statusText || "Unknown error"}`);
+      throw new Error(res.statusText || "Đã xảy ra lỗi");
     }
   }
   return null;
@@ -80,8 +99,14 @@ export async function apiRequest(
         const errorData = JSON.parse(responseText);
         enhancedResponse.errorData = errorData;
 
-        // Tạo error object với response property
-        const error = new Error(`${res.status}: ${errorData.message || res.statusText}`);
+        // Trích xuất message từ JSON và làm sạch
+        let errorMessage = errorData.message || res.statusText || 'Đã xảy ra lỗi';
+
+        // Loại bỏ các từ khóa không cần thiết
+        errorMessage = errorMessage.replace(/^message\s*:\s*/i, '');
+        errorMessage = errorMessage.replace(/^\s*["']\s*/, '').replace(/\s*["']\s*$/, '');
+
+        const error = new Error(errorMessage);
         Object.defineProperty(error, 'response', {
           value: enhancedResponse,
           enumerable: true,
@@ -89,8 +114,23 @@ export async function apiRequest(
         });
         throw error;
       } catch (parseError) {
-        // Nếu không parse được JSON
-        const error = new Error(`${res.status}: ${responseText || res.statusText}`);
+        // Nếu không parse được JSON - làm sạch response text
+        let cleanText = responseText || res.statusText || 'Đã xảy ra lỗi';
+
+        // Nếu responseText chứa JSON string, cố gắng extract message
+        if (cleanText.includes('message')) {
+          // Tìm và extract nội dung sau "message":"
+          const messageMatch = cleanText.match(/"message"\s*:\s*"([^"]+)"/);
+          if (messageMatch) {
+            cleanText = messageMatch[1];
+          }
+        }
+
+        // Loại bỏ các ký tự JSON không cần thiết
+        cleanText = cleanText.replace(/^\s*[{\[\]}\s]*/, '').replace(/[}\]\s]*\s*$/, '');
+        cleanText = cleanText.replace(/^\s*["']\s*/, '').replace(/\s*["']\s*$/, '');
+
+        const error = new Error(cleanText);
         Object.defineProperty(error, 'response', {
           value: enhancedResponse,
           enumerable: true,

@@ -110,16 +110,16 @@ export function MobileNav() {
                 </SheetTrigger>
                 <SheetContent side="bottom" className="h-64">
                   <div className="grid grid-cols-3 gap-4 py-4">
-                    <Link href="/user/salary">
-                      <div className="flex flex-col items-center p-3 rounded-lg hover:bg-muted">
-                        <DollarSign className="h-6 w-6 mb-2" />
-                        <span className="text-sm">{t('common.salary')}</span>
+                    <Link href="/user/leave-requests">
+                      <div className="flex items-center space-x-3 p-3 rounded-lg bg-accent/50">
+                        <Calendar className="h-5 w-5" />
+                        <span>{t('common.leaveRequests')}</span>
                       </div>
                     </Link>
                     <Link href="/user/settings">
-                      <div className="flex flex-col items-center p-3 rounded-lg hover:bg-muted">
-                        <Settings className="h-6 w-6 mb-2" />
-                        <span className="text-sm">{t('common.settings')}</span>
+                      <div className="flex items-center space-x-3 p-3 rounded-lg bg-accent/50">
+                        <Settings className="h-5 w-5" />
+                        <span>{t('common.settings')}</span>
                       </div>
                     </Link>
                   </div>
@@ -162,11 +162,11 @@ export function MobileNav() {
               </MobileNavLink>
 
               <MobileNavLink
-                href="/salary"
-                icon={<DollarSign className="h-5 w-5" />}
-                isActive={isActive('/salary')}
+                href="/departments"
+                icon={<FileText className="h-5 w-5" />}
+                isActive={isActive('/departments')}
               >
-                {t('common.salary')}
+                {t('common.departments')}
               </MobileNavLink>
             </>
           )}

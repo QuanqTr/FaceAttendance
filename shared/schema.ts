@@ -21,41 +21,14 @@ export const leaveRequestStatusEnum = pgEnum('leave_request_status', ['pending',
 // Enum for leave request type
 export const leaveRequestTypeEnum = pgEnum('leave_request_type', ['sick', 'vacation', 'personal', 'other']);
 
-// Users table (admins)
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  fullName: text("full_name").notNull(),
-  role: text("role").default("admin").notNull(),
-  employeeId: integer("employee_id").references(() => employees.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const usersRelations = relations(users, ({ many, one }) => ({
-  departments: many(departments),
-  employee: one(employees, {
-    fields: [users.employeeId],
-    references: [employees.id],
-  }),
-}));
-
-// Departments table
+// Departments table - define first to avoid circular reference
 export const departments = pgTable("departments", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
-  managerId: integer("manager_id").references(() => users.id),
+  managerId: integer("manager_id"), // Remove reference for now
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-
-export const departmentsRelations = relations(departments, ({ one, many }) => ({
-  manager: one(users, {
-    fields: [departments.managerId],
-    references: [users.id],
-  }),
-  employees: many(employees),
-}));
 
 // Employees table
 export const employees = pgTable("employees", {
@@ -72,6 +45,17 @@ export const employees = pgTable("employees", {
   joinDate: date("join_date").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Users table (admins) - now references employees
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+  fullName: text("full_name").notNull(),
+  role: text("role").default("admin").notNull(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Face data table for storing face recognition data
@@ -121,23 +105,6 @@ export const leaveRequests = pgTable("leave_requests", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Salary records table
-export const salaryRecords = pgTable("salary_records", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id).notNull(),
-  month: integer("month").notNull(),
-  year: integer("year").notNull(),
-  basicSalary: decimal("basic_salary", { precision: 10, scale: 2 }).notNull(),
-  bonus: decimal("bonus", { precision: 10, scale: 2 }).default("0").notNull(),
-  deduction: decimal("deduction", { precision: 10, scale: 2 }).default("0").notNull(),
-  totalSalary: decimal("total_salary", { precision: 10, scale: 2 }).notNull(),
-  paymentDate: date("payment_date"),
-  paymentStatus: boolean("payment_status").default(false).notNull(),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
 // Cached work hours table for storing calculated work hours
 export const cachedWorkHours = pgTable("cached_work_hours", {
   id: serial("id").primaryKey(),
@@ -166,7 +133,52 @@ export const workHours = pgTable("work_hours", {
   status: text("status").default("normal"), // 'normal', 'late', 'early_leave', 'absent'
 });
 
+// Attendance summary table for monthly/yearly aggregations
+export const attendanceSummary = pgTable("attendance_summary", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  totalHours: decimal("total_hours", { precision: 8, scale: 2 }).default("0.00"),
+  regularHours: decimal("regular_hours", { precision: 8, scale: 2 }).default("0.00"),
+  overtimeHours: decimal("overtime_hours", { precision: 8, scale: 2 }).default("0.00"),
+  leaveDays: integer("leave_days").default(0),
+  presentDays: integer("present_days").default(0),
+  absentDays: integer("absent_days").default(0),
+  lateDays: integer("late_days").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Notifications table
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id).notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").default("info").notNull(), // 'info', 'warning', 'error', 'success'
+  read: boolean("read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Define all relations
+export const usersRelations = relations(users, ({ many, one }) => ({
+  departments: many(departments),
+  employee: one(employees, {
+    fields: [users.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const departmentsRelations = relations(departments, ({ one, many }) => ({
+  manager: one(users, {
+    fields: [departments.managerId],
+    references: [users.id],
+  }),
+  employees: many(employees),
+}));
+
 export const employeesRelations = relations(employees, ({ one, many }) => ({
   department: one(departments, {
     fields: [employees.departmentId],
@@ -174,7 +186,6 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   }),
   attendanceRecords: many(attendanceRecords),
   leaveRequests: many(leaveRequests),
-  salaryRecords: many(salaryRecords),
   faceData: many(faceData),
 }));
 
@@ -210,13 +221,6 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
   }),
 }));
 
-export const salaryRecordsRelations = relations(salaryRecords, ({ one }) => ({
-  employee: one(employees, {
-    fields: [salaryRecords.employeeId],
-    references: [employees.id],
-  }),
-}));
-
 export const cachedWorkHoursRelations = relations(cachedWorkHours, ({ one }) => ({
   employee: one(employees, {
     fields: [cachedWorkHours.employeeId],
@@ -227,6 +231,21 @@ export const cachedWorkHoursRelations = relations(cachedWorkHours, ({ one }) => 
 export const workHoursRelations = relations(workHours, ({ one }) => ({
   employee: one(employees, {
     fields: [workHours.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+// Add relations for new tables
+export const attendanceSummaryRelations = relations(attendanceSummary, ({ one }) => ({
+  employee: one(employees, {
+    fields: [attendanceSummary.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  employee: one(employees, {
+    fields: [notifications.employeeId],
     references: [employees.id],
   }),
 }));
@@ -255,11 +274,6 @@ export const insertLeaveRequestSchema = createInsertSchema(leaveRequests).omit({
   createdAt: true,
   updatedAt: true
 });
-export const insertSalaryRecordSchema = createInsertSchema(salaryRecords).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
 export const insertFaceDataSchema = createInsertSchema(faceData).omit({
   id: true,
   createdAt: true,
@@ -271,6 +285,14 @@ export const insertCachedWorkHoursSchema = createInsertSchema(cachedWorkHours).o
   updatedAt: true
 });
 export const insertWorkHoursSchema = createInsertSchema(workHours).omit({
+  id: true
+});
+export const insertAttendanceSummarySchema = createInsertSchema(attendanceSummary).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export const insertNotificationsSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
   updatedAt: true
@@ -295,14 +317,17 @@ export type InsertTimeLog = z.infer<typeof insertTimeLogSchema>;
 export type LeaveRequest = typeof leaveRequests.$inferSelect;
 export type InsertLeaveRequest = z.infer<typeof insertLeaveRequestSchema>;
 
-export type SalaryRecord = typeof salaryRecords.$inferSelect;
-export type InsertSalaryRecord = z.infer<typeof insertSalaryRecordSchema>;
-
 export type CachedWorkHours = typeof cachedWorkHours.$inferSelect;
 export type InsertCachedWorkHours = z.infer<typeof insertCachedWorkHoursSchema>;
 
 export type WorkHours = typeof workHours.$inferSelect;
 export type InsertWorkHours = z.infer<typeof insertWorkHoursSchema>;
+
+export type AttendanceSummary = typeof attendanceSummary.$inferSelect;
+export type InsertAttendanceSummary = z.infer<typeof insertAttendanceSummarySchema>;
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationsSchema>;
 
 // Login schema (subset of InsertUser)
 export const loginSchema = insertUserSchema.pick({ username: true, password: true });

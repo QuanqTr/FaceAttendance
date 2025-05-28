@@ -1,27 +1,22 @@
 import {
   type User,
   type InsertUser,
-  type Department,
   type InsertDepartment,
   type Employee,
   type InsertEmployee,
-  type AttendanceRecord,
-  type InsertAttendanceRecord,
   type LeaveRequest,
   type InsertLeaveRequest,
-  type SalaryRecord,
-  type InsertSalaryRecord,
   type TimeLog,
   type InsertTimeLog,
   users,
   departments,
   employees,
-  attendanceRecords,
   leaveRequests,
-  salaryRecords,
   timeLogs,
   cachedWorkHours,
-  workHours
+  workHours,
+  attendanceSummary,
+  notifications
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lt, sql, count, isNotNull, asc, lte } from "drizzle-orm";
@@ -35,13 +30,15 @@ export interface IStorage {
   // User methods
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmployeeId(employeeId: number): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserPassword(userId: number, hashedPassword: string): Promise<void>;
 
   // Department methods
-  getDepartment(id: number): Promise<Department | undefined>;
-  getAllDepartments(): Promise<Department[]>;
-  createDepartment(department: InsertDepartment): Promise<Department>;
-  updateDepartment(id: number, department: Partial<InsertDepartment>): Promise<Department | undefined>;
+  getDepartment(id: number): Promise<any>;
+  getAllDepartments(): Promise<any[]>;
+  createDepartment(department: InsertDepartment): Promise<any>;
+  updateDepartment(id: number, department: Partial<InsertDepartment>): Promise<any | undefined>;
   deleteDepartment(id: number): Promise<boolean>;
 
   // Employee methods
@@ -52,13 +49,6 @@ export interface IStorage {
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee | undefined>;
   deleteEmployee(id: number): Promise<boolean>;
-
-  // Attendance methods
-  getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined>;
-  getEmployeeAttendance(employeeId: number, startDate?: Date, endDate?: Date): Promise<AttendanceRecord[]>;
-  createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord>;
-  getLatestAttendanceRecord(employeeId: number, date: Date): Promise<AttendanceRecord | undefined>;
-  getDailyAttendance(date: Date): Promise<{ employee: Employee; attendance?: AttendanceRecord }[]>;
 
   // Time Log methods
   createTimeLog(timeLog: InsertTimeLog): Promise<TimeLog>;
@@ -90,15 +80,6 @@ export interface IStorage {
   createLeaveRequest(leaveRequest: InsertLeaveRequest): Promise<LeaveRequest>;
   updateLeaveRequest(id: number, leaveRequest: Partial<LeaveRequest>): Promise<LeaveRequest | undefined>;
   deleteLeaveRequest(id: number): Promise<boolean>;
-
-  // Salary methods
-  getSalaryRecord(id: number): Promise<SalaryRecord | undefined>;
-  getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]>;
-  getAllSalaryRecords(page: number, limit: number, year?: number, month?: number): Promise<SalaryRecord[]>;
-  createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord>;
-  updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined>;
-  deleteSalaryRecord(id: number): Promise<boolean>;
-  getSalaryStats(year: number): Promise<{ month: number; totalSalary: number; totalEmployees: number }[]>;
 
   // Statistics methods
   getDepartmentAttendanceStats(date: Date): Promise<{ departmentId: number; departmentName: string; presentPercentage: number }[]>;
@@ -143,6 +124,7 @@ export interface Department {
   name: string;
   description: string | null;
   managerId: number | null;
+  managerName?: string | null;
   createdAt: Date;
 }
 
@@ -167,6 +149,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByEmployeeId(employeeId: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.employeeId, employeeId));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -175,82 +162,71 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // Department methods
-  async getDepartment(id: number): Promise<Department | undefined> {
-    try {
-      console.log(`Attempting to fetch department with ID: ${id}, type: ${typeof id}`);
-
-      // Ensure id is properly converted to a number
-      const departmentId = Number(id);
-      console.log(`Converted ID: ${departmentId}, type: ${typeof departmentId}`);
-
-      if (isNaN(departmentId)) {
-        console.error(`Invalid department ID: ${id}`);
-        return undefined;
-      }
-
-      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
-      // Import modules thay vì sử dụng require
-      const { Pool } = await import('pg');
-      const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        connectionTimeoutMillis: 5000
-      });
-
-      const result = await pool.query('SELECT id, name, description, manager_id, created_at FROM departments WHERE id = $1', [departmentId]);
-      console.log(`Direct SQL query result:`, result.rows);
-
-      if (result.rows && result.rows.length > 0) {
-        // Map kết quả trả về từ DB sang đúng kiểu Department
-        const department: Department = {
-          id: Number(result.rows[0].id),
-          name: result.rows[0].name,
-          description: result.rows[0].description,
-          managerId: result.rows[0].manager_id,
-          createdAt: new Date(result.rows[0].created_at)
-        };
-
-        console.log(`Department found:`, department);
-        return department;
-      }
-
-      console.log(`No department found with ID ${departmentId}`);
-      return undefined;
-    } catch (error) {
-      console.error(`Error fetching department with ID ${id}:`, error);
-      return undefined;
-    }
+  async updateUserPassword(userId: number, hashedPassword: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.id, userId));
   }
 
+  // Department methods
   async getAllDepartments(): Promise<Department[]> {
-    try {
-      console.log("Fetching departments from database");
+    // First get departments with manager info
+    const departmentsWithManagers = await db
+      .select({
+        id: departments.id,
+        name: departments.name,
+        description: departments.description,
+        managerId: departments.managerId,
+        managerName: sql`CONCAT(e.first_name, ' ', e.last_name)`.as('managerName'),
+        createdAt: departments.createdAt
+      })
+      .from(departments)
+      .leftJoin(users, eq(departments.managerId, users.id))
+      .leftJoin(employees.as('e'), eq(users.employeeId, sql`e.id`));
 
-      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
-      // Import modules thay vì sử dụng require
-      const { Pool } = await import('pg');
-      const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        connectionTimeoutMillis: 5000
-      });
+    // Then count employees for each department
+    const employeeCounts = await db
+      .select({
+        departmentId: employees.departmentId,
+        count: sql<number>`count(*)`.as('count')
+      })
+      .from(employees)
+      .groupBy(employees.departmentId);
 
-      const result = await pool.query('SELECT id, name, description, manager_id, created_at FROM departments ORDER BY id');
-      console.log(`Found ${result.rows.length} departments`);
+    // Combine the results
+    return departmentsWithManagers.map(dept => ({
+      ...dept,
+      managerId: dept.managerId || null,
+      managerName: dept.managerName || null,
+      employeeCount: employeeCounts.find(
+        count => count.departmentId === dept.id
+      )?.count || 0
+    }));
+  }
 
-      // Map kết quả trả về từ DB sang đúng kiểu Department[]
-      const departments: Department[] = result.rows.map(row => ({
-        id: Number(row.id),
-        name: row.name,
-        description: row.description,
-        managerId: row.manager_id,
-        createdAt: new Date(row.created_at)
-      }));
+  async getDepartment(id: number): Promise<Department | undefined> {
+    const [department] = await db
+      .select({
+        id: departments.id,
+        name: departments.name,
+        description: departments.description,
+        managerId: departments.managerId,
+        managerName: users.fullName,
+        createdAt: departments.createdAt
+      })
+      .from(departments)
+      .leftJoin(users, eq(departments.managerId, users.id))
+      .where(eq(departments.id, id));
 
-      return departments;
-    } catch (error) {
-      console.error("Error fetching all departments:", error);
-      return [];
-    }
+    if (!department) return undefined;
+
+    // Ensure consistent manager information
+    return {
+      ...department,
+      managerId: department.managerId || null,
+      managerName: department.managerName || null
+    };
   }
 
   async createDepartment(department: InsertDepartment): Promise<Department> {
@@ -266,8 +242,8 @@ export class DatabaseStorage implements IStorage {
       });
 
       const result = await pool.query(
-        'INSERT INTO departments (name, description, created_at) VALUES ($1, $2, NOW()) RETURNING id, name, description, manager_id, created_at',
-        [department.name, department.description || null]
+        'INSERT INTO departments (name, description, manager_id, created_at) VALUES ($1, $2, $3, NOW()) RETURNING id, name, description, manager_id, created_at',
+        [department.name, department.description || null, department.managerId || null]
       );
 
       if (!result.rows || result.rows.length === 0) {
@@ -293,71 +269,40 @@ export class DatabaseStorage implements IStorage {
 
   async updateDepartment(id: number, department: Partial<InsertDepartment>): Promise<Department | undefined> {
     try {
-      console.log(`Updating department ${id}: ${JSON.stringify(department)}`);
+      const [updatedDepartment] = await db
+        .update(departments)
+        .set({
+          ...department,
+          managerId: department.managerId || null // Ensure null for empty manager
+        })
+        .where(eq(departments.id, id))
+        .returning();
 
-      // Sử dụng pool PostgreSQL trực tiếp để tránh lỗi type
-      // Import modules thay vì sử dụng require
-      const { Pool } = await import('pg');
-      const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        connectionTimeoutMillis: 5000
-      });
-
-      // Xây dựng câu lệnh SQL động dựa trên các trường cần cập nhật
-      let updateFields = [];
-      let params = [];
-      let paramIndex = 1;
-
-      if (department.name !== undefined) {
-        updateFields.push(`name = $${paramIndex}`);
-        params.push(department.name);
-        paramIndex++;
-      }
-
-      if (department.description !== undefined) {
-        updateFields.push(`description = $${paramIndex}`);
-        params.push(department.description);
-        paramIndex++;
-      }
-
-      if (department.managerId !== undefined) {
-        updateFields.push(`manager_id = $${paramIndex}`);
-        params.push(department.managerId);
-        paramIndex++;
-      }
-
-      // Nếu không có trường nào cần cập nhật, trả về phòng ban hiện tại
-      if (updateFields.length === 0) {
-        return await this.getDepartment(id);
-      }
-
-      // Thêm tham số id vào cuối
-      params.push(id);
-
-      // Thực hiện truy vấn cập nhật
-      const result = await pool.query(
-        `UPDATE departments SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING id, name, description, manager_id, created_at`,
-        params
-      );
-
-      if (!result.rows || result.rows.length === 0) {
-        console.log(`Không tìm thấy phòng ban ID ${id} để cập nhật`);
+      if (!updatedDepartment) {
         return undefined;
       }
 
-      // Map kết quả trả về từ DB sang đúng kiểu Department
-      const updatedDepartment: Department = {
-        id: Number(result.rows[0].id),
-        name: result.rows[0].name,
-        description: result.rows[0].description,
-        managerId: result.rows[0].manager_id,
-        createdAt: new Date(result.rows[0].created_at)
-      };
+      // Fetch manager information if exists
+      if (updatedDepartment.managerId) {
+        const [manager] = await db
+          .select({
+            fullName: users.fullName
+          })
+          .from(users)
+          .where(eq(users.id, updatedDepartment.managerId));
 
-      console.log(`Department updated: ${JSON.stringify(updatedDepartment)}`);
-      return updatedDepartment;
+        return {
+          ...updatedDepartment,
+          managerName: manager?.fullName || null
+        };
+      }
+
+      return {
+        ...updatedDepartment,
+        managerName: null
+      };
     } catch (error) {
-      console.error(`Error updating department ${id}:`, error);
+      console.error("Error updating department:", error);
       return undefined;
     }
   }
@@ -415,7 +360,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getAllEmployees(page: number = 1, limit: number = 10, filters?: object): Promise<{ employees: Employee[], total: number }> {
+  async getAllEmployees(page: number = 1, limit: number = 10, filters?: object): Promise<{ employees: (Employee & { departmentName?: string | null })[], total: number }> {
     const offset = (page - 1) * limit;
 
     // Ép kiểu filters để sử dụng đúng kiểu dữ liệu
@@ -428,8 +373,15 @@ export class DatabaseStorage implements IStorage {
       sortBy?: string;
     } || {};
 
-    // Lấy tất cả employees và xử lý bộ lọc trong memory để tránh lỗi SQL
-    const allEmployees = await db.select().from(employees);
+    // Lấy tất cả employees với thông tin department
+    const allEmployees = await db
+      .select({
+        ...employees,
+        departmentName: departments.name,
+        departmentDescription: departments.description
+      })
+      .from(employees)
+      .leftJoin(departments, eq(employees.departmentId, departments.id));
 
     // Lọc nhân viên theo các tiêu chí
     let filteredEmployees = [...allEmployees];
@@ -456,7 +408,8 @@ export class DatabaseStorage implements IStorage {
         return (
           emp.email.toLowerCase().includes(searchTerm) ||
           emp.employeeId.toLowerCase().includes(searchTerm) ||
-          (emp.position && emp.position.toLowerCase().includes(searchTerm))
+          (emp.position && emp.position.toLowerCase().includes(searchTerm)) ||
+          (emp.departmentName && emp.departmentName.toLowerCase().includes(searchTerm))
         );
       });
     }
@@ -614,135 +567,135 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteEmployee(id: number): Promise<boolean> {
-    await db
-      .delete(employees)
-      .where(eq(employees.id, id));
-    return true;
-  }
+    try {
+      console.log(`Attempting to delete employee with ID: ${id}`);
 
-  // Attendance methods
-  async getAttendanceRecord(id: number): Promise<AttendanceRecord | undefined> {
-    const [record] = await db.select().from(attendanceRecords).where(eq(attendanceRecords.id, id));
-    return record;
-  }
-
-  async getEmployeeAttendance(employeeId: number, startDate?: Date, endDate?: Date): Promise<AttendanceRecord[]> {
-    console.log(`Getting attendance for employee ${employeeId} from ${startDate?.toISOString()} to ${endDate?.toISOString()}`);
-
-    // Thêm điều kiện tìm kiếm theo ngày
-    let query = db
-      .select()
-      .from(attendanceRecords)
-      .where(eq(attendanceRecords.employeeId, employeeId));
-
-    if (startDate && endDate) {
-      // Sử dụng truy vấn SQL trực tiếp để so sánh ngày
-      query = query.where(
-        and(
-          gte(attendanceRecords.date, startDate),
-          lt(attendanceRecords.date, endDate)
-        )
-      );
-    }
-
-    const records = await query;
-
-    console.log(`Found ${records.length} records for employee ${employeeId}`);
-
-    // Nếu lọc theo ngày trên database không hoạt động đúng, lọc thêm ở memory
-    const filteredRecords = records.filter(record => {
-      const recordDate = new Date(record.date);
-
-      console.log(`Checking record date: ${recordDate.toISOString()}, id: ${record.id}`);
-
-      if (startDate && recordDate < startDate) {
-        console.log(`Record date ${recordDate.toISOString()} is before start date ${startDate.toISOString()}`);
+      // Check if employee exists
+      const employee = await this.getEmployee(id);
+      if (!employee) {
+        console.log(`Employee with ID ${id} not found`);
         return false;
       }
 
-      if (endDate && recordDate >= endDate) {
-        console.log(`Record date ${recordDate.toISOString()} is after or equal to end date ${endDate.toISOString()}`);
-        return false;
-      }
+      console.log(`Found employee: ${employee.firstName} ${employee.lastName}`);
 
-      // Kiểm tra đặc biệt cho ngày 14/5
-      if (recordDate.getDate() === 14 && recordDate.getMonth() === 4) { // Tháng 5 là index 4
-        console.log(`Found May 14 record: ${JSON.stringify(record)}`);
-      }
+      await db
+        .delete(employees)
+        .where(eq(employees.id, id));
 
+      console.log(`Successfully deleted employee ${id}`);
       return true;
-    });
-
-    console.log(`After filtering, found ${filteredRecords.length} records for employee ${employeeId}`);
-
-    return filteredRecords.sort((a, b) => {
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      throw error;
+    }
   }
 
-  async createAttendanceRecord(attendance: InsertAttendanceRecord): Promise<AttendanceRecord> {
-    const [record] = await db
-      .insert(attendanceRecords)
-      .values(attendance)
-      .returning();
-    return record;
-  }
+  async safeDeleteEmployee(id: number): Promise<{ success: boolean; message?: string }> {
+    try {
+      console.log(`Safe delete: Attempting to delete employee with ID: ${id}`);
 
-  async getLatestAttendanceRecord(employeeId: number, date: Date): Promise<AttendanceRecord | undefined> {
-    // Create start and end of the given date
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+      // Check if employee exists
+      const employee = await this.getEmployee(id);
+      if (!employee) {
+        console.log(`Employee with ID ${id} not found`);
+        return { success: false, message: "Không tìm thấy nhân viên" };
+      }
 
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+      console.log(`Found employee: ${employee.firstName} ${employee.lastName}`);
 
-    const [record] = await db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.employeeId, employeeId),
-          gte(attendanceRecords.date, startOfDay),
-          lt(attendanceRecords.date, endOfDay)
-        )
-      )
-      .orderBy(desc(attendanceRecords.time))
-      .limit(1);
+      try {
+        // Use individual delete operations with better error handling instead of a transaction
+        // This helps avoid transaction rollback issues
 
-    return record;
-  }
+        // 1. Delete face descriptor to avoid reference errors
+        if (employee.faceDescriptor) {
+          console.log(`Clearing face descriptor for employee ${id}`);
+          try {
+            await db.update(employees)
+              .set({ faceDescriptor: null })
+              .where(eq(employees.id, id));
+          } catch (error) {
+            console.warn(`Warning: Could not clear face descriptor: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
 
-  async getDailyAttendance(date: Date): Promise<{ employee: Employee; attendance?: AttendanceRecord }[]> {
-    // Create start and end of the given date
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+        // 2. Delete time logs
+        console.log(`Deleting time logs for employee ${id}`);
+        try {
+          await db.delete(timeLogs).where(eq(timeLogs.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete time logs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
 
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+        // 3. Delete notifications first (least dependencies)
+        console.log(`Deleting notifications for employee ${id}`);
+        try {
+          await db.delete(notifications).where(eq(notifications.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete notifications: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
 
-    // Get all employees
-    const allEmployees = await db.select().from(employees);
+        // 4. Delete attendance summary records
+        console.log(`Deleting attendance summary records for employee ${id}`);
+        try {
+          await db.delete(attendanceSummary).where(eq(attendanceSummary.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete attendance summary records: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
 
-    // Get attendance records for the day
-    const dailyAttendance = await db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          gte(attendanceRecords.date, startOfDay),
-          lt(attendanceRecords.date, endOfDay)
-        )
-      );
+        // 5. Delete cached work hours
+        console.log(`Deleting cached work hours for employee ${id}`);
+        try {
+          await db.delete(cachedWorkHours).where(eq(cachedWorkHours.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete cached work hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
 
-    // Map employees with their attendance records
-    return allEmployees.map(employee => {
-      const attendance = dailyAttendance.find(record =>
-        record.employeeId === employee.id &&
-        record.type === 'in'
-      );
+        // 6. Delete work hours
+        console.log(`Deleting work hours for employee ${id}`);
+        try {
+          await db.delete(workHours).where(eq(workHours.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete work hours: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
 
-      return { employee, attendance };
-    });
+        // 7. Delete leave requests
+        console.log(`Deleting leave requests for employee ${id}`);
+        try {
+          await db.delete(leaveRequests).where(eq(leaveRequests.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not delete leave requests: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+
+        // 8. Update users to remove employee association
+        console.log(`Updating users with employeeId ${id} to remove association`);
+        try {
+          await db.update(users).set({ employeeId: null }).where(eq(users.employeeId, id));
+        } catch (error) {
+          console.warn(`Warning: Could not update users: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+
+        // 9. Finally, delete the employee
+        console.log(`Deleting employee ${id}`);
+        await db.delete(employees).where(eq(employees.id, id));
+
+        console.log(`Successfully deleted employee ${id} and all related records`);
+        return { success: true };
+      } catch (error) {
+        console.error('Error in safeDeleteEmployee operations:', error);
+        return {
+          success: false,
+          message: `Không thể xóa nhân viên: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`
+        };
+      }
+    } catch (error) {
+      console.error('Error in safeDeleteEmployee:', error);
+      return {
+        success: false,
+        message: `Lỗi xóa nhân viên: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`
+      };
+    }
   }
 
   // Time Log methods
@@ -953,12 +906,8 @@ export class DatabaseStorage implements IStorage {
 
   // Statistics methods
   async getDepartmentAttendanceStats(date: Date): Promise<{ departmentId: number; departmentName: string; presentPercentage: number }[]> {
-    // Create start and end of the given date
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Note: This method has been modified since the attendance_records table no longer exists
+    // It now returns a simplified result based only on employee count per department
 
     const stats = await db.execute(sql`
       WITH department_employee_counts AS (
@@ -969,45 +918,25 @@ export class DatabaseStorage implements IStorage {
         FROM ${departments} d
         LEFT JOIN ${employees} e ON d.id = e.department_id
         GROUP BY d.id, d.name
-      ),
-      department_present_counts AS (
-        SELECT 
-          d.id AS department_id,
-          COUNT(DISTINCT a.employee_id) AS present_employees
-        FROM ${departments} d
-        LEFT JOIN ${employees} e ON d.id = e.department_id
-        LEFT JOIN ${attendanceRecords} a ON e.id = a.employee_id
-        WHERE a.date >= ${startOfDay} AND a.date < ${endOfDay} AND a.status = 'present'
-        GROUP BY d.id
       )
       SELECT 
-        c.department_id,
-        c.department_name,
-        c.total_employees,
-        COALESCE(p.present_employees, 0) AS present_employees,
-        CASE 
-          WHEN c.total_employees = 0 THEN 0
-          ELSE ROUND((COALESCE(p.present_employees, 0)::FLOAT / c.total_employees) * 100)
-        END AS present_percentage
-      FROM department_employee_counts c
-      LEFT JOIN department_present_counts p ON c.department_id = p.department_id
-      ORDER BY present_percentage DESC
+        department_id,
+        department_name,
+        total_employees,
+        0 AS present_percentage
+      FROM department_employee_counts
+      ORDER BY total_employees DESC
     `);
 
     return stats.rows.map(row => ({
       departmentId: row.department_id,
       departmentName: row.department_name,
-      presentPercentage: row.present_percentage
+      presentPercentage: 0 // Always return 0 since we can't calculate actual presence
     }));
   }
 
   async getDailyAttendanceSummary(date: Date): Promise<{ present: number; absent: number; late: number; total: number }> {
-    // Create start and end of the given date
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Note: This method has been modified since the attendance_records table no longer exists
 
     // Get total employees
     const [totalResult] = await db
@@ -1016,48 +945,18 @@ export class DatabaseStorage implements IStorage {
 
     const total = totalResult?.count || 0;
 
-    // Get present employees
-    const [presentResult] = await db
-      .select({ count: count() })
-      .from(attendanceRecords)
-      .where(
-        and(
-          gte(attendanceRecords.date, startOfDay),
-          lt(attendanceRecords.date, endOfDay),
-          eq(attendanceRecords.status, 'present'),
-          eq(attendanceRecords.type, 'in')
-        )
-      );
-
-    const present = presentResult?.count || 0;
-
-    // Get late employees
-    const [lateResult] = await db
-      .select({ count: count() })
-      .from(attendanceRecords)
-      .where(
-        and(
-          gte(attendanceRecords.date, startOfDay),
-          lt(attendanceRecords.date, endOfDay),
-          eq(attendanceRecords.status, 'late'),
-          eq(attendanceRecords.type, 'in')
-        )
-      );
-
-    const late = lateResult?.count || 0;
-
-    // Calculate absent (total - present - late)
-    const absent = total - present - late;
-
+    // Since we can't get actual attendance data, return simplified data
     return {
-      present,
-      absent: absent < 0 ? 0 : absent, // Ensure we don't get negative absences
-      late,
+      present: 0,
+      absent: total, // Assume all employees are absent since we can't check attendance
+      late: 0,
       total
     };
   }
 
   async getWeeklyAttendance(startDate: Date, endDate: Date): Promise<{ date: string; present: number; absent: number; late: number }[]> {
+    // Note: This method has been modified since the attendance_records table no longer exists
+
     const results = await db.execute(sql`
       WITH date_range AS (
         SELECT generate_series(
@@ -1066,35 +965,23 @@ export class DatabaseStorage implements IStorage {
           '1 day'::interval
         )::date AS day
       ),
-      daily_stats AS (
-        SELECT 
-          date_trunc('day', a.date)::date AS day,
-          a.status,
-          COUNT(DISTINCT a.employee_id) AS count
-        FROM ${attendanceRecords} a
-        WHERE a.date >= ${startDate} AND a.date <= ${endDate} AND a.type = 'in'
-        GROUP BY date_trunc('day', a.date)::date, a.status
-      ),
       employee_count AS (
         SELECT COUNT(*) AS total FROM ${employees}
       )
       SELECT 
         dr.day::text AS date,
-        COALESCE(SUM(CASE WHEN ds.status = 'present' THEN ds.count ELSE 0 END), 0) AS present,
-        COALESCE(SUM(CASE WHEN ds.status = 'late' THEN ds.count ELSE 0 END), 0) AS late,
-        (SELECT total FROM employee_count) - 
-        COALESCE(SUM(CASE WHEN ds.status IN ('present', 'late') THEN ds.count ELSE 0 END), 0) AS absent
+        0 AS present,
+        (SELECT total FROM employee_count) AS absent,
+        0 AS late
       FROM date_range dr
-      LEFT JOIN daily_stats ds ON dr.day = ds.day
-      GROUP BY dr.day
       ORDER BY dr.day
     `);
 
     return results.rows.map(row => ({
       date: row.date as string,
-      present: Number(row.present) || 0,
+      present: 0, // No attendance data available
       absent: Number(row.absent) || 0,
-      late: Number(row.late) || 0
+      late: 0 // No attendance data available
     }));
   }
 
@@ -1259,165 +1146,6 @@ export class DatabaseStorage implements IStorage {
       console.error('Error fetching employee leave requests by year:', error);
       return [];
     }
-  }
-
-  // Salary Methods
-  async getSalaryRecord(id: number): Promise<SalaryRecord | undefined> {
-    const [salaryRecord] = await db.select().from(salaryRecords).where(eq(salaryRecords.id, id));
-    return salaryRecord;
-  }
-
-  async getEmployeeSalaryRecords(employeeId: number, year?: number): Promise<SalaryRecord[]> {
-    let query = db.select().from(salaryRecords).where(eq(salaryRecords.employeeId, employeeId));
-
-    if (year) {
-      query = query.where(eq(salaryRecords.year, year));
-    }
-
-    return await query.orderBy(desc(salaryRecords.year), desc(salaryRecords.month));
-  }
-
-  async getAllSalaryRecords(page: number = 1, limit: number = 10, year?: number, month?: number): Promise<SalaryRecord[]> {
-    const offset = (page - 1) * limit;
-
-    // Lấy tất cả salary records và lọc trong memory
-    let allSalaryRecords = await db.select().from(salaryRecords);
-
-    // Lọc theo năm nếu có
-    if (year) {
-      allSalaryRecords = allSalaryRecords.filter(record => record.year === year);
-    }
-
-    // Lọc theo tháng nếu có
-    if (month) {
-      allSalaryRecords = allSalaryRecords.filter(record => record.month === month);
-    }
-
-    // Sắp xếp theo năm, tháng và thời gian tạo (giảm dần)
-    allSalaryRecords.sort((a, b) => {
-      // So sánh năm trước
-      if (b.year !== a.year) {
-        return b.year - a.year;
-      }
-      // Nếu cùng năm, so sánh tháng
-      if (b.month !== a.month) {
-        return b.month - a.month;
-      }
-      // Nếu cùng năm và tháng, so sánh thời gian tạo
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-    // Phân trang
-    return allSalaryRecords.slice(offset, offset + limit);
-  }
-
-  async createSalaryRecord(salaryRecord: InsertSalaryRecord): Promise<SalaryRecord> {
-    // Calculate total salary
-    const totalSalaryValue =
-      Number(salaryRecord.basicSalary) +
-      Number(salaryRecord.bonus || 0) -
-      Number(salaryRecord.deduction || 0);
-
-    // Tạo một bản sao của dữ liệu để tránh mutate object gốc
-    const recordToInsert = {
-      ...salaryRecord,
-      // Chuyển totalSalary thành string để phù hợp với kiểu dữ liệu yêu cầu
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const [newSalaryRecord] = await db
-      .insert(salaryRecords)
-      .values(recordToInsert)
-      .returning();
-
-    // Cập nhật thủ công totalSalary
-    const [updatedRecord] = await db
-      .update(salaryRecords)
-      .set({ totalSalary: String(totalSalaryValue) })
-      .where(eq(salaryRecords.id, newSalaryRecord.id))
-      .returning();
-
-    return updatedRecord;
-  }
-
-  async updateSalaryRecord(id: number, salaryRecord: Partial<SalaryRecord>): Promise<SalaryRecord | undefined> {
-    // Tính toán totalSalary nếu cần
-    let totalSalaryValue: string | undefined = undefined;
-
-    if (salaryRecord.basicSalary !== undefined ||
-      salaryRecord.bonus !== undefined ||
-      salaryRecord.deduction !== undefined) {
-
-      // Lấy bản ghi hiện tại
-      const currentRecord = await this.getSalaryRecord(id);
-      if (!currentRecord) {
-        return undefined;
-      }
-
-      // Tính toán giá trị mới
-      const newTotalSalary =
-        Number(salaryRecord.basicSalary || currentRecord.basicSalary) +
-        Number(salaryRecord.bonus || currentRecord.bonus) -
-        Number(salaryRecord.deduction || currentRecord.deduction);
-
-      totalSalaryValue = String(newTotalSalary);
-    }
-
-    // Chuẩn bị dữ liệu cập nhật
-    const updateData = {
-      ...salaryRecord,
-      updatedAt: new Date()
-    };
-
-    // Thực hiện cập nhật
-    const [updatedSalaryRecord] = await db
-      .update(salaryRecords)
-      .set(updateData)
-      .where(eq(salaryRecords.id, id))
-      .returning();
-
-    // Cập nhật totalSalary nếu cần
-    if (totalSalaryValue !== undefined) {
-      const [recordWithTotalSalary] = await db
-        .update(salaryRecords)
-        .set({ totalSalary: totalSalaryValue })
-        .where(eq(salaryRecords.id, id))
-        .returning();
-
-      return recordWithTotalSalary;
-    }
-
-    return updatedSalaryRecord;
-  }
-
-  async deleteSalaryRecord(id: number): Promise<boolean> {
-    await db
-      .delete(salaryRecords)
-      .where(eq(salaryRecords.id, id));
-    return true;
-  }
-
-  async getSalaryStats(year: number): Promise<{ month: number; totalSalary: number; totalEmployees: number }[]> {
-    const results = await db.execute(sql`
-      WITH month_range AS (
-        SELECT generate_series(1, 12) AS month
-      )
-      SELECT 
-        mr.month,
-        COALESCE(SUM(sr.total_salary), 0) AS total_salary,
-        COUNT(DISTINCT sr.employee_id) AS total_employees
-      FROM month_range mr
-      LEFT JOIN ${salaryRecords} sr ON mr.month = sr.month AND sr.year = ${year}
-      GROUP BY mr.month
-      ORDER BY mr.month
-    `);
-
-    return results.rows.map(row => ({
-      month: Number(row.month),
-      totalSalary: Number(row.total_salary) || 0,
-      totalEmployees: Number(row.total_employees) || 0
-    }));
   }
 
   // Cache methods

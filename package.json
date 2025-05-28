@@ -63,6 +63,7 @@
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "face-api.js": "^0.22.2",
+    "face-timekeeping": "file:",
     "file-saver": "^2.0.5",
     "framer-motion": "^11.13.1",
     "i18next": "^25.1.2",

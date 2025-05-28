@@ -74,13 +74,9 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
   const { t } = useTranslation();
   const i18nToast = useI18nToast();
 
-  // Hardcoded department names due to API issues
-  const departmentMap = {
-    1: { name: 'DS', description: 'Phòng Design' },
-    2: { name: 'HR', description: 'Phòng Nhân sự' }
-  };
-
-  const department = employee.departmentId ? departmentMap[employee.departmentId as keyof typeof departmentMap] : null;
+  // Get department info from API response
+  const departmentName = (employee as any).departmentName;
+  const departmentDescription = (employee as any).departmentDescription;
 
   // Delete employee mutation
   const deleteEmployeeMutation = useMutation({
@@ -136,7 +132,7 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-muted-foreground">{t('employees.department')}</span>
-            <span className="text-sm font-medium">{department?.name || t('employees.notAssigned')}</span>
+            <span className="text-sm font-medium">{departmentDescription || departmentName || t('employees.notAssigned')}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-muted-foreground">{t('employees.joined')}</span>

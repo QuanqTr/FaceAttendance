@@ -32,7 +32,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     Loader2, User, Phone, Mail, Calendar, Building,
-    MapPin, UserCheck, Lock, Camera, Upload, RefreshCw, Trash2, Scan, CheckCircle, AlertCircle
+    MapPin, UserCheck, Lock, Camera, Upload, RefreshCw, Trash2, Scan, CheckCircle, AlertCircle, Shield
 } from "lucide-react";
 import * as faceapi from 'face-api.js';
 import { FaceDetector } from "@/components/face-recognition/face-detector";
@@ -45,7 +45,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
-import { AttendanceProfile } from "@/components/face-recognition/attendance-profile";
+import { EmailVerification } from "@/components/face-recognition/email-verification";
 
 // Define the Department type
 interface Department {
@@ -90,6 +90,10 @@ type PasswordFormValues = z.infer<typeof passwordUpdateSchema>;
 export default function ProfilePage() {
     const { t } = useTranslation();
     const { user } = useAuth();
+
+    // Kiểm tra role để hiển thị giao diện phù hợp
+    const isManager = user?.role === "manager" || user?.role === "admin";
+    const isEmployee = user?.role === "employee";
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [isUploading, setIsUploading] = useState(false);
@@ -111,6 +115,12 @@ export default function ProfilePage() {
 
     // Thêm state để theo dõi phần tab đang hiển thị trong webcam tabs
     const [activeWebcamTab, setActiveWebcamTab] = useState<string>("webcam");
+
+    // Email verification states for face profile access
+    const [showEmailVerification, setShowEmailVerification] = useState(false);
+    const [isVerified, setIsVerified] = useState(false);
+    const [accessToken, setAccessToken] = useState<string | null>(null);
+    const [accessTokenExpiry, setAccessTokenExpiry] = useState<number | null>(null);
 
     // Load face-api.js models
     useEffect(() => {
@@ -297,9 +307,12 @@ export default function ProfilePage() {
             return await response.json();
         },
         onSuccess: () => {
+            const successTitle = isManager ? t("manager.profile.updateSuccess") : t("user.profile.updateSuccess");
+            const successDescription = isManager ? t("manager.profile.profileUpdated") : t("user.profile.profileUpdated");
+
             toast({
-                title: t("user.profile.updateSuccess"),
-                description: t("user.profile.profileUpdated"),
+                title: successTitle,
+                description: successDescription,
             });
             queryClient.invalidateQueries({ queryKey: ["/api/employees/profile", user?.employeeId] });
         },
@@ -335,9 +348,12 @@ export default function ProfilePage() {
             return await response.json();
         },
         onSuccess: () => {
+            const successTitle = isManager ? t("manager.profile.passwordUpdateSuccess") : t("user.profile.passwordUpdateSuccess");
+            const successDescription = isManager ? t("manager.profile.passwordUpdated") : t("user.profile.passwordUpdated");
+
             toast({
-                title: t("user.profile.passwordUpdateSuccess"),
-                description: t("user.profile.passwordUpdated"),
+                title: successTitle,
+                description: successDescription,
             });
             passwordForm.reset();
         },
@@ -670,9 +686,38 @@ export default function ProfilePage() {
 
     // Cancel capturing
     const cancelCapture = () => {
+        // Dừng camera stream nếu đang chạy
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            setCameraStream(null);
+        }
         setIsCapturing(false);
         setCaptureStatus('waiting');
-        setDetectorStatus('waiting');
+    };
+
+    // Handle email verification success
+    const handleVerificationSuccess = (token: string) => {
+        console.log("Email verification successful, access token:", token);
+        setAccessToken(token);
+        setIsVerified(true);
+        setShowEmailVerification(false);
+
+        // Parse token to get expiry time
+        try {
+            const payload = JSON.parse(atob(token));
+            setAccessTokenExpiry(payload.expiresAt);
+            console.log("Access token expires at:", new Date(payload.expiresAt));
+        } catch (error) {
+            console.error("Error parsing access token:", error);
+            // Set default 10 minutes expiry
+            setAccessTokenExpiry(Date.now() + 10 * 60 * 1000);
+        }
+    };
+
+    // Check if access token is still valid
+    const isAccessTokenValid = () => {
+        if (!accessToken || !accessTokenExpiry) return false;
+        return Date.now() < accessTokenExpiry;
     };
 
     // Update the face tab content to show loading state
@@ -709,8 +754,58 @@ export default function ProfilePage() {
             );
         }
 
+        // Show email verification if not verified
+        if (showEmailVerification) {
+            return (
+                <EmailVerification
+                    employeeId={profileData?.id || 0}
+                    employeeEmail={profileData?.email || ""}
+                    onVerificationSuccess={handleVerificationSuccess}
+                    onCancel={() => setShowEmailVerification(false)}
+                />
+            );
+        }
+
+        // Show verification prompt if access token is not valid
+        if (!isAccessTokenValid()) {
+            return (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                    <div className="text-center space-y-4">
+                        <div className="w-16 h-16 mx-auto bg-blue-100 rounded-full flex items-center justify-center">
+                            <Lock className="w-8 h-8 text-blue-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-medium mb-2">🔐 Xác thực bảo mật</h3>
+                            <p className="text-sm text-muted-foreground mb-4">
+                                Để đảm bảo an toàn, vui lòng xác thực email trước khi truy cập chức năng quản lý khuôn mặt.
+                            </p>
+                        </div>
+                        <Button onClick={() => setShowEmailVerification(true)}>
+                            <Mail className="mr-2 h-4 w-4" />
+                            Xác thực Email để truy cập
+                        </Button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Show access granted message
+        const accessGrantedSection = (
+            <div className="w-full mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-700 text-sm font-medium">
+                    ✅ Đã xác thực email - Bạn có thể quản lý khuôn mặt
+                </p>
+                <p className="text-green-600 text-xs mt-1">
+                    Quyền truy cập hết hạn lúc: {accessTokenExpiry ? new Date(accessTokenExpiry).toLocaleTimeString() : 'N/A'}
+                </p>
+            </div>
+        );
+
+        // Main face profile content (when verified)
         return (
             <>
+                {accessGrantedSection}
+
                 {/* Face Profile Status */}
                 {faceProfileData?.hasFaceProfile ? (
                     <div className="bg-green-50 border border-green-600 p-4 rounded-md flex items-start gap-3">
@@ -1018,11 +1113,14 @@ export default function ProfilePage() {
     }, [videoRef.current, canvasRef.current]);
 
     if (isLoading) {
+        const title = isManager ? t("manager.profile.title") : t("user.profile.title");
+        const description = isManager ? t("manager.profile.description") : t("user.profile.description");
+
         return (
             <>
                 <Header
-                    title={t("user.profile.title")}
-                    description={t("user.profile.description")}
+                    title={title}
+                    description={description}
                 />
                 <div className="p-4 md:p-6">
                     <Card>
@@ -1041,11 +1139,14 @@ export default function ProfilePage() {
     }
 
     if (error) {
+        const title = isManager ? t("manager.profile.title") : t("user.profile.title");
+        const description = isManager ? t("manager.profile.description") : t("user.profile.description");
+
         return (
             <>
                 <Header
-                    title={t("user.profile.title")}
-                    description={t("user.profile.description")}
+                    title={title}
+                    description={description}
                 />
                 <div className="p-4 md:p-6">
                     <Card>
@@ -1061,17 +1162,21 @@ export default function ProfilePage() {
     }
 
     if (!profileData) {
+        const title = isManager ? t("manager.profile.title") : t("user.profile.title");
+        const description = isManager ? t("manager.profile.description") : t("user.profile.description");
+        const noProfileText = isManager ? t("manager.profile.noProfile") : t("user.profile.noProfile");
+
         return (
             <>
                 <Header
-                    title={t("user.profile.title")}
-                    description={t("user.profile.description")}
+                    title={title}
+                    description={description}
                 />
                 <div className="p-4 md:p-6">
                     <Card>
                         <CardContent className="p-6">
                             <div className="text-center py-4 text-muted-foreground">
-                                {t("user.profile.noProfile")}
+                                {noProfileText}
                             </div>
                         </CardContent>
                     </Card>
@@ -1080,11 +1185,20 @@ export default function ProfilePage() {
         );
     }
 
+    // Định nghĩa title và description dựa trên role
+    const title = isManager ? t("manager.profile.title") : t("user.profile.title");
+    const description = isManager ? t("manager.profile.description") : t("user.profile.description");
+    const summaryTitle = isManager ? t("manager.profile.summary") : t("user.profile.summary");
+    const editProfileTitle = isManager ? t("manager.profile.editProfile") : t("user.profile.editProfile");
+    const updateInfoText = isManager ? t("manager.profile.updateYourInfo") : t("user.profile.updateYourInfo");
+    const personalDetailsText = isManager ? t("manager.profile.personalDetails") : t("user.profile.personalDetails");
+    const securityText = isManager ? t("manager.profile.security") : t("user.profile.security");
+
     return (
         <>
             <Header
-                title={t("user.profile.title")}
-                description={t("user.profile.description")}
+                title={title}
+                description={description}
             />
 
             <div className="p-4 md:p-6">
@@ -1092,7 +1206,14 @@ export default function ProfilePage() {
                     {/* Profile Summary Card */}
                     <Card className="md:col-span-1">
                         <CardHeader>
-                            <CardTitle>{t("user.profile.summary")}</CardTitle>
+                            <CardTitle className="flex items-center">
+                                {isManager ? (
+                                    <Shield className="h-5 w-5 mr-2 text-blue-600" />
+                                ) : (
+                                    <User className="h-5 w-5 mr-2 text-green-600" />
+                                )}
+                                {summaryTitle}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent className="flex flex-col items-center text-center">
                             <div className="relative mb-6">
@@ -1124,7 +1245,14 @@ export default function ProfilePage() {
                                 </div>
                             </div>
                             <h3 className="text-xl font-bold">{`${profileData.lastName} ${profileData.firstName}`}</h3>
-                            <p className="text-muted-foreground">{profileData.position}</p>
+                            <p className="text-muted-foreground flex items-center">
+                                {isManager ? (
+                                    <Shield className="h-4 w-4 mr-1 text-blue-600" />
+                                ) : (
+                                    <User className="h-4 w-4 mr-1 text-green-600" />
+                                )}
+                                {profileData.position}
+                            </p>
                             <div className="mt-6 space-y-2 w-full">
                                 <div className="flex items-center">
                                     <User className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -1167,16 +1295,16 @@ export default function ProfilePage() {
                     {/* Profile Edit Tabs */}
                     <Card className="md:col-span-2">
                         <CardHeader>
-                            <CardTitle>{t("user.profile.editProfile")}</CardTitle>
+                            <CardTitle>{editProfileTitle}</CardTitle>
                             <CardDescription>
-                                {t("user.profile.updateYourInfo")}
+                                {updateInfoText}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <Tabs defaultValue="details" onValueChange={(value) => setCurrentTab(value)}>
                                 <TabsList className="grid w-full grid-cols-3">
-                                    <TabsTrigger value="details">{t("user.profile.personalDetails")}</TabsTrigger>
-                                    <TabsTrigger value="security">{t("user.profile.security")}</TabsTrigger>
+                                    <TabsTrigger value="details">{personalDetailsText}</TabsTrigger>
+                                    <TabsTrigger value="security">{securityText}</TabsTrigger>
                                     <TabsTrigger value="face">{t("user.faceProfile.title")}</TabsTrigger>
                                 </TabsList>
                                 <TabsContent value="details" className="pt-4">
@@ -1287,7 +1415,7 @@ export default function ProfilePage() {
                                                 name="currentPassword"
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel>{t("user.profile.currentPassword")}</FormLabel>
+                                                        <FormLabel>{isManager ? t("manager.profile.currentPassword") : t("user.profile.currentPassword")}</FormLabel>
                                                         <FormControl>
                                                             <Input type="password" {...field} />
                                                         </FormControl>
@@ -1300,7 +1428,7 @@ export default function ProfilePage() {
                                                 name="newPassword"
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel>{t("user.profile.newPassword")}</FormLabel>
+                                                        <FormLabel>{isManager ? t("manager.profile.newPassword") : t("user.profile.newPassword")}</FormLabel>
                                                         <FormControl>
                                                             <Input type="password" {...field} />
                                                         </FormControl>
@@ -1313,7 +1441,7 @@ export default function ProfilePage() {
                                                 name="confirmPassword"
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel>{t("user.profile.confirmPassword")}</FormLabel>
+                                                        <FormLabel>{isManager ? t("manager.profile.confirmPassword") : t("user.profile.confirmPassword")}</FormLabel>
                                                         <FormControl>
                                                             <Input type="password" {...field} />
                                                         </FormControl>
@@ -1330,14 +1458,14 @@ export default function ProfilePage() {
                                                     {updatePasswordMutation.isPending && (
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                                     )}
-                                                    {t("user.profile.updatePassword")}
+                                                    {isManager ? t("manager.profile.updatePassword") : t("user.profile.updatePassword")}
                                                 </Button>
                                             </div>
                                         </form>
                                     </Form>
                                 </TabsContent>
                                 <TabsContent value="face" className="pt-4">
-                                    <AttendanceProfile userId={user?.id} type="user" t={t} />
+                                    {renderFaceTabContent()}
                                 </TabsContent>
                             </Tabs>
                         </CardContent>

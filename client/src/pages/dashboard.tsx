@@ -9,6 +9,7 @@ import { DepartmentStats } from "@/components/dashboard/department-stats";
 import { EmployeeTable } from "@/components/dashboard/employee-table";
 import { useAuth } from "@/hooks/use-auth";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -18,29 +19,26 @@ export default function Dashboard() {
   const { data: dailySummary, isLoading: isSummaryLoading } = useQuery({
     queryKey: ["/api/stats/daily"],
     queryFn: async () => {
-      const res = await fetch("/api/stats/daily");
-      if (!res.ok) throw new Error("Failed to fetch daily summary");
-      return await res.json();
+      const res = await apiRequest("GET", "/api/stats/daily");
+      return res.data;
     }
   });
 
   // Fetch weekly stats
-  const { data: weeklyStats } = useQuery({
+  const { data: weeklyStats, isLoading: weeklyStatsLoading } = useQuery({
     queryKey: ["/api/stats/weekly"],
     queryFn: async () => {
-      const res = await fetch("/api/stats/weekly");
-      if (!res.ok) throw new Error("Failed to fetch weekly stats");
-      return await res.json();
+      const res = await apiRequest("GET", "/api/stats/weekly");
+      return res.data;
     }
   });
 
   // Fetch department stats for pie chart
-  const { data: departmentStats } = useQuery({
+  const { data: departmentStats, isLoading: departmentStatsLoading } = useQuery({
     queryKey: ["/api/stats/departments"],
     queryFn: async () => {
-      const res = await fetch("/api/stats/departments");
-      if (!res.ok) throw new Error("Failed to fetch department stats");
-      return await res.json();
+      const res = await apiRequest("GET", "/api/stats/departments");
+      return res.data;
     }
   });
 
