@@ -61,7 +61,7 @@ export default function AccountsPage() {
 
     // Estado para paginação e filtragem
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(10);
+    const [limit, setLimit] = useState(25);
     const [searchTerm, setSearchTerm] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [accountToDelete, setAccountToDelete] = useState<number | null>(null);

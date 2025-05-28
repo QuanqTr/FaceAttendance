@@ -128,8 +128,67 @@ export function Sidebar() {
                   {t('common.settings')}
                 </SidebarLink>
               </>
+            ) : user?.role === 'manager' ? (
+              // Menu dành cho manager
+              <>
+                <SidebarLink
+                  href="/manager"
+                  icon={<LayoutDashboard className="h-5 w-5" />}
+                  isActive={isActive('/manager')}
+                >
+                  {t('common.dashboard')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/employees"
+                  icon={<Users2 className="h-5 w-5" />}
+                  isActive={isActive('/manager/employees')}
+                >
+                  {t('common.employees')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/leave-requests"
+                  icon={<Calendar className="h-5 w-5" />}
+                  isActive={isActive('/manager/leave-requests')}
+                >
+                  {t('common.leaveRequests')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/reports"
+                  icon={<FileText className="h-5 w-5" />}
+                  isActive={isActive('/manager/reports')}
+                >
+                  {t('common.reports')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/statistics"
+                  icon={<DollarSign className="h-5 w-5" />}
+                  isActive={isActive('/manager/statistics')}
+                >
+                  Statistics
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/work-hours"
+                  icon={<ClipboardList className="h-5 w-5" />}
+                  isActive={isActive('/manager/work-hours')}
+                >
+                  Work Hours
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/manager/settings"
+                  icon={<Settings className="h-5 w-5" />}
+                  isActive={isActive('/manager/settings')}
+                >
+                  {t('common.settings')}
+                </SidebarLink>
+              </>
             ) : (
-              // Menu dành cho admin và manager
+              // Menu dành cho admin
               <>
                 <SidebarLink
                   href="/"
@@ -155,15 +214,13 @@ export function Sidebar() {
                   {t('common.employees')}
                 </SidebarLink>
 
-                {user?.role === 'admin' && (
-                  <SidebarLink
-                    href="/accounts"
-                    icon={<UserCog className="h-5 w-5" />}
-                    isActive={isActive('/accounts')}
-                  >
-                    {t('common.accounts') || 'Account Management'}
-                  </SidebarLink>
-                )}
+                <SidebarLink
+                  href="/accounts"
+                  icon={<UserCog className="h-5 w-5" />}
+                  isActive={isActive('/accounts')}
+                >
+                  {t('common.accounts') || 'Account Management'}
+                </SidebarLink>
 
                 <SidebarLink
                   href="/leave-requests"

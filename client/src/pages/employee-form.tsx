@@ -151,13 +151,15 @@ export default function EmployeeForm() {
 
   const employeeId = params?.id ? parseInt(params.id) : null;
 
-  // Get departments for dropdown - hardcoded for now due to API issues
-  const departments = [
-    { id: 1, name: 'DS', description: 'Phòng Design' },
-    { id: 2, name: 'HR', description: 'Phòng Nhân sự' }
-  ];
-  const isLoadingDepartments = false;
-  const departmentsError = null;
+  // Get departments for dropdown 
+  const { data: departments = [], isLoading: isLoadingDepartments, error: departmentsError } = useQuery({
+    queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/departments");
+      if (!res.ok) throw new Error("Failed to fetch departments");
+      return res.data || [];
+    }
+  });
 
   // Get employee data if in edit mode
   const { data: employee, isLoading: isLoadingEmployee } = useQuery({

@@ -15,6 +15,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Form,
   FormControl,
   FormField,
@@ -23,13 +31,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { User, KeyRound } from "lucide-react";
+import { User, KeyRound, Mail, Loader2 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function AuthPage() {
   const { toast } = useToast();
   const { user, loginMutation } = useAuth();
   const { t } = useTranslation();
   const [_, navigate] = useLocation();
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Login form schema with translations
   const loginSchema = z.object({
@@ -66,6 +78,46 @@ export default function AuthPage() {
   const onLoginSubmit = (values: z.infer<typeof loginSchema>) => {
     console.log("AuthPage: Submitting login form");
     loginMutation.mutate(values);
+  };
+
+  // Handle forgot password
+  const handleForgotPassword = async () => {
+    if (!forgotPasswordEmail.trim()) {
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập địa chỉ email",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      const response = await apiRequest("POST", "/api/forgot-password", {
+        email: forgotPasswordEmail.trim()
+      });
+
+      if (response.ok) {
+        toast({
+          title: "✅ Gửi email thành công",
+          description: "Mật khẩu mới đã được gửi về email của bạn. Vui lòng kiểm tra hộp thư đến.",
+          duration: 5000,
+        });
+        setShowForgotPassword(false);
+        setForgotPasswordEmail("");
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Không thể gửi email reset password");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Lỗi reset password",
+        description: error.message || "Đã xảy ra lỗi khi gửi email reset password",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   return (
@@ -131,6 +183,77 @@ export default function AuthPage() {
                       </span>
                     )}
                   </Button>
+
+                  {/* Forgot Password */}
+                  <div className="text-center">
+                    <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="link"
+                          className="text-sm text-muted-foreground hover:text-primary"
+                          type="button"
+                        >
+                          Quên mật khẩu?
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <Mail className="h-5 w-5" />
+                            Quên mật khẩu
+                          </DialogTitle>
+                          <DialogDescription>
+                            Nhập email của bạn để nhận mật khẩu mới
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <label htmlFor="email" className="text-sm font-medium">
+                              Email
+                            </label>
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="Nhập email của bạn"
+                              value={forgotPasswordEmail}
+                              onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                              disabled={isResettingPassword}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleForgotPassword();
+                                }
+                              }}
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => setShowForgotPassword(false)}
+                              disabled={isResettingPassword}
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              onClick={handleForgotPassword}
+                              disabled={isResettingPassword || !forgotPasswordEmail.trim()}
+                            >
+                              {isResettingPassword ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Đang gửi...
+                                </>
+                              ) : (
+                                <>
+                                  <Mail className="mr-2 h-4 w-4" />
+                                  Gửi email
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </form>
               </Form>
             </CardContent>

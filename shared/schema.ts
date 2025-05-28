@@ -52,10 +52,10 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  fullName: text("full_name").notNull(),
   role: text("role").default("admin").notNull(),
-  employeeId: integer("employee_id").references(() => employees.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  fullName: text("full_name"),
 });
 
 // Face data table for storing face recognition data
@@ -85,8 +85,8 @@ export const attendanceRecords = pgTable("attendance_records", {
 export const timeLogs = pgTable("time_logs", {
   id: serial("id").primaryKey(),
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
-  logTime: timestamp("log_time").defaultNow().notNull(),
-  type: timeLogTypeEnum("type").notNull(),
+  logTime: timestamp("log_time").notNull(),
+  type: text("type"), // 'checkin', 'checkout'
   source: text("source").default("face"),
 });
 
@@ -130,7 +130,7 @@ export const workHours = pgTable("work_hours", {
   lastCheckout: timestamp("last_checkout"),
   regularHours: decimal("regular_hours", { precision: 5, scale: 2 }).default("0.00"),
   otHours: decimal("ot_hours", { precision: 5, scale: 2 }).default("0.00"),
-  status: text("status").default("normal"), // 'normal', 'late', 'early_leave', 'absent'
+  status: text("status").default("normal"), // 'normal', 'late', 'early_leave', 'absent', 'leave'
 });
 
 // Attendance summary table for monthly/yearly aggregations
@@ -139,15 +139,13 @@ export const attendanceSummary = pgTable("attendance_summary", {
   employeeId: integer("employee_id").references(() => employees.id).notNull(),
   month: integer("month").notNull(),
   year: integer("year").notNull(),
-  totalHours: decimal("total_hours", { precision: 8, scale: 2 }).default("0.00"),
-  regularHours: decimal("regular_hours", { precision: 8, scale: 2 }).default("0.00"),
-  overtimeHours: decimal("overtime_hours", { precision: 8, scale: 2 }).default("0.00"),
-  leaveDays: integer("leave_days").default(0),
-  presentDays: integer("present_days").default(0),
-  absentDays: integer("absent_days").default(0),
-  lateDays: integer("late_days").default(0),
+  totalHours: decimal("total_hours", { precision: 5, scale: 2 }).default("0.00").notNull(),
+  overtimeHours: decimal("overtime_hours", { precision: 5, scale: 2 }).default("0.00").notNull(),
+  leaveDays: integer("leave_days").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  earlyMinutes: integer("early_minutes").default(0).notNull(),
+  lateMinutes: integer("late_minutes").default(0).notNull(),
+  penaltyAmount: decimal("penalty_amount", { precision: 10, scale: 2 }).default("0.00").notNull(),
 });
 
 // Notifications table
@@ -289,8 +287,7 @@ export const insertWorkHoursSchema = createInsertSchema(workHours).omit({
 });
 export const insertAttendanceSummarySchema = createInsertSchema(attendanceSummary).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true
+  createdAt: true
 });
 export const insertNotificationsSchema = createInsertSchema(notifications).omit({
   id: true,

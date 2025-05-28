@@ -302,8 +302,20 @@ export default function LeaveRequestForm() {
                                 onChange={e => {
                                   if (e.target.checked) {
                                     field.onChange([...field.value, employee.id]);
+                                    // Update selected employee name
+                                    setSelectedEmployee({
+                                      id: employee.id,
+                                      name: `${employee.firstName} ${employee.lastName}`,
+                                      departmentId: employee.departmentId,
+                                      departmentName: employee.departmentName,
+                                      departmentDescription: employee.departmentDescription
+                                    });
                                   } else {
                                     field.onChange(field.value.filter((id: number) => id !== employee.id));
+                                    // Clear selected employee if unchecked
+                                    if (field.value.length === 1 && field.value.includes(employee.id)) {
+                                      setSelectedEmployee(null);
+                                    }
                                   }
                                 }}
                               />

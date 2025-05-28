@@ -49,10 +49,10 @@ export default function Settings() {
 
   const [systemSettings, setSystemSettings] = useState({
     workingHours: {
-      start: "09:00",
-      end: "18:00"
+      start: "08:00",
+      end: "17:00"
     },
-    lateThreshold: "10", // minutes
+    lateThreshold: "20", // minutes
     attendanceReminders: true,
     exportFormat: "csv"
   });

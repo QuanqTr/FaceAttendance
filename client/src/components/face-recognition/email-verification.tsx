@@ -101,9 +101,6 @@ export function EmailVerification({
                 setTimeout(() => {
                     inputRefs.current[0]?.focus();
                 }, 100);
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.message || "Không thể gửi mã xác thực");
             }
         } catch (error: any) {
             toast({
@@ -138,16 +135,13 @@ export function EmailVerification({
             });
 
             if (response.ok) {
-                const data = await response.json();
+                const data = response.data;
                 toast({
                     title: "✅ Xác thực thành công",
                     description: "Bạn đã được cấp quyền truy cập",
                     duration: 3000,
                 });
                 onVerificationSuccess(data.accessToken);
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.message || "Mã xác thực không đúng");
             }
         } catch (error: any) {
             toast({

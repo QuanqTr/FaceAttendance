@@ -61,7 +61,7 @@ export default function AccountsPage() {
 
     // Estado para paginação e filtragem
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(10);
+    const [limit, setLimit] = useState(25);
     const [searchTerm, setSearchTerm] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [accountToDelete, setAccountToDelete] = useState<number | null>(null);
@@ -103,8 +103,30 @@ export default function AccountsPage() {
                 // TODO: In a real implementation, the API would handle pagination and filtering
                 const allAccounts = await res.json();
 
+                // Handle different API response formats
+                let accountsArray = [];
+                if (Array.isArray(allAccounts)) {
+                    // Direct array response
+                    accountsArray = allAccounts;
+                } else if (allAccounts && typeof allAccounts === 'object') {
+                    // Object response with users property
+                    if (Array.isArray(allAccounts.users)) {
+                        accountsArray = allAccounts.users;
+                    } else if (Array.isArray(allAccounts.accounts)) {
+                        accountsArray = allAccounts.accounts;
+                    } else if (Array.isArray(allAccounts.data)) {
+                        accountsArray = allAccounts.data;
+                    } else {
+                        console.error("API response object doesn't contain expected arrays:", allAccounts);
+                        throw new Error("Invalid API response format");
+                    }
+                } else {
+                    console.error("API response is not an array or object:", allAccounts);
+                    throw new Error("Invalid API response format");
+                }
+
                 // Filter accounts based on search term and role
-                const filteredAccounts = allAccounts.filter((account: UserAccount) => {
+                const filteredAccounts = accountsArray.filter((account: UserAccount) => {
                     const matchesSearch =
                         !debouncedSearchQuery ||
                         account.username.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||

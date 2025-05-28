@@ -57,3 +57,130 @@
   }
 }
 
+@layer utilities {
+  /* Custom background colors for reports */
+  .bg-gold {
+    background: linear-gradient(45deg, #ffd700, #ffed4e);
+  }
+  
+  .bg-silver {
+    background: linear-gradient(45deg, #c0c0c0, #e5e5e5);
+  }
+  
+  .bg-bronze {
+    background: linear-gradient(45deg, #cd7f32, #daa520);
+  }
+  
+  /* Color variations for penalty levels */
+  .bg-green-50 {
+    background-color: rgb(240 253 244);
+  }
+  
+  .bg-yellow-50 {
+    background-color: rgb(254 252 232);
+  }
+  
+  .bg-orange-50 {
+    background-color: rgb(255 247 237);
+  }
+  
+  .bg-red-50 {
+    background-color: rgb(254 242 242);
+  }
+  
+  .border-green-200 {
+    border-color: rgb(187 247 208);
+  }
+  
+  .border-yellow-200 {
+    border-color: rgb(254 240 138);
+  }
+  
+  .border-orange-200 {
+    border-color: rgb(254 215 170);
+  }
+  
+  .border-red-200 {
+    border-color: rgb(254 202 202);
+  }
+  
+  .text-green-600 {
+    color: rgb(22 163 74);
+  }
+  
+  .text-green-700 {
+    color: rgb(21 128 61);
+  }
+  
+  .text-yellow-600 {
+    color: rgb(202 138 4);
+  }
+  
+  .text-yellow-700 {
+    color: rgb(161 98 7);
+  }
+  
+  .text-orange-600 {
+    color: rgb(234 88 12);
+  }
+  
+  .text-orange-700 {
+    color: rgb(194 65 12);
+  }
+  
+  .text-red-600 {
+    color: rgb(220 38 38);
+  }
+  
+  .text-red-700 {
+    color: rgb(185 28 28);
+  }
+
+  /* Custom utility classes */
+  .bg-gold {
+    background-color: #ffd700;
+  }
+
+  .bg-silver {
+    background-color: #c0c0c0;
+  }
+
+  .bg-bronze {
+    background-color: #cd7f32;
+  }
+
+  /* Penalty level colors */
+  .penalty-light {
+    background-color: #fef3c7;
+    color: #d97706;
+  }
+
+  .penalty-medium {
+    background-color: #fed7aa;
+    color: #ea580c;
+  }
+
+  .penalty-heavy {
+    background-color: #fecaca;
+    color: #dc2626;
+  }
+
+  /* Dropdown menu styles */
+  .dropdown-item-hover:hover {
+    background-color: #f3f4f6;
+    transition: background-color 0.15s ease-in-out;
+  }
+
+  /* Search input focus styles */
+  .search-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  /* Avatar hover effect */
+  .avatar-hover:hover {
+    transform: scale(1.05);
+    transition: transform 0.15s ease-in-out;
+  }
+}
+

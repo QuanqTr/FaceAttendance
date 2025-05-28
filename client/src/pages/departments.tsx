@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit, Trash2, Users, Building2, PieChart, BarChart3, TrendingUp } from "lucide-react";
+import { Header } from "@/components/layout/header";
 import {
     Dialog,
     DialogContent,
@@ -328,481 +329,487 @@ export default function Departments() {
     }
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        Quản lý Phòng ban
-                    </h1>
-                    <p className="text-muted-foreground">
-                        Tạo và quản lý các phòng ban trong tổ chức của bạn
-                    </p>
-                </div>
+        <div className="flex flex-col flex-1 overflow-hidden">
+            <Header
+                title="Quản lý Phòng ban"
+                description="Tạo và quản lý các phòng ban trong tổ chức của bạn"
+                showSearch={false}
+            />
 
-                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button
-                            onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}
-                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                        >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Thêm phòng ban
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center">
-                                <Building2 className="mr-2 h-5 w-5 text-blue-600" />
-                                Tạo phòng ban mới
-                            </DialogTitle>
-                            <DialogDescription>
-                                Nhập thông tin để tạo phòng ban mới trong hệ thống
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="name" className="flex items-center">
-                                    <span className="text-red-500 mr-1">*</span>
-                                    Tên phòng ban
-                                </Label>
-                                <Input
-                                    id="name"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="Nhập tên phòng ban"
-                                    className="focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="description">Mô tả</Label>
-                                <Textarea
-                                    id="description"
-                                    value={formData.description}
-                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Nhập mô tả về chức năng và nhiệm vụ của phòng ban"
-                                    rows={3}
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="manager">Quản lý phòng ban</Label>
-                                <Select
-                                    value={formData.managerId}
-                                    onValueChange={(value) => setFormData({ ...formData, managerId: value })}
-                                    disabled={isManagersLoading}
+            <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
+                <div className="container mx-auto p-6 space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                Quản lý Phòng ban
+                            </h1>
+                            <p className="text-muted-foreground">
+                                Tạo và quản lý các phòng ban trong tổ chức của bạn
+                            </p>
+                        </div>
+
+                        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button
+                                    onClick={() => { resetForm(); setIsCreateDialogOpen(true); }}
+                                    className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
                                 >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Chọn quản lý phòng ban" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">Không có quản lý</SelectItem>
-                                        {managersOnly.map((manager) => (
-                                            <SelectItem
-                                                key={manager.employeeData?.id || manager.id}
-                                                value={manager.employeeData?.id?.toString() || "disabled"}
-                                                disabled={!manager.employeeData}
-                                            >
-                                                {manager.employeeData?.fullName || manager.fullName}
-                                                {manager.employeeData ? ` (${manager.username})` : ' (Không có hồ sơ nhân viên)'}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {isManagersLoading && (
-                                    <p className="text-sm text-muted-foreground">Đang tải danh sách quản lý...</p>
-                                )}
-                            </div>
-                        </div>
-                        <div className="flex justify-end space-x-2">
-                            <Button
-                                variant="outline"
-                                onClick={() => setIsCreateDialogOpen(false)}
-                            >
-                                Hủy
-                            </Button>
-                            <Button
-                                onClick={handleCreate}
-                                disabled={createMutation.isPending}
-                                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
-                            >
-                                {createMutation.isPending ? "Đang tạo..." : "Tạo phòng ban"}
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            </div>
-
-            {/* Statistics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border-l-4 border-l-blue-500">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Tổng số phòng ban</CardTitle>
-                        <Building2 className="h-4 w-4 text-blue-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-blue-600">{departmentStats.totalDepartments}</div>
-                        <p className="text-xs text-muted-foreground">phòng ban hoạt động</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-green-500">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Tổng nhân viên</CardTitle>
-                        <Users className="h-4 w-4 text-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-600">{departmentStats.totalEmployees}</div>
-                        <p className="text-xs text-muted-foreground">nhân viên trong tổ chức</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-orange-500">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">TB nhân viên/phòng ban</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-orange-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">{departmentStats.avgEmployeesPerDept}</div>
-                        <p className="text-xs text-muted-foreground">nhân viên trung bình</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-purple-500">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Phòng ban lớn nhất</CardTitle>
-                        <BarChart3 className="h-4 w-4 text-purple-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-lg font-bold text-purple-600 truncate" title={departmentStats.largestDepartment.name}>
-                            {departmentStats.largestDepartment.name || "Chưa có"}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            {departmentStats.largestDepartment.count} nhân viên
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Tabs for different views */}
-            <Tabs defaultValue="list" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="list">📋 Danh sách phòng ban</TabsTrigger>
-                    <TabsTrigger value="charts">📊 Biểu đồ thống kê</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="list" className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {departments?.map((department) => (
-                            <Card key={department.id} className="hover:shadow-lg transition-shadow duration-200">
-                                <CardHeader className="pb-3">
-                                    <div className="flex justify-between items-start">
-                                        <CardTitle className="text-lg font-semibold text-gray-800 truncate">
-                                            {department.name}
-                                        </CardTitle>
-                                        <div className="flex space-x-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleEdit(department)}
-                                                className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
-                                            >
-                                                <Edit className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleDelete(department)}
-                                                className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    {department.description && (
-                                        <CardDescription className="text-sm text-gray-600 line-clamp-2">
-                                            {department.description}
-                                        </CardDescription>
-                                    )}
-                                </CardHeader>
-                                <CardContent className="pt-0">
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-gray-500">Nhân viên:</span>
-                                            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                                                <Users className="h-3 w-3 mr-1" />
-                                                {department.employeeCount || 0}
-                                            </Badge>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-gray-500">Quản lý:</span>
-                                            <span className="text-sm font-medium text-gray-700">
-                                                {department.managerName || "Chưa có"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-
-                    {departments?.length === 0 && (
-                        <Card className="text-center py-12">
-                            <CardContent>
-                                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                <h3 className="text-lg font-medium text-gray-600 mb-2">Chưa có phòng ban nào</h3>
-                                <p className="text-gray-500 mb-4">Bắt đầu bằng cách tạo phòng ban đầu tiên cho tổ chức của bạn</p>
-                                <Button onClick={() => setIsCreateDialogOpen(true)}>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    Tạo phòng ban đầu tiên
+                                    Thêm phòng ban
                                 </Button>
-                            </CardContent>
-                        </Card>
-                    )}
-                </TabsContent>
-
-                <TabsContent value="charts" className="space-y-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Employee Distribution Chart */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center">
-                                    <PieChart className="mr-2 h-5 w-5 text-blue-600" />
-                                    Phân bố nhân viên theo phòng ban
-                                </CardTitle>
-                                <CardDescription>
-                                    Biểu đồ thể hiện số lượng nhân viên trong từng phòng ban
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {chartData.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {chartData.map((dept, index) => {
-                                            const percentage = departmentStats.totalEmployees > 0
-                                                ? Math.round((dept.employees / departmentStats.totalEmployees) * 100)
-                                                : 0;
-                                            const colors = [
-                                                'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500',
-                                                'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500'
-                                            ];
-                                            const color = colors[index % colors.length];
-
-                                            return (
-                                                <div key={dept.name} className="flex items-center space-x-3">
-                                                    <div className={`w-4 h-4 rounded-full ${color}`}></div>
-                                                    <div className="flex-1">
-                                                        <div className="flex justify-between items-center mb-1">
-                                                            <span className="text-sm font-medium truncate">{dept.name}</span>
-                                                            <span className="text-sm text-gray-500">{dept.employees} ({percentage}%)</span>
-                                                        </div>
-                                                        <div className="w-full bg-gray-200 rounded-full h-2">
-                                                            <div
-                                                                className={`h-2 rounded-full ${color}`}
-                                                                style={{ width: `${percentage}%` }}
-                                                            ></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[500px]">
+                                <DialogHeader>
+                                    <DialogTitle className="flex items-center">
+                                        <Building2 className="mr-2 h-5 w-5 text-blue-600" />
+                                        Tạo phòng ban mới
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        Nhập thông tin để tạo phòng ban mới trong hệ thống
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="name" className="flex items-center">
+                                            <span className="text-red-500 mr-1">*</span>
+                                            Tên phòng ban
+                                        </Label>
+                                        <Input
+                                            id="name"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            placeholder="Nhập tên phòng ban"
+                                            className="focus:ring-2 focus:ring-blue-500"
+                                        />
                                     </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <PieChart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                        <p className="text-gray-500">Chưa có dữ liệu để hiển thị biểu đồ</p>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="description">Mô tả</Label>
+                                        <Textarea
+                                            id="description"
+                                            value={formData.description}
+                                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                            placeholder="Nhập mô tả về chức năng và nhiệm vụ của phòng ban"
+                                            rows={3}
+                                        />
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
-
-                        {/* Department Size Analysis */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center">
-                                    <BarChart3 className="mr-2 h-5 w-5 text-green-600" />
-                                    Phân tích quy mô phòng ban
-                                </CardTitle>
-                                <CardDescription>
-                                    Thống kê chi tiết về kích thước các phòng ban
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {chartData.length > 0 ? (
-                                    <div className="space-y-4">
-                                        {/* Size categories */}
-                                        {(() => {
-                                            const small = chartData.filter(d => d.employees <= 5).length;
-                                            const medium = chartData.filter(d => d.employees > 5 && d.employees <= 15).length;
-                                            const large = chartData.filter(d => d.employees > 15).length;
-
-                                            return (
-                                                <div className="space-y-3">
-                                                    <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                                                        <div>
-                                                            <span className="font-medium text-blue-800">Phòng ban nhỏ</span>
-                                                            <p className="text-sm text-blue-600">≤ 5 nhân viên</p>
-                                                        </div>
-                                                        <Badge className="bg-blue-100 text-blue-800">{small} phòng ban</Badge>
-                                                    </div>
-
-                                                    <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                                                        <div>
-                                                            <span className="font-medium text-green-800">Phòng ban trung bình</span>
-                                                            <p className="text-sm text-green-600">6-15 nhân viên</p>
-                                                        </div>
-                                                        <Badge className="bg-green-100 text-green-800">{medium} phòng ban</Badge>
-                                                    </div>
-
-                                                    <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                                                        <div>
-                                                            <span className="font-medium text-orange-800">Phòng ban lớn</span>
-                                                            <p className="text-sm text-orange-600">&gt; 15 nhân viên</p>
-                                                        </div>
-                                                        <Badge className="bg-orange-100 text-orange-800">{large} phòng ban</Badge>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-
-                                        {/* Top departments */}
-                                        <div className="mt-6">
-                                            <h4 className="font-medium mb-3">Top 3 phòng ban có nhiều nhân viên nhất:</h4>
-                                            <div className="space-y-2">
-                                                {chartData
-                                                    .sort((a, b) => b.employees - a.employees)
-                                                    .slice(0, 3)
-                                                    .map((dept, index) => (
-                                                        <div key={dept.name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                                                            <div className="flex items-center">
-                                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-white text-sm font-medium mr-3 
-                                                                    ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-600'}`}>
-                                                                    {index + 1}
-                                                                </span>
-                                                                <span className="font-medium">{dept.name}</span>
-                                                            </div>
-                                                            <Badge variant="outline">{dept.employees} nhân viên</Badge>
-                                                        </div>
-                                                    ))
-                                                }
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                                        <p className="text-gray-500">Chưa có dữ liệu để phân tích</p>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </div>
-                </TabsContent>
-            </Tabs>
-
-            {/* Edit Dialog */}
-            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center">
-                            <Edit className="mr-2 h-5 w-5 text-blue-600" />
-                            Chỉnh sửa phòng ban
-                        </DialogTitle>
-                        <DialogDescription>
-                            Cập nhật thông tin phòng ban {selectedDepartment?.name}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-name" className="flex items-center">
-                                <span className="text-red-500 mr-1">*</span>
-                                Tên phòng ban
-                            </Label>
-                            <Input
-                                id="edit-name"
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                placeholder="Nhập tên phòng ban"
-                                className="focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-description">Mô tả</Label>
-                            <Textarea
-                                id="edit-description"
-                                value={formData.description}
-                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="Nhập mô tả về chức năng và nhiệm vụ của phòng ban"
-                                rows={3}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="edit-manager">Quản lý phòng ban</Label>
-                            <Select
-                                value={formData.managerId}
-                                onValueChange={(value) => setFormData({ ...formData, managerId: value })}
-                                disabled={isManagersLoading}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Chọn quản lý phòng ban" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Không có quản lý</SelectItem>
-                                    {managersOnly.map((manager) => (
-                                        <SelectItem
-                                            key={manager.employeeData?.id || manager.id}
-                                            value={manager.employeeData?.id?.toString() || "disabled"}
-                                            disabled={!manager.employeeData}
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="manager">Quản lý phòng ban</Label>
+                                        <Select
+                                            value={formData.managerId}
+                                            onValueChange={(value) => setFormData({ ...formData, managerId: value })}
+                                            disabled={isManagersLoading}
                                         >
-                                            {manager.employeeData?.fullName || manager.fullName}
-                                            {manager.employeeData ? ` (${manager.username})` : ' (Không có hồ sơ nhân viên)'}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Chọn quản lý phòng ban" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Không có quản lý</SelectItem>
+                                                {managersOnly.map((manager) => (
+                                                    <SelectItem
+                                                        key={manager.employeeData?.id || manager.id}
+                                                        value={manager.employeeData?.id?.toString() || "disabled"}
+                                                        disabled={!manager.employeeData}
+                                                    >
+                                                        {manager.employeeData?.fullName || manager.fullName}
+                                                        {manager.employeeData ? ` (${manager.username})` : ' (Không có hồ sơ nhân viên)'}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {isManagersLoading && (
+                                            <p className="text-sm text-muted-foreground">Đang tải danh sách quản lý...</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex justify-end space-x-2">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setIsCreateDialogOpen(false)}
+                                    >
+                                        Hủy
+                                    </Button>
+                                    <Button
+                                        onClick={handleCreate}
+                                        disabled={createMutation.isPending}
+                                        className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700"
+                                    >
+                                        {createMutation.isPending ? "Đang tạo..." : "Tạo phòng ban"}
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                     </div>
-                    <div className="flex justify-end space-x-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setIsEditDialogOpen(false)}
-                        >
-                            Hủy
-                        </Button>
-                        <Button
-                            onClick={handleUpdate}
-                            disabled={updateMutation.isPending}
-                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                        >
-                            {updateMutation.isPending ? "Đang cập nhật..." : "Cập nhật"}
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
 
-            {/* Delete Confirmation Dialog */}
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center">
-                            <Trash2 className="mr-2 h-5 w-5 text-red-600" />
-                            Xác nhận xóa phòng ban
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Bạn có chắc chắn muốn xóa phòng ban <strong>"{selectedDepartment?.name}"</strong>?
-                            <br />
-                            <span className="text-red-600 font-medium">Hành động này không thể hoàn tác!</span>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Hủy</AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={confirmDelete}
-                            className="bg-red-600 hover:bg-red-700"
-                            disabled={deleteMutation.isPending}
-                        >
-                            {deleteMutation.isPending ? "Đang xóa..." : "Xóa phòng ban"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+                    {/* Statistics Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Card className="border-l-4 border-l-blue-500">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">Tổng số phòng ban</CardTitle>
+                                <Building2 className="h-4 w-4 text-blue-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-blue-600">{departmentStats.totalDepartments}</div>
+                                <p className="text-xs text-muted-foreground">phòng ban hoạt động</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border-l-4 border-l-green-500">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">Tổng nhân viên</CardTitle>
+                                <Users className="h-4 w-4 text-green-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-green-600">{departmentStats.totalEmployees}</div>
+                                <p className="text-xs text-muted-foreground">nhân viên trong tổ chức</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border-l-4 border-l-orange-500">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">TB nhân viên/phòng ban</CardTitle>
+                                <TrendingUp className="h-4 w-4 text-orange-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-orange-600">{departmentStats.avgEmployeesPerDept}</div>
+                                <p className="text-xs text-muted-foreground">nhân viên trung bình</p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="border-l-4 border-l-purple-500">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">Phòng ban lớn nhất</CardTitle>
+                                <BarChart3 className="h-4 w-4 text-purple-500" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-lg font-bold text-purple-600">{departmentStats.largestDepartment.name}</div>
+                                <p className="text-xs text-muted-foreground">{departmentStats.largestDepartment.count} nhân viên</p>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Tabs for different views */}
+                    <Tabs defaultValue="list" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="list">📋 Danh sách phòng ban</TabsTrigger>
+                            <TabsTrigger value="charts">📊 Biểu đồ thống kê</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="list" className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {departments?.map((department) => (
+                                    <Card key={department.id} className="hover:shadow-lg transition-shadow duration-200">
+                                        <CardHeader className="pb-3">
+                                            <div className="flex justify-between items-start">
+                                                <CardTitle className="text-lg font-semibold text-gray-800 truncate">
+                                                    {department.name}
+                                                </CardTitle>
+                                                <div className="flex space-x-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleEdit(department)}
+                                                        className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                                                    >
+                                                        <Edit className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => handleDelete(department)}
+                                                        className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            {department.description && (
+                                                <CardDescription className="text-sm text-gray-600 line-clamp-2">
+                                                    {department.description}
+                                                </CardDescription>
+                                            )}
+                                        </CardHeader>
+                                        <CardContent className="pt-0">
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-500">Nhân viên:</span>
+                                                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                                                        <Users className="h-3 w-3 mr-1" />
+                                                        {department.employeeCount || 0}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm text-gray-500">Quản lý:</span>
+                                                    <span className="text-sm font-medium text-gray-700">
+                                                        {department.managerName || "Chưa có"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+
+                            {departments?.length === 0 && (
+                                <Card className="text-center py-12">
+                                    <CardContent>
+                                        <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-600 mb-2">Chưa có phòng ban nào</h3>
+                                        <p className="text-gray-500 mb-4">Bắt đầu bằng cách tạo phòng ban đầu tiên cho tổ chức của bạn</p>
+                                        <Button onClick={() => setIsCreateDialogOpen(true)}>
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Tạo phòng ban đầu tiên
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </TabsContent>
+
+                        <TabsContent value="charts" className="space-y-4">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Employee Distribution Chart */}
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center">
+                                            <PieChart className="mr-2 h-5 w-5 text-blue-600" />
+                                            Phân bố nhân viên theo phòng ban
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Biểu đồ thể hiện số lượng nhân viên trong từng phòng ban
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {chartData.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {chartData.map((dept, index) => {
+                                                    const percentage = departmentStats.totalEmployees > 0
+                                                        ? Math.round((dept.employees / departmentStats.totalEmployees) * 100)
+                                                        : 0;
+                                                    const colors = [
+                                                        'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500',
+                                                        'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500'
+                                                    ];
+                                                    const color = colors[index % colors.length];
+
+                                                    return (
+                                                        <div key={dept.name} className="flex items-center space-x-3">
+                                                            <div className={`w-4 h-4 rounded-full ${color}`}></div>
+                                                            <div className="flex-1">
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-sm font-medium truncate">{dept.name}</span>
+                                                                    <span className="text-sm text-gray-500">{dept.employees} ({percentage}%)</span>
+                                                                </div>
+                                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                                    <div
+                                                                        className={`h-2 rounded-full ${color}`}
+                                                                        style={{ width: `${percentage}%` }}
+                                                                    ></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-8">
+                                                <PieChart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                <p className="text-gray-500">Chưa có dữ liệu để hiển thị biểu đồ</p>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+
+                                {/* Department Size Analysis */}
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center">
+                                            <BarChart3 className="mr-2 h-5 w-5 text-green-600" />
+                                            Phân tích quy mô phòng ban
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Thống kê chi tiết về kích thước các phòng ban
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {chartData.length > 0 ? (
+                                            <div className="space-y-4">
+                                                {/* Size categories */}
+                                                {(() => {
+                                                    const small = chartData.filter(d => d.employees <= 5).length;
+                                                    const medium = chartData.filter(d => d.employees > 5 && d.employees <= 15).length;
+                                                    const large = chartData.filter(d => d.employees > 15).length;
+
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                                                                <div>
+                                                                    <span className="font-medium text-blue-800">Phòng ban nhỏ</span>
+                                                                    <p className="text-sm text-blue-600">≤ 5 nhân viên</p>
+                                                                </div>
+                                                                <Badge className="bg-blue-100 text-blue-800">{small} phòng ban</Badge>
+                                                            </div>
+
+                                                            <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                                                                <div>
+                                                                    <span className="font-medium text-green-800">Phòng ban trung bình</span>
+                                                                    <p className="text-sm text-green-600">6-15 nhân viên</p>
+                                                                </div>
+                                                                <Badge className="bg-green-100 text-green-800">{medium} phòng ban</Badge>
+                                                            </div>
+
+                                                            <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                                                                <div>
+                                                                    <span className="font-medium text-orange-800">Phòng ban lớn</span>
+                                                                    <p className="text-sm text-orange-600">&gt; 15 nhân viên</p>
+                                                                </div>
+                                                                <Badge className="bg-orange-100 text-orange-800">{large} phòng ban</Badge>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* Top departments */}
+                                                <div className="mt-6">
+                                                    <h4 className="font-medium mb-3">Top 3 phòng ban có nhiều nhân viên nhất:</h4>
+                                                    <div className="space-y-2">
+                                                        {chartData
+                                                            .sort((a, b) => b.employees - a.employees)
+                                                            .slice(0, 3)
+                                                            .map((dept, index) => (
+                                                                <div key={dept.name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                                                    <div className="flex items-center">
+                                                                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-white text-sm font-medium mr-3 
+                                                                        ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : 'bg-orange-600'}`}>
+                                                                            {index + 1}
+                                                                        </span>
+                                                                        <span className="font-medium">{dept.name}</span>
+                                                                    </div>
+                                                                    <Badge variant="outline">{dept.employees} nhân viên</Badge>
+                                                                </div>
+                                                            ))
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-8">
+                                                <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                                <p className="text-gray-500">Chưa có dữ liệu để phân tích</p>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+
+                    {/* Edit Dialog */}
+                    <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                        <DialogContent className="sm:max-w-[500px]">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center">
+                                    <Edit className="mr-2 h-5 w-5 text-blue-600" />
+                                    Chỉnh sửa phòng ban
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Cập nhật thông tin phòng ban {selectedDepartment?.name}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="edit-name" className="flex items-center">
+                                        <span className="text-red-500 mr-1">*</span>
+                                        Tên phòng ban
+                                    </Label>
+                                    <Input
+                                        id="edit-name"
+                                        value={formData.name}
+                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Nhập tên phòng ban"
+                                        className="focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="edit-description">Mô tả</Label>
+                                    <Textarea
+                                        id="edit-description"
+                                        value={formData.description}
+                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                        placeholder="Nhập mô tả về chức năng và nhiệm vụ của phòng ban"
+                                        rows={3}
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="edit-manager">Quản lý phòng ban</Label>
+                                    <Select
+                                        value={formData.managerId}
+                                        onValueChange={(value) => setFormData({ ...formData, managerId: value })}
+                                        disabled={isManagersLoading}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Chọn quản lý phòng ban" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Không có quản lý</SelectItem>
+                                            {managersOnly.map((manager) => (
+                                                <SelectItem
+                                                    key={manager.employeeData?.id || manager.id}
+                                                    value={manager.employeeData?.id?.toString() || "disabled"}
+                                                    disabled={!manager.employeeData}
+                                                >
+                                                    {manager.employeeData?.fullName || manager.fullName}
+                                                    {manager.employeeData ? ` (${manager.username})` : ' (Không có hồ sơ nhân viên)'}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="flex justify-end space-x-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setIsEditDialogOpen(false)}
+                                >
+                                    Hủy
+                                </Button>
+                                <Button
+                                    onClick={handleUpdate}
+                                    disabled={updateMutation.isPending}
+                                    className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                                >
+                                    {updateMutation.isPending ? "Đang cập nhật..." : "Cập nhật"}
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Delete Confirmation Dialog */}
+                    <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle className="flex items-center">
+                                    <Trash2 className="mr-2 h-5 w-5 text-red-600" />
+                                    Xác nhận xóa phòng ban
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Bạn có chắc chắn muốn xóa phòng ban <strong>"{selectedDepartment?.name}"</strong>?
+                                    <br />
+                                    <span className="text-red-600 font-medium">Hành động này không thể hoàn tác!</span>
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={confirmDelete}
+                                    className="bg-red-600 hover:bg-red-700"
+                                    disabled={deleteMutation.isPending}
+                                >
+                                    {deleteMutation.isPending ? "Đang xóa..." : "Xóa phòng ban"}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </div>
+            </main>
         </div>
     );
 } 

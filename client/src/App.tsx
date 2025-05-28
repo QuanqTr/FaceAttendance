@@ -24,6 +24,8 @@ import LeaveRequestDetailsPage from "@/pages/leave-request-details";
 import ManagerLeaveRequestsPage from "@/pages/manager/leave-requests";
 import ManagerLeaveRequestDetailsPage from "@/pages/manager/leave-request-details";
 import ManagerLeaveRequestFormPage from "@/pages/manager/leave-request-form";
+import ManagerStatistics from "@/pages/manager/statistics";
+import ManagerWorkHours from "@/pages/manager/work-hours";
 import AccountsPage from "@/pages/accounts";
 import AccountFormPage from "@/pages/account-form";
 import FaceRecognitionLive from "@/pages/face-recognition-live";
@@ -71,6 +73,8 @@ function AuthenticatedRouter(): React.ReactElement {
             <ProtectedRoute path="/manager/leave-requests" component={ManagerLeaveRequestsPage} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/leave-requests/new" component={ManagerLeaveRequestFormPage} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/leave-requests/:id" component={ManagerLeaveRequestDetailsPage} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/statistics" component={ManagerStatistics} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/work-hours" component={ManagerWorkHours} requiredRoles={["manager"]} />
 
             {/* Admin Routes */}
             <ProtectedRoute path="/" component={Dashboard} requiredRoles={["admin"]} />

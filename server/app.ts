@@ -1,58 +1,56 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { setupAuth } from "./middlewares/auth";
-import { setupRoutes } from "./routes/index";
-import { setupVite, serveStatic, log } from "./vite";
+import express from "express";
+import path from "path";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { registerRoutes } from "./routes/index.js";
+import { setupAuth } from "./middlewares/auth.js";
 
-const app = express();
+// Get current file path in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Basic middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+export const app = express();
 
-// Logging middleware
-app.use((req, res, next) => {
-    const start = Date.now();
-    const path = req.path;
-    let capturedJsonResponse: Record<string, any> | undefined = undefined;
+// Middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-    const originalResJson = res.json;
-    res.json = function (bodyJson, ...args) {
-        capturedJsonResponse = bodyJson;
-        return originalResJson.apply(res, [bodyJson, ...args]);
-    };
-
-    res.on("finish", () => {
-        const duration = Date.now() - start;
-        if (path.startsWith("/api")) {
-            let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-            if (capturedJsonResponse) {
-                logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-            }
-
-            if (logLine.length > 80) {
-                logLine = logLine.slice(0, 79) + "…";
-            }
-
-            log(logLine);
-        }
-    });
-
-    next();
-});
-
-// Setup authentication
+// Setup authentication (bao gồm session và passport)
 setupAuth(app);
 
-// Setup routes
-setupRoutes(app);
+// Register all routes from new structure
+registerRoutes(app);
 
-// Error handling middleware
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+// Serve static files from client build (only in production or when client is built)
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+app.use(express.static(clientDistPath));
 
-    res.status(status).json({ message });
-    throw err;
+// SPA fallback - serve index.html for any non-API routes
+app.get('*', (req, res) => {
+    // Skip if it's an API route
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+    }
+
+    // Serve index.html for all other routes (SPA routing)
+    const indexPath = path.join(clientDistPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            // If client build doesn't exist, show development message
+            res.status(404).json({
+                message: "🚀 Face Timekeeping API Server",
+                version: "2.0.0",
+                status: "running",
+                note: "Client build not found. Run 'npm run build' in client directory or access API endpoints directly.",
+                endpoints: {
+                    health: "/api/health",
+                    departments: "/api/departments",
+                    employees: "/api/employeeall",
+                    auth: "/api/auth/login"
+                }
+            });
+        }
+    });
 });
 
-export { app }; 
+export default app; 

@@ -82,22 +82,27 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
     queryKey: ['employeesWithFace'],
     queryFn: async () => {
       try {
+        console.log('🔍 Fetching employees from API...');
         const response = await fetch('/api/employees');
+        console.log('📡 API response status:', response.status);
+
         if (!response.ok) {
-          throw new Error('Failed to fetch employees');
+          console.error('❌ API response not ok:', response.status, response.statusText);
+          throw new Error(`Failed to fetch employees: ${response.status}`);
         }
+
         const data = await response.json();
-        console.log('Fetched employees:', data);
+        console.log('📊 Raw API response:', data);
 
         // Lọc những nhân viên có face descriptor
-        const employeesWithFace = data.employees.filter(
+        const employeesWithFace = data.employees?.filter(
           (emp: any) => emp.faceDescriptor && emp.faceDescriptor !== ''
-        );
+        ) || [];
 
-        console.log(`Found ${employeesWithFace.length} employees with face descriptors`);
+        console.log(`✅ Found ${employeesWithFace.length} employees with face descriptors:`, employeesWithFace);
         return employeesWithFace;
       } catch (error) {
-        console.error('Error fetching employees:', error);
+        console.error('❌ Error fetching employees:', error);
         return [];
       }
     },
@@ -887,13 +892,23 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
   // Sửa đổi hàm detectFaces để sử dụng dữ liệu từ API
   const detectFaces = async () => {
+    console.log('🔄 detectFaces called with conditions:', {
+      hasVideoRef: !!videoRef.current,
+      hasCanvasRef: !!canvasRef.current,
+      cameraActive,
+      isProcessing: isProcessingRef.current,
+      isCameraOn,
+      employeesWithFaceCount: employeesWithFace.length
+    });
+
     if (!videoRef.current || !canvasRef.current || !cameraActive || isProcessingRef.current || !isCameraOn) {
+      console.log('❌ detectFaces skipped due to conditions not met');
       return;
     }
 
     // Kiểm tra xem mô hình đã được tải chưa
     if (!faceapi.nets.ssdMobilenetv1.isLoaded) {
-      console.warn("SsdMobilenetv1 model not loaded yet, skipping detection");
+      console.warn("❌ SsdMobilenetv1 model not loaded yet, skipping detection");
       isProcessingRef.current = false;
       return;
     }
@@ -903,6 +918,7 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
     try {
       // Kiểm tra xem có nhân viên nào có face descriptor không
       if (employeesWithFace.length === 0) {
+        console.log("❌ No employees with face descriptors found - skipping detection");
         isProcessingRef.current = false;
         return;
       }
@@ -930,6 +946,8 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
         isProcessingRef.current = false;
         return;
       }
+
+      console.log(`🎯 Face detection: Found ${detections.length} face(s) in frame`);
 
       // Get the 2D context from canvas with null check
       const ctx = canvasRef.current.getContext('2d');
@@ -959,38 +977,52 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
               } else if (Array.isArray(emp.faceDescriptor)) {
                 descriptor = emp.faceDescriptor;
               } else {
-                console.error(`Invalid face descriptor format for employee ${emp.id}`);
+                console.error(`❌ Invalid face descriptor format for employee ${emp.id}`);
                 return null;
               }
 
               // Kiểm tra descriptor có hợp lệ không
               if (Array.isArray(descriptor) && descriptor.length === 128) {
+                console.log(`✅ Loaded face descriptor for ${emp.firstName} ${emp.lastName} (ID: ${emp.id})`);
                 return {
                   name: `${emp.firstName} ${emp.lastName}`,
                   employeeId: emp.id,
                   descriptor: new Float32Array(descriptor)
                 };
               }
+              console.error(`❌ Invalid descriptor length for employee ${emp.id}: ${descriptor?.length || 0} (expected 128)`);
               return null;
             } catch (error) {
-              console.error(`Error parsing face descriptor for employee ${emp.id}:`, error);
+              console.error(`❌ Error parsing face descriptor for employee ${emp.id}:`, error);
               return null;
             }
           })
           .filter(Boolean); // Lọc bỏ các giá trị null
 
+        console.log(`📊 Comparing against ${labeledDescriptorsFromDB.length} employee face descriptors`);
+
         // So sánh với dữ liệu từ cơ sở dữ liệu
-        const bestMatch = detections.map(detection => {
+        const bestMatch = detections.map((detection, detectionIndex) => {
+          console.log(`🔬 Processing detection ${detectionIndex + 1}/${detections.length}`);
+
           const distances = labeledDescriptorsFromDB
             .filter(labeled => labeled !== null) // Lọc bỏ các giá trị null
-            .map(labeled => ({
-              name: labeled!.name,
-              employeeId: labeled!.employeeId,
-              distance: faceapi.euclideanDistance(detection.descriptor, labeled!.descriptor)
-            }));
+            .map(labeled => {
+              const distance = faceapi.euclideanDistance(detection.descriptor, labeled!.descriptor);
+              const confidence = 1 - distance;
+              console.log(`  📏 ${labeled!.name} (ID: ${labeled!.employeeId}): distance = ${distance.toFixed(4)}, confidence = ${(confidence * 100).toFixed(1)}%`);
+
+              return {
+                name: labeled!.name,
+                employeeId: labeled!.employeeId,
+                distance: distance,
+                confidence: confidence
+              };
+            });
 
           // Nếu không có descriptor nào, trả về null
           if (distances.length === 0) {
+            console.log("  ❌ No valid descriptors to compare");
             return null;
           }
 
@@ -998,37 +1030,48 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
             prev.distance < curr.distance ? prev : curr
           );
 
+          console.log(`  🎯 Best match: ${best.name} with distance ${best.distance.toFixed(4)} (confidence: ${(best.confidence * 100).toFixed(1)}%)`);
+
           return {
             name: best.name,
             employeeId: best.employeeId,
-            confidence: 1 - best.distance,
+            confidence: best.confidence,
+            distance: best.distance,
             detection
           };
         }).filter(Boolean); // Lọc bỏ các giá trị null
 
         if (bestMatch.length > 0) {
           const bestMatchResult = bestMatch[0];
+          const threshold = 0.6; // 60% confidence threshold
 
-          // Chỉ hiển thị kết quả khi độ tin cậy > 60%
-          if (bestMatchResult && bestMatchResult.confidence > 0.6) {
-            setRecognizedPerson({
-              name: bestMatchResult.name,
-              employeeId: bestMatchResult.employeeId,
-              confidence: bestMatchResult.confidence
-            });
+          if (bestMatchResult) {
+            console.log(`🔍 Final result: ${bestMatchResult.name} with ${(bestMatchResult.confidence * 100).toFixed(1)}% confidence (threshold: ${(threshold * 100)}%)`);
 
-            // Gọi callback nếu có
-            if (onFaceRecognized && bestMatchResult.detection.descriptor) {
-              // Chuyển descriptor thành chuỗi
-              const descriptorString = Array.from(bestMatchResult.detection.descriptor).toString();
-              onFaceRecognized(descriptorString, {
+            // Chỉ hiển thị kết quả khi độ tin cậy > 60%
+            if (bestMatchResult.confidence > threshold) {
+              console.log(`✅ Face recognized: ${bestMatchResult.name} (${(bestMatchResult.confidence * 100).toFixed(1)}%)`);
+
+              setRecognizedPerson({
                 name: bestMatchResult.name,
                 employeeId: bestMatchResult.employeeId,
                 confidence: bestMatchResult.confidence
               });
+
+              // Gọi callback nếu có
+              if (onFaceRecognized && bestMatchResult.detection.descriptor) {
+                // Chuyển descriptor thành chuỗi
+                const descriptorString = Array.from(bestMatchResult.detection.descriptor).toString();
+                onFaceRecognized(descriptorString, {
+                  name: bestMatchResult.name,
+                  employeeId: bestMatchResult.employeeId,
+                  confidence: bestMatchResult.confidence
+                });
+              }
+            } else {
+              console.log(`❌ Face not recognized: confidence ${(bestMatchResult.confidence * 100).toFixed(1)}% below threshold ${(threshold * 100)}%`);
+              setRecognizedPerson(null);
             }
-          } else {
-            setRecognizedPerson(null);
           }
 
           // Vẽ kết quả
@@ -1044,10 +1087,10 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
               const box = detection.detection.box;
               const drawBox = new faceapi.draw.DrawBox(box, {
-                label: matchInfo.confidence > 0.6
+                label: matchInfo.confidence > threshold
                   ? `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`
                   : 'Chưa nhận diện',
-                boxColor: matchInfo.confidence > 0.6 ? 'green' : 'red'
+                boxColor: matchInfo.confidence > threshold ? 'green' : 'red'
               });
 
               // Ensure canvas element is not null before drawing
@@ -1057,13 +1100,14 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
             });
           }
         } else {
+          console.log("❌ No valid matches found");
           setRecognizedPerson(null);
         }
       } else {
         setRecognizedPerson(null);
       }
     } catch (error) {
-      console.error('Error detecting faces:', error);
+      console.error('❌ Error detecting faces:', error);
       setRecognizedPerson(null);
     } finally {
       isProcessingRef.current = false;

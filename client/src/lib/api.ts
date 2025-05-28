@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 // Hàm helper để lấy token từ localStorage
 const getAuthToken = () => {
@@ -6,12 +6,12 @@ const getAuthToken = () => {
 };
 
 // Hàm chính để thực hiện các API request
-export async function apiRequest(
+export async function apiRequest<T = any>(
     method: string,
     url: string,
     data?: any,
     config: AxiosRequestConfig = {}
-) {
+): Promise<AxiosResponse<T>> {
     const token = getAuthToken();
 
     // Merge config với default config
@@ -29,7 +29,7 @@ export async function apiRequest(
     };
 
     try {
-        const response = await axios(requestConfig);
+        const response = await axios<T>(requestConfig);
         return response;
     } catch (error: any) {
         // Xử lý các lỗi phổ biến

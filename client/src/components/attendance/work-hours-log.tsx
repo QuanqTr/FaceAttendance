@@ -68,17 +68,11 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
     // Helper function to safely format dates
     const safeFormatDate = (dateString: string | null | undefined, formatStr: string = 'HH:mm') => {
         if (!dateString) return '--:--';
+
         try {
-            // Log thông tin để debug
-            console.log(`[DEBUG] Formatting date string: ${dateString}`);
-
-            // Parse date string
-            const date = new Date(dateString);
-
-            // Check if date is valid
-            if (isNaN(date.getTime())) {
-                console.error("Invalid date:", dateString);
-                return '--:--';
+            // Nếu là chuỗi đã format sẵn (HH:mm), trả về luôn
+            if (typeof dateString === 'string' && /^\d{2}:\d{2}$/.test(dateString)) {
+                return dateString;
             }
 
             // Lấy thời gian từ chuỗi ISO trực tiếp để tránh vấn đề múi giờ
@@ -87,17 +81,19 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
             if (timeMatch) {
                 const hours = timeMatch[1];
                 const minutes = timeMatch[2];
-                console.log(`[DEBUG] Extracted time directly: ${hours}:${minutes}`);
-                if (formatStr === 'HH:mm') {
-                    return `${hours}:${minutes}`;
-                }
+                return `${hours}:${minutes}`;
             }
 
-            // Fallback to date-fns format if direct extraction fails
-            const formattedTime = format(date, formatStr);
-            console.log(`[DEBUG] Formatted time with date-fns: ${formattedTime}`);
+            // Thử parse và format bằng Date object
+            const date = new Date(dateString);
+            if (!isNaN(date.getTime())) {
+                // Sử dụng getUTCHours và getUTCMinutes để tránh vấn đề múi giờ
+                const hours = String(date.getUTCHours()).padStart(2, '0');
+                const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                return `${hours}:${minutes}`;
+            }
 
-            return formattedTime;
+            return '--:--';
         } catch (error) {
             console.error("Error formatting date:", error, dateString);
             return '--:--';

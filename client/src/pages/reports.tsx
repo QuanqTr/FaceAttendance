@@ -1,452 +1,531 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Calendar, Download, FileText, Users, TrendingUp, BarChart3, PieChart, Building2, Clock, Target, Calendar as CalendarIcon, Filter } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { Skeleton } from "@/components/ui/skeleton";
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { apiRequest } from '@/lib/api';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
+} from 'recharts';
+import {
+  Users, Clock, AlertTriangle, TrendingUp, Award,
+  Building2, DollarSign, Calendar, Download, FileSpreadsheet,
+  BarChart3, PieChart as PieChartIcon, TrendingDown,
+  FileText, Filter, RefreshCw, Search, ChevronLeft, ChevronRight, Loader2
+} from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Header } from '@/components/layout/header';
+import { format, subMonths, addMonths } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
-export default function ReportsPage() {
-  const { toast } = useToast();
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
-  const [selectedDepartment, setSelectedDepartment] = useState("all");
-  const [activeTab, setActiveTab] = useState("overview");
+// Types
+interface OverallStats {
+  totalEmployees: number;
+  totalHours: number;
+  avgHoursPerEmployee: number;
+  totalOvertimeHours: number;
+  avgOvertimePerEmployee: number;
+  totalLeaveDays: number;
+  avgLeaveDaysPerEmployee: number;
+  totalLateMinutes: number;
+  avgLateMinutesPerEmployee: number;
+  totalPenaltyAmount: number;
+  avgPenaltyPerEmployee: number;
+  fullTimeEmployees: number;
+  partTimeEmployees: number;
+  absentEmployees: number;
+}
 
-  // Generate year options (current year and 2 years back)
-  const yearOptions = Array.from({ length: 3 }, (_, i) => {
-    const year = new Date().getFullYear() - i;
-    return { value: year.toString(), label: year.toString() };
-  });
+interface DepartmentStats {
+  departmentId: number;
+  departmentName: string;
+  employeeCount: number;
+  avgTotalHours: number;
+  totalDepartmentHours: number;
+  avgOvertimeHours: number;
+  totalLeaveDays: number;
+  avgLateMinutes: number;
+  totalPenaltyAmount: number;
+}
 
-  // Month options in Vietnamese
-  const monthOptions = [
-    { value: "1", label: "Tháng 1" },
-    { value: "2", label: "Tháng 2" },
-    { value: "3", label: "Tháng 3" },
-    { value: "4", label: "Tháng 4" },
-    { value: "5", label: "Tháng 5" },
-    { value: "6", label: "Tháng 6" },
-    { value: "7", label: "Tháng 7" },
-    { value: "8", label: "Tháng 8" },
-    { value: "9", label: "Tháng 9" },
-    { value: "10", label: "Tháng 10" },
-    { value: "11", label: "Tháng 11" },
-    { value: "12", label: "Tháng 12" },
+interface AttendanceRecord {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  departmentName: string;
+  month: number;
+  year: number;
+  totalHours: number;
+  overtimeHours: number;
+  leaveDays: number;
+  earlyMinutes: number;
+  lateMinutes: number;
+  penaltyAmount: number;
+  createdAt: string;
+}
+
+interface TopPerformer {
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  departmentName: string;
+  totalHours: number;
+  overtimeHours: number;
+  lateMinutes: number;
+  penaltyAmount: number;
+}
+
+interface PenaltyAnalysis {
+  employeeId: number;
+  employeeName: string;
+  position: string;
+  departmentName: string;
+  lateMinutes: number;
+  earlyMinutes: number;
+  penaltyAmount: number;
+  penaltyLevel: string;
+}
+
+interface AttendanceTrend {
+  month: number;
+  employeeCount: number;
+  totalHours: number;
+  avgHours: number;
+  totalOvertime: number;
+  totalLeaveDays: number;
+  totalPenalties: number;
+}
+
+// Add ApiResponse interface
+interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  status?: number;
+}
+
+const Reports: React.FC = () => {
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [compareMode, setCompareMode] = useState<boolean>(false);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const months = [
+    { value: 1, label: 'Tháng 1' }, { value: 2, label: 'Tháng 2' },
+    { value: 3, label: 'Tháng 3' }, { value: 4, label: 'Tháng 4' },
+    { value: 5, label: 'Tháng 5' }, { value: 6, label: 'Tháng 6' },
+    { value: 7, label: 'Tháng 7' }, { value: 8, label: 'Tháng 8' },
+    { value: 9, label: 'Tháng 9' }, { value: 10, label: 'Tháng 10' },
+    { value: 11, label: 'Tháng 11' }, { value: 12, label: 'Tháng 12' },
   ];
 
-  // Fetch departments for filter
-  const { data: departments } = useQuery({
-    queryKey: ["/api/departments"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/departments");
-      return res.data || [];
-    }
-  });
+  const years = [2023, 2024, 2025, 2026].map(year => ({ value: year, label: `Năm ${year}` }));
 
-  // Fetch attendance summary data
-  const { data: attendanceSummary, isLoading: isAttendanceLoading } = useQuery({
-    queryKey: ["/api/reports/attendance-summary", selectedYear, selectedMonth, selectedDepartment],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        year: selectedYear,
-        month: selectedMonth,
-      });
-      if (selectedDepartment !== "all") {
-        params.append("departmentId", selectedDepartment);
-      }
+  // Get month and year from selectedMonth Date
+  const currentMonth = selectedMonth.getMonth() + 1;
+  const currentYear = selectedMonth.getFullYear();
 
-      const res = await apiRequest("GET", `/api/reports/attendance-summary?${params}`);
-      return res.data || [];
-    }
-  });
-
-  // Fetch statistics data
-  const { data: statistics, isLoading: isStatsLoading } = useQuery({
-    queryKey: ["/api/reports/statistics", selectedYear, selectedMonth, selectedDepartment],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        year: selectedYear,
-        month: selectedMonth,
-      });
-      if (selectedDepartment !== "all") {
-        params.append("departmentId", selectedDepartment);
-      }
-
-      const res = await apiRequest("GET", `/api/reports/statistics?${params}`);
-      return res.data || {
-        totalEmployees: 0,
-        totalHours: 0,
-        attendanceRate: 0,
-        averageHoursPerEmployee: 0
-      };
-    }
-  });
-
-  // Fetch department summary
-  const { data: departmentSummary, isLoading: isDeptLoading } = useQuery({
-    queryKey: ["/api/reports/department-summary", selectedYear, selectedMonth],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        year: selectedYear,
-        month: selectedMonth,
-      });
-
-      const res = await apiRequest("GET", `/api/reports/department-summary?${params}`);
-      return res.data || [];
-    }
-  });
-
-  const handleExport = async (format: 'csv' | 'excel' | 'pdf') => {
-    try {
-      const params = new URLSearchParams({
-        format,
-        year: selectedYear,
-        month: selectedMonth,
-        type: activeTab,
-      });
-      if (selectedDepartment !== "all") {
-        params.append("departmentId", selectedDepartment);
-      }
-
-      const res = await fetch(`/api/reports/export?${params}`, {
-        credentials: 'include'
-      });
-
-      if (!res.ok) throw new Error('Export failed');
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `report-${activeTab}-${selectedYear}-${selectedMonth}.${format === 'excel' ? 'xlsx' : format}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "✅ Xuất báo cáo thành công",
-        description: `Báo cáo ${format.toUpperCase()} đã được tải xuống`,
-      });
-    } catch (error) {
-      toast({
-        title: "❌ Lỗi xuất báo cáo",
-        description: "Không thể xuất báo cáo. Vui lòng thử lại.",
-        variant: "destructive",
-      });
-    }
+  // Format date for API requests
+  const formatDateParam = (date: Date) => {
+    return date.toISOString().split('T')[0];
   };
 
-  const formatHours = (hours: number) => {
-    return `${hours.toFixed(1)}h`;
+  // API Queries
+  const { data: overallStats, isLoading: isOverallLoading, refetch: refetchOverall } = useQuery<OverallStats>({
+    queryKey: ['/api/reports/overall-stats', currentMonth, currentYear],
+    queryFn: async () => {
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth, 0);
+      const res = await apiRequest<OverallStats>('GET', `/api/reports/overall-stats?month=${currentMonth}&year=${currentYear}&startDate=${formatDateParam(startDate)}&endDate=${formatDateParam(endDate)}`);
+      return res.data;
+    }
+  });
+
+  const { data: departmentStats, isLoading: isDeptLoading, refetch: refetchDepartments } = useQuery<DepartmentStats[]>({
+    queryKey: ['/api/reports/department-stats', currentMonth, currentYear],
+    queryFn: async () => {
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth, 0);
+      const res = await apiRequest<DepartmentStats[]>('GET', `/api/reports/department-stats?month=${currentMonth}&year=${currentYear}&startDate=${formatDateParam(startDate)}&endDate=${formatDateParam(endDate)}`);
+      return res.data;
+    }
+  });
+
+  const { data: attendanceRecords, isLoading: isAttendanceLoading, refetch: refetchAttendance } = useQuery<AttendanceRecord[]>({
+    queryKey: ['/api/reports/monthly-attendance', currentMonth, currentYear, selectedDepartment],
+    queryFn: async () => {
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth, 0);
+      let url = `/api/reports/monthly-attendance?month=${currentMonth}&year=${currentYear}&startDate=${formatDateParam(startDate)}&endDate=${formatDateParam(endDate)}`;
+      if (selectedDepartment !== 'all') {
+        url += `&departmentId=${selectedDepartment}`;
+      }
+      const res = await apiRequest<AttendanceRecord[]>('GET', url);
+      return res.data;
+    }
+  });
+
+  const { data: topPerformers, isLoading: isTopLoading, refetch: refetchTop } = useQuery<TopPerformer[]>({
+    queryKey: ['/api/reports/top-performers', currentMonth, currentYear],
+    queryFn: async () => {
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth, 0);
+      const res = await apiRequest<TopPerformer[]>('GET', `/api/reports/top-performers?month=${currentMonth}&year=${currentYear}&startDate=${formatDateParam(startDate)}&endDate=${formatDateParam(endDate)}&limit=10`);
+      return res.data;
+    }
+  });
+
+  const { data: penaltyAnalysis, isLoading: isPenaltyLoading, refetch: refetchPenalty } = useQuery<PenaltyAnalysis[]>({
+    queryKey: ['/api/reports/penalty-analysis', currentMonth, currentYear],
+    queryFn: async () => {
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth, 0);
+      const res = await apiRequest<PenaltyAnalysis[]>('GET', `/api/reports/penalty-analysis?month=${currentMonth}&year=${currentYear}&startDate=${formatDateParam(startDate)}&endDate=${formatDateParam(endDate)}`);
+      return res.data;
+    }
+  });
+
+  // New query for trends
+  const { data: attendanceTrends, isLoading: isTrendsLoading } = useQuery<AttendanceTrend[]>({
+    queryKey: ['/api/reports/attendance-trends', currentYear],
+    queryFn: async () => {
+      const res = await apiRequest<AttendanceTrend[]>('GET', `/api/reports/attendance-trends?year=${currentYear}`);
+      return res.data;
+    }
+  });
+
+  // Chart colors
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff7f', '#ff1493', '#00bfff', '#ffd700'];
+
+  // Format hours with null safety
+  const formatHours = (hours: number | null | undefined) => {
+    if (!hours || isNaN(hours)) return "0h 0m";
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}h ${m}m`;
   };
 
-  const formatPercentage = (value: number) => {
-    return `${Math.round(value)}%`;
+  // Format currency with null safety
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (!amount || isNaN(amount)) return "0 ₫";
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      minimumFractionDigits: 0
+    }).format(amount);
   };
 
-  // Loading skeleton
-  if (isAttendanceLoading || isStatsLoading) {
-    return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-8 w-64 mb-2" />
-            <Skeleton className="h-4 w-96" />
-          </div>
-          <div className="flex space-x-2">
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-32" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-8 w-16" />
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Safe number formatting
+  const safeNumber = (value: number | null | undefined) => {
+    return value && !isNaN(value) ? value : 0;
+  };
+
+  // Export to CSV function
+  const exportToCSV = (data: any[], filename: string) => {
+    if (!data || data.length === 0) return;
+
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => headers.map(field => row[field]).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filename}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Refresh all data
+  const refreshAllData = () => {
+    refetchOverall();
+    refetchDepartments();
+    refetchAttendance();
+    refetchTop();
+    refetchPenalty();
+  };
+
+  // Filter attendance records based on search term and department
+  const filteredAttendanceRecords = attendanceRecords?.filter(record => {
+    const matchesSearch = !searchTerm ||
+      record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.departmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.position.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesDepartment = selectedDepartment === 'all' ||
+      record.departmentName === departmentStats?.find(d => d.departmentId.toString() === selectedDepartment)?.departmentName;
+
+    return matchesSearch && matchesDepartment;
+  }) || [];
+
+  // Filter penalty analysis based on search term and department
+  const filteredPenaltyAnalysis = penaltyAnalysis?.filter(record => {
+    const matchesSearch = !searchTerm ||
+      record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.departmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.position.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesDepartment = selectedDepartment === 'all' ||
+      record.departmentName === departmentStats?.find(d => d.departmentId.toString() === selectedDepartment)?.departmentName;
+
+    return matchesSearch && matchesDepartment;
+  }) || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="container mx-auto p-6 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-              📊 Báo cáo thống kê
-            </h1>
-            <p className="text-muted-foreground text-lg">
-              Phân tích dữ liệu chấm công và hiệu suất làm việc
-            </p>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <Header title="Báo cáo chấm công" />
+
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
+        {/* Controls */}
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold">Báo cáo chấm công</h2>
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex items-center space-x-2">
-              <CalendarIcon className="h-4 w-4 text-gray-500" />
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Năm" />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((year) => (
-                    <SelectItem key={year.value} value={year.value}>
-                      {year.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col md:flex-row gap-4 items-center">
+            {/* Search */}
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Tìm kiếm nhân viên..."
+                className="pl-8"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
 
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Tháng" />
+            {/* Department Filter */}
+            <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Chọn phòng ban" />
               </SelectTrigger>
               <SelectContent>
-                {monthOptions.map((month) => (
-                  <SelectItem key={month.value} value={month.value}>
-                    {month.label}
+                <SelectItem value="all">Tất cả phòng ban</SelectItem>
+                {departmentStats?.map((dept) => (
+                  <SelectItem key={dept.departmentId} value={dept.departmentId.toString()}>
+                    {dept.departmentName}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Phòng ban" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tất cả phòng ban</SelectItem>
-                  {departments?.map((dept: any) => (
-                    <SelectItem key={dept.id} value={dept.id.toString()}>
-                      {dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Month Navigation */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedMonth(subMonths(selectedMonth, 1))}
+                className="h-9"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-[120px] text-center flex items-center justify-center px-3 py-1 border rounded">
+                <p className="font-medium text-sm">
+                  {format(selectedMonth, 'MM/yyyy', { locale: vi })}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+                className="h-9"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
 
-            {/* Export buttons */}
-            <div className="flex space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleExport('excel')}
-                className="bg-green-50 border-green-200 hover:bg-green-100"
-              >
-                <FileText className="h-4 w-4 mr-2 text-green-600" />
-                Excel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleExport('pdf')}
-                className="bg-red-50 border-red-200 hover:bg-red-100"
-              >
-                <Download className="h-4 w-4 mr-2 text-red-600" />
-                PDF
-              </Button>
-            </div>
+            {/* Refresh Button */}
+            <Button
+              onClick={refreshAllData}
+              variant="outline"
+              size="sm"
+              disabled={isOverallLoading}
+              className="h-9"
+            >
+              {isOverallLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Làm mới
+            </Button>
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50 to-blue-100/50 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-blue-800">Tổng nhân viên</CardTitle>
-              <Users className="h-5 w-5 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-blue-700">{statistics?.totalEmployees || 0}</div>
-              <p className="text-xs text-blue-600 mt-1">nhân viên hoạt động</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-green-500 bg-gradient-to-br from-green-50 to-green-100/50 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-800">Tổng giờ làm</CardTitle>
-              <Clock className="h-5 w-5 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-700">
-                {formatHours(statistics?.totalHours || 0)}
-              </div>
-              <p className="text-xs text-green-600 mt-1">trong tháng</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-orange-500 bg-gradient-to-br from-orange-50 to-orange-100/50 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-800">Tỷ lệ chấm công</CardTitle>
-              <Target className="h-5 w-5 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-orange-700">
-                {formatPercentage(statistics?.attendanceRate || 0)}
-              </div>
-              <Progress value={statistics?.attendanceRate || 0} className="mt-2" />
-            </CardContent>
-          </Card>
-
-          <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50 to-purple-100/50 shadow-lg hover:shadow-xl transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-purple-800">TB giờ/nhân viên</CardTitle>
-              <TrendingUp className="h-5 w-5 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-700">
-                {formatHours(statistics?.averageHoursPerEmployee || 0)}
-              </div>
-              <p className="text-xs text-purple-600 mt-1">trung bình</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs for different report views */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-white/50 backdrop-blur-sm">
-            <TabsTrigger value="overview" className="flex items-center space-x-2">
-              <BarChart3 className="h-4 w-4" />
-              <span>Tổng quan</span>
-            </TabsTrigger>
-            <TabsTrigger value="attendance" className="flex items-center space-x-2">
-              <Users className="h-4 w-4" />
-              <span>Chi tiết chấm công</span>
-            </TabsTrigger>
-            <TabsTrigger value="departments" className="flex items-center space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>Theo phòng ban</span>
-            </TabsTrigger>
+        {/* Tabs for different views */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="overview">📈 Tổng quan</TabsTrigger>
+            <TabsTrigger value="trends">📊 Xu hướng</TabsTrigger>
+            <TabsTrigger value="charts">📈 Biểu đồ</TabsTrigger>
+            <TabsTrigger value="attendance">📋 Chấm công</TabsTrigger>
+            <TabsTrigger value="penalties">⚠️ Phân tích phạt</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Quick Stats Cards */}
+            {overallStats && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tổng nhân viên</CardTitle>
+                    <Users className="h-4 w-4 text-blue-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">{safeNumber(overallStats?.totalEmployees)}</div>
+                    {overallStats?.absentEmployees && overallStats.absentEmployees > 0 && (
+                      <p className="text-xs text-red-500">
+                        {overallStats.absentEmployees} nghỉ việc
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tổng giờ làm</CardTitle>
+                    <Clock className="h-4 w-4 text-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">{formatHours(overallStats?.totalHours)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      TB: {formatHours(overallStats?.avgHoursPerEmployee)}/người
+                    </p>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-green-500 h-2 rounded-full"
+                        style={{ width: `${Math.min((safeNumber(overallStats?.avgHoursPerEmployee) / 180) * 100, 100)}%` }}
+                      ></div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-orange-500 hover:shadow-lg transition-shadow">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tổng tăng ca</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-orange-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">{formatHours(overallStats?.totalOvertimeHours)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      TB: {formatHours(overallStats?.avgOvertimePerEmployee)}/người
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {safeNumber(overallStats?.totalOvertimeHours) > 0 && safeNumber(overallStats?.totalHours) > 0
+                        ? ((safeNumber(overallStats?.totalOvertimeHours) / safeNumber(overallStats?.totalHours)) * 100).toFixed(1)
+                        : "0"}% tổng giờ làm
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-l-4 border-l-red-500 hover:shadow-lg transition-shadow">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tổng phạt</CardTitle>
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-red-600">{formatCurrency(overallStats?.totalPenaltyAmount)}</div>
+                    <p className="text-xs text-muted-foreground">
+                      TB: {formatCurrency(overallStats?.avgPenaltyPerEmployee)}/người
+                    </p>
+                    <p className="text-xs text-red-500 mt-1">
+                      {safeNumber(overallStats?.totalLateMinutes)} phút đi muộn tổng
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Department Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Department Performance Chart */}
-              <Card className="shadow-lg bg-white/60 backdrop-blur-sm">
+              <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center">
-                    <PieChart className="mr-2 h-5 w-5 text-blue-600" />
-                    Hiệu suất theo phòng ban
+                    <Building2 className="mr-2 h-5 w-5 text-blue-600" />
+                    Hiệu suất phòng ban
                   </CardTitle>
-                  <CardDescription>
-                    Tỷ lệ chấm công của từng phòng ban
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {isDeptLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, i) => (
-                        <Skeleton key={i} className="h-12 w-full" />
-                      ))}
-                    </div>
-                  ) : departmentSummary?.length > 0 ? (
-                    <div className="space-y-4">
-                      {departmentSummary.slice(0, 5).map((dept: any, index: number) => {
-                        const colors = [
-                          'bg-blue-500', 'bg-green-500', 'bg-orange-500',
-                          'bg-purple-500', 'bg-pink-500'
-                        ];
-                        const color = colors[index % colors.length];
-
-                        return (
-                          <div key={dept.departmentName} className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-medium truncate">{dept.departmentName}</span>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm text-gray-500">{dept.employeeCount} nhân viên</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {formatPercentage(dept.attendanceRate || 0)}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-3">
-                              <div
-                                className={`h-3 rounded-full ${color.replace('bg-', 'bg-gradient-to-r from-')} to-${color.split('-')[1]}-400`}
-                                style={{ width: `${Math.min(dept.attendanceRate || 0, 100)}%` }}
-                              ></div>
-                            </div>
+                  <div className="space-y-4">
+                    {departmentStats?.slice(0, 5).map((dept, index) => (
+                      <div key={dept.departmentId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${index === 0 ? 'bg-gold' : index === 1 ? 'bg-silver' : index === 2 ? 'bg-bronze' : 'bg-gray-500'
+                            }`}>
+                            {index + 1}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <PieChart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Chưa có dữ liệu hiệu suất phòng ban</p>
-                    </div>
-                  )}
+                          <div>
+                            <p className="font-medium">{dept.departmentName}</p>
+                            <p className="text-sm text-gray-500">{dept.employeeCount} nhân viên</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-blue-600">{formatHours(dept.totalDepartmentHours)}</p>
+                          <p className="text-sm text-gray-500">TB: {formatHours(dept.avgTotalHours)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
 
-              {/* Top Performers */}
-              <Card className="shadow-lg bg-white/60 backdrop-blur-sm">
+              {/* Penalty Summary */}
+              <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center">
-                    <TrendingUp className="mr-2 h-5 w-5 text-green-600" />
-                    Nhân viên xuất sắc
+                    <AlertTriangle className="mr-2 h-5 w-5 text-red-600" />
+                    Phân tích vi phạm
                   </CardTitle>
-                  <CardDescription>
-                    Top 5 nhân viên có giờ làm cao nhất
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {isAttendanceLoading ? (
-                    <div className="space-y-3">
-                      {[...Array(5)].map((_, i) => (
-                        <Skeleton key={i} className="h-16 w-full" />
-                      ))}
-                    </div>
-                  ) : attendanceSummary?.length > 0 ? (
-                    <div className="space-y-3">
-                      {attendanceSummary
-                        .sort((a: any, b: any) => (b.totalHours || 0) - (a.totalHours || 0))
-                        .slice(0, 5)
-                        .map((employee: any, index: number) => (
-                          <div key={employee.employeeId} className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-white text-sm font-medium
-                                                                ${index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
-                                  index === 1 ? 'bg-gradient-to-r from-gray-400 to-gray-500' :
-                                    index === 2 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                                      'bg-gradient-to-r from-blue-400 to-blue-500'}`}>
-                                {index + 1}
-                              </span>
-                              <div>
-                                <p className="font-medium text-gray-800">{employee.employeeName}</p>
-                                <p className="text-sm text-gray-500">{employee.departmentName}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-semibold text-green-600">{formatHours(employee.totalHours || 0)}</p>
-                              <p className="text-xs text-gray-500">{formatPercentage(employee.attendanceRate || 0)}</p>
-                            </div>
-                          </div>
-                        ))
-                      }
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Chưa có dữ liệu nhân viên</p>
+                  {penaltyAnalysis && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-3 bg-red-50 rounded-lg">
+                          <p className="text-2xl font-bold text-red-600">
+                            {penaltyAnalysis.filter(p => p.penaltyAmount > 0).length}
+                          </p>
+                          <p className="text-sm text-gray-600">Nhân viên bị phạt</p>
+                        </div>
+                        <div className="text-center p-3 bg-green-50 rounded-lg">
+                          <p className="text-2xl font-bold text-green-600">
+                            {penaltyAnalysis.filter(p => p.penaltyAmount === 0).length}
+                          </p>
+                          <p className="text-sm text-gray-600">Không vi phạm</p>
+                        </div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie
+                            dataKey="value"
+                            data={[
+                              { name: 'Không phạt', value: penaltyAnalysis.filter(p => p.penaltyLevel === 'Không phạt').length },
+                              { name: 'Phạt nhẹ', value: penaltyAnalysis.filter(p => p.penaltyLevel === 'Phạt nhẹ').length },
+                              { name: 'Phạt trung bình', value: penaltyAnalysis.filter(p => p.penaltyLevel === 'Phạt trung bình').length },
+                              { name: 'Phạt nặng', value: penaltyAnalysis.filter(p => p.penaltyLevel === 'Phạt nặng').length }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={70}
+                            fill="#8884d8"
+                            label
+                          >
+                            {['#22c55e', '#eab308', '#f97316', '#ef4444'].map((color, index) => (
+                              <Cell key={`cell-${index}`} fill={color} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
                   )}
                 </CardContent>
@@ -454,156 +533,574 @@ export default function ReportsPage() {
             </div>
           </TabsContent>
 
-          {/* Attendance Details Tab */}
-          <TabsContent value="attendance" className="space-y-6">
-            <Card className="shadow-lg bg-white/60 backdrop-blur-sm">
+          {/* Trends Tab */}
+          <TabsContent value="trends" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Monthly Trends */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <TrendingUp className="mr-2 h-5 w-5 text-blue-600" />
+                    Xu hướng giờ làm năm {currentYear}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {attendanceTrends && (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={attendanceTrends}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" tickFormatter={(value) => `T${value}`} />
+                        <YAxis />
+                        <Tooltip
+                          formatter={(value, name) => [
+                            name === 'totalHours' ? formatHours(Number(value)) : value,
+                            name === 'totalHours' ? 'Tổng giờ' :
+                              name === 'avgHours' ? 'Trung bình' :
+                                name === 'totalOvertime' ? 'Tăng ca' : name
+                          ]}
+                          labelFormatter={(value) => `Tháng ${value}`}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="totalHours"
+                          stackId="1"
+                          stroke="#8884d8"
+                          fill="#8884d8"
+                          fillOpacity={0.6}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="totalOvertime"
+                          stackId="2"
+                          stroke="#82ca9d"
+                          fill="#82ca9d"
+                          fillOpacity={0.6}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Penalty Trends */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <TrendingDown className="mr-2 h-5 w-5 text-red-600" />
+                    Xu hướng vi phạm năm {currentYear}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {attendanceTrends && (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={attendanceTrends}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" tickFormatter={(value) => `T${value}`} />
+                        <YAxis />
+                        <Tooltip
+                          formatter={(value) => [formatCurrency(Number(value)), 'Tiền phạt']}
+                          labelFormatter={(value) => `Tháng ${value}`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="totalPenalties"
+                          stroke="#ef4444"
+                          strokeWidth={3}
+                          dot={{ fill: '#ef4444', strokeWidth: 2 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Comparative Analysis */}
+            <Card>
               <CardHeader>
-                <CardTitle>Chi tiết chấm công nhân viên</CardTitle>
-                <CardDescription>
-                  Thông tin chi tiết về giờ làm việc và chấm công của từng nhân viên
-                </CardDescription>
+                <CardTitle>📊 Phân tích so sánh các tháng</CardTitle>
               </CardHeader>
               <CardContent>
-                {isAttendanceLoading ? (
-                  <div className="space-y-3">
-                    {[...Array(5)].map((_, i) => (
-                      <Skeleton key={i} className="h-16 w-full" />
-                    ))}
-                  </div>
-                ) : attendanceSummary?.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nhân viên</TableHead>
-                          <TableHead>Phòng ban</TableHead>
-                          <TableHead>Tổng giờ</TableHead>
-                          <TableHead>Giờ làm thêm</TableHead>
-                          <TableHead>Tỷ lệ chấm công</TableHead>
-                          <TableHead>Trạng thái</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {attendanceSummary.map((employee: any) => (
-                          <TableRow key={employee.employeeId}>
-                            <TableCell className="font-medium">
-                              {employee.employeeName}
-                            </TableCell>
-                            <TableCell>{employee.departmentName}</TableCell>
-                            <TableCell>{formatHours(employee.totalHours || 0)}</TableCell>
-                            <TableCell>{formatHours(employee.overtimeHours || 0)}</TableCell>
-                            <TableCell>
-                              <Badge variant={
-                                (employee.attendanceRate || 0) >= 90 ? "default" :
-                                  (employee.attendanceRate || 0) >= 80 ? "secondary" : "destructive"
-                              }>
-                                {formatPercentage(employee.attendanceRate || 0)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={
-                                (employee.totalHours || 0) >= 160 ? "default" :
-                                  (employee.totalHours || 0) >= 120 ? "secondary" : "destructive"
-                              }>
-                                {(employee.totalHours || 0) >= 160 ? "Đạt chuẩn" :
-                                  (employee.totalHours || 0) >= 120 ? "Cần cải thiện" : "Dưới chuẩn"}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-600 mb-2">Chưa có dữ liệu chấm công</h3>
-                    <p className="text-gray-500">Không có dữ liệu chấm công cho kỳ đã chọn</p>
-                  </div>
+                {attendanceTrends && (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={attendanceTrends} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tickFormatter={(value) => `Tháng ${value}`} />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value, name) => [
+                          name === 'avgHours' ? formatHours(Number(value)) :
+                            name === 'totalLeaveDays' ? `${value} ngày` :
+                              name === 'employeeCount' ? `${value} người` :
+                                value,
+                          name === 'avgHours' ? 'Giờ TB/người' :
+                            name === 'totalLeaveDays' ? 'Ngày nghỉ' :
+                              name === 'employeeCount' ? 'Số nhân viên' :
+                                name
+                        ]}
+                      />
+                      <Legend />
+                      <Bar dataKey="employeeCount" fill="#8884d8" name="Số nhân viên" />
+                      <Bar dataKey="avgHours" fill="#82ca9d" name="Giờ TB/người" />
+                      <Bar dataKey="totalLeaveDays" fill="#ffc658" name="Ngày nghỉ" />
+                    </BarChart>
+                  </ResponsiveContainer>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Departments Tab */}
-          <TabsContent value="departments" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {isDeptLoading ? (
-                [...Array(6)].map((_, i) => (
-                  <Card key={i} className="shadow-lg">
-                    <CardHeader>
-                      <Skeleton className="h-5 w-32" />
-                      <Skeleton className="h-4 w-24" />
-                    </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-20 w-full" />
-                    </CardContent>
-                  </Card>
-                ))
-              ) : departmentSummary?.length > 0 ? (
-                departmentSummary.map((dept: any, index: number) => {
-                  const gradients = [
-                    'from-blue-500 to-blue-600',
-                    'from-green-500 to-green-600',
-                    'from-orange-500 to-orange-600',
-                    'from-purple-500 to-purple-600',
-                    'from-pink-500 to-pink-600',
-                    'from-indigo-500 to-indigo-600'
-                  ];
-                  const gradient = gradients[index % gradients.length];
+          {/* Charts Tab */}
+          <TabsContent value="charts" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Department Hours Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center">
+                      <Building2 className="mr-2 h-5 w-5 text-blue-600" />
+                      Giờ làm theo phòng ban
+                    </span>
+                    <Button
+                      onClick={() => exportToCSV(departmentStats || [], `phong-ban-${currentMonth}-${currentYear}`)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {departmentStats && (
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={departmentStats} margin={{ top: 20, right: 30, left: 20, bottom: 70 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="departmentName"
+                          angle={-45}
+                          textAnchor="end"
+                          height={70}
+                          fontSize={12}
+                        />
+                        <YAxis />
+                        <Tooltip
+                          formatter={(value) => [formatHours(Number(value)), 'Giờ làm']}
+                          labelStyle={{ color: '#000' }}
+                        />
+                        <Bar dataKey="totalDepartmentHours" fill="#8884d8" radius={[4, 4, 0, 0]}>
+                          {departmentStats.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Average Hours per Employee by Department */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <TrendingUp className="mr-2 h-5 w-5 text-green-600" />
+                    Giờ trung bình/nhân viên theo phòng ban
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {departmentStats && (
+                    <ResponsiveContainer width="100%" height={350}>
+                      <AreaChart data={departmentStats} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="departmentName" angle={-30} textAnchor="end" height={60} fontSize={11} />
+                        <YAxis />
+                        <Tooltip formatter={(value) => [formatHours(Number(value)), 'Giờ TB/người']} />
+                        <Area
+                          type="monotone"
+                          dataKey="avgTotalHours"
+                          stroke="#22c55e"
+                          fill="#22c55e"
+                          fillOpacity={0.6}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Overtime vs Regular Hours */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Clock className="mr-2 h-5 w-5 text-orange-600" />
+                    So sánh giờ làm thường vs tăng ca
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {departmentStats && (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={departmentStats}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="departmentName" angle={-30} textAnchor="end" height={80} fontSize={11} />
+                        <YAxis />
+                        <Tooltip formatter={(value) => [formatHours(Number(value)), '']} />
+                        <Legend />
+                        <Bar dataKey="totalDepartmentHours" fill="#8884d8" name="Giờ làm thường" />
+                        <Bar dataKey="avgOvertimeHours" fill="#82ca9d" name="Giờ tăng ca TB" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Penalty Distribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <AlertTriangle className="mr-2 h-5 w-5 text-red-600" />
+                    Phân bố tiền phạt theo phòng ban
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {departmentStats && (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={departmentStats}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="departmentName" angle={-30} textAnchor="end" height={80} fontSize={11} />
+                        <YAxis />
+                        <Tooltip formatter={(value) => [formatCurrency(Number(value)), 'Tiền phạt']} />
+                        <Bar dataKey="totalPenaltyAmount" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Attendance Records Tab */}
+          <TabsContent value="attendance" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">Chi tiết chấm công tháng {currentMonth}/{currentYear}</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Hiển thị {filteredAttendanceRecords?.length || 0} bản ghi
+                  {searchTerm && ` (lọc: "${searchTerm}")`}
+                  {selectedDepartment !== 'all' && ` - Phòng ban: ${departmentStats?.find(d => d.departmentId.toString() === selectedDepartment)?.departmentName}`}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => exportToCSV(filteredAttendanceRecords || [], `cham-cong-${currentMonth}-${currentYear}`)}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Xuất Excel
+                </Button>
+                <Button
+                  onClick={() => exportToCSV(filteredAttendanceRecords || [], `cham-cong-${currentMonth}-${currentYear}`)}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Xuất CSV
+                </Button>
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            {filteredAttendanceRecords && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <Card className="text-center">
+                  <CardContent className="p-4">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {filteredAttendanceRecords.length}
+                    </div>
+                    <p className="text-sm text-gray-600">Tổng bản ghi</p>
+                  </CardContent>
+                </Card>
+                <Card className="text-center">
+                  <CardContent className="p-4">
+                    <div className="text-2xl font-bold text-green-600">
+                      {formatHours(filteredAttendanceRecords.reduce((sum, record) => sum + (record.totalHours || 0), 0))}
+                    </div>
+                    <p className="text-sm text-gray-600">Tổng giờ làm</p>
+                  </CardContent>
+                </Card>
+                <Card className="text-center">
+                  <CardContent className="p-4">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {formatHours(filteredAttendanceRecords.reduce((sum, record) => sum + (record.overtimeHours || 0), 0))}
+                    </div>
+                    <p className="text-sm text-gray-600">Tổng tăng ca</p>
+                  </CardContent>
+                </Card>
+                <Card className="text-center">
+                  <CardContent className="p-4">
+                    <div className="text-2xl font-bold text-red-600">
+                      {formatCurrency(filteredAttendanceRecords.reduce((sum, record) => sum + (record.penaltyAmount || 0), 0))}
+                    </div>
+                    <p className="text-sm text-gray-600">Tổng phạt</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[200px]">Nhân viên</TableHead>
+                        <TableHead>Phòng ban</TableHead>
+                        <TableHead>Chức vụ</TableHead>
+                        <TableHead className="text-right">Giờ làm</TableHead>
+                        <TableHead className="text-right">Tăng ca</TableHead>
+                        <TableHead className="text-right">Nghỉ phép</TableHead>
+                        <TableHead className="text-right">Đi muộn</TableHead>
+                        <TableHead className="text-right">Về sớm</TableHead>
+                        <TableHead className="text-right">Tiền phạt</TableHead>
+                        <TableHead className="text-center">Đánh giá</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAttendanceRecords?.map((record) => (
+                        <TableRow key={record.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium">
+                            <div>
+                              <p className="font-semibold">{record.employeeName}</p>
+                              <p className="text-xs text-gray-500">ID: {record.employeeId}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{record.departmentName}</Badge>
+                          </TableCell>
+                          <TableCell>{record.position}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatHours(record.totalHours)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={record.overtimeHours > 0 ? "text-orange-600 font-medium" : ""}>
+                              {formatHours(record.overtimeHours)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">{record.leaveDays} ngày</TableCell>
+                          <TableCell className="text-right">
+                            <span className={record.lateMinutes > 0 ? "text-red-500 font-medium" : ""}>
+                              {record.lateMinutes} phút
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={record.earlyMinutes > 0 ? "text-red-500 font-medium" : ""}>
+                              {record.earlyMinutes} phút
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={record.penaltyAmount > 0 ? "text-red-600 font-medium" : "text-green-600"}>
+                              {formatCurrency(record.penaltyAmount)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {record.penaltyAmount === 0 && record.lateMinutes === 0 ? (
+                              <Badge className="bg-green-100 text-green-800">Xuất sắc</Badge>
+                            ) : record.penaltyAmount > 0 ? (
+                              <Badge variant="destructive">Cần cải thiện</Badge>
+                            ) : (
+                              <Badge variant="secondary">Bình thường</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(!filteredAttendanceRecords || filteredAttendanceRecords.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                            {searchTerm ? 'Không tìm thấy nhân viên nào phù hợp' : 'Không có dữ liệu chấm công cho tháng này'}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Penalties Tab */}
+          <TabsContent value="penalties" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold">⚠️ Phân tích vi phạm và tiền phạt</h3>
+                <p className="text-sm text-gray-600 mt-1">Chi tiết các vi phạm về giờ giấc và mức độ phạt</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => exportToCSV(filteredPenaltyAnalysis || [], `penalty-analysis-${currentMonth}-${currentYear}`)}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Xuất báo cáo vi phạm
+                </Button>
+              </div>
+            </div>
+
+            {/* Penalty Statistics */}
+            {penaltyAnalysis && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <Card className="bg-red-50 border-red-200">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl font-bold text-red-600">
+                      {penaltyAnalysis.filter(p => p.penaltyAmount > 0).length}
+                    </div>
+                    <p className="text-sm text-red-700">Nhân viên vi phạm</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-orange-50 border-orange-200">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {penaltyAnalysis.reduce((sum, p) => sum + p.lateMinutes, 0)}
+                    </div>
+                    <p className="text-sm text-orange-700">Phút đi muộn tổng</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-yellow-50 border-yellow-200">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-600">
+                      {penaltyAnalysis.reduce((sum, p) => sum + p.earlyMinutes, 0)}
+                    </div>
+                    <p className="text-sm text-yellow-700">Phút về sớm tổng</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-red-50 border-red-200">
+                  <CardContent className="p-4 text-center">
+                    <div className="text-2xl font-bold text-red-600">
+                      {formatCurrency(penaltyAnalysis.reduce((sum, p) => sum + p.penaltyAmount, 0))}
+                    </div>
+                    <p className="text-sm text-red-700">Tổng tiền phạt</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Penalty Level Summary */}
+            {penaltyAnalysis && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {['Không phạt', 'Phạt nhẹ', 'Phạt trung bình', 'Phạt nặng'].map((level, index) => {
+                  const count = penaltyAnalysis.filter(p => p.penaltyLevel === level).length;
+                  const colors = ['green', 'yellow', 'orange', 'red'];
+                  const color = colors[index];
 
                   return (
-                    <Card key={dept.departmentName} className="shadow-lg hover:shadow-xl transition-shadow bg-white/60 backdrop-blur-sm">
-                      <CardHeader className={`bg-gradient-to-r ${gradient} text-white rounded-t-lg`}>
-                        <CardTitle className="text-lg">{dept.departmentName}</CardTitle>
-                        <CardDescription className="text-white/90">
-                          {dept.employeeCount} nhân viên
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pt-4">
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium">Tổng giờ:</span>
-                            <span className="font-semibold text-blue-600">
-                              {formatHours(dept.totalHours || 0)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium">Tỷ lệ chấm công:</span>
-                            <Badge variant={
-                              (dept.attendanceRate || 0) >= 90 ? "default" :
-                                (dept.attendanceRate || 0) >= 80 ? "secondary" : "destructive"
-                            }>
-                              {formatPercentage(dept.attendanceRate || 0)}
-                            </Badge>
-                          </div>
-                          <div className="mt-4">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span>Tiến độ</span>
-                              <span>{formatPercentage(dept.attendanceRate || 0)}</span>
-                            </div>
-                            <Progress value={dept.attendanceRate || 0} className="h-2" />
-                          </div>
+                    <Card key={level} className={`bg-${color}-50 border-${color}-200`}>
+                      <CardContent className="p-4 text-center">
+                        <div className={`text-xl font-bold text-${color}-600`}>
+                          {count}
                         </div>
+                        <p className={`text-sm text-${color}-700`}>{level}</p>
+                        <p className={`text-xs text-${color}-600 mt-1`}>
+                          {penaltyAnalysis.length > 0 ? ((count / penaltyAnalysis.length) * 100).toFixed(1) : 0}%
+                        </p>
                       </CardContent>
                     </Card>
                   );
-                })
-              ) : (
-                <div className="col-span-full">
-                  <Card className="text-center py-12">
-                    <CardContent>
-                      <Building2 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-600 mb-2">Chưa có dữ liệu phòng ban</h3>
-                      <p className="text-gray-500">Không có dữ liệu phòng ban cho kỳ đã chọn</p>
-                    </CardContent>
-                  </Card>
+                })}
+              </div>
+            )}
+
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[200px]">Nhân viên</TableHead>
+                        <TableHead>Phòng ban</TableHead>
+                        <TableHead>Chức vụ</TableHead>
+                        <TableHead className="text-right">Đi muộn</TableHead>
+                        <TableHead className="text-right">Về sớm</TableHead>
+                        <TableHead className="text-right">Tiền phạt</TableHead>
+                        <TableHead className="text-center">Mức độ</TableHead>
+                        <TableHead className="text-center">Đánh giá</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredPenaltyAnalysis?.map((analysis) => (
+                        <TableRow key={analysis.employeeId} className="hover:bg-gray-50">
+                          <TableCell className="font-medium">
+                            <div>
+                              <p className="font-semibold">{analysis.employeeName}</p>
+                              <p className="text-xs text-gray-500">ID: {analysis.employeeId}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{analysis.departmentName}</Badge>
+                          </TableCell>
+                          <TableCell>{analysis.position}</TableCell>
+                          <TableCell className="text-right">
+                            <span className={analysis.lateMinutes > 0 ? "text-red-500 font-medium" : "text-green-500"}>
+                              {analysis.lateMinutes} phút
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={analysis.earlyMinutes > 0 ? "text-orange-500 font-medium" : "text-green-500"}>
+                              {analysis.earlyMinutes} phút
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={analysis.penaltyAmount > 0 ? "text-red-600 font-bold" : "text-green-600 font-medium"}>
+                              {formatCurrency(analysis.penaltyAmount)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={
+                                analysis.penaltyLevel === 'Không phạt' ? 'default' :
+                                  analysis.penaltyLevel === 'Phạt nhẹ' ? 'secondary' :
+                                    analysis.penaltyLevel === 'Phạt trung bình' ? 'default' : 'destructive'
+                              }
+                              className={
+                                analysis.penaltyLevel === 'Không phạt' ? 'bg-green-100 text-green-800' :
+                                  analysis.penaltyLevel === 'Phạt nhẹ' ? 'bg-yellow-100 text-yellow-800' :
+                                    analysis.penaltyLevel === 'Phạt trung bình' ? 'bg-orange-100 text-orange-800' :
+                                      'bg-red-100 text-red-800'
+                              }
+                            >
+                              {analysis.penaltyLevel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {analysis.penaltyAmount === 0 ? (
+                              <span className="text-green-600 font-medium">✅ Xuất sắc</span>
+                            ) : analysis.penaltyLevel === 'Phạt nhẹ' ? (
+                              <span className="text-yellow-600 font-medium">⚠️ Cần chú ý</span>
+                            ) : analysis.penaltyLevel === 'Phạt trung bình' ? (
+                              <span className="text-orange-600 font-medium">📢 Cảnh báo</span>
+                            ) : (
+                              <span className="text-red-600 font-medium">❌ Nghiêm trọng</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(!filteredPenaltyAnalysis || filteredPenaltyAnalysis.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                            Không có dữ liệu vi phạm cho tháng này
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-            </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
-      </div>
+      </main>
     </div>
   );
-}
+};
+
+export default Reports;
