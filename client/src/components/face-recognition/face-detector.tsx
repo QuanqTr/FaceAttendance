@@ -1083,14 +1083,12 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
               if (i >= bestMatch.length) return;
 
               const matchInfo = bestMatch[i];
-              if (!matchInfo) return;
+              if (!matchInfo || matchInfo.confidence <= threshold) return;
 
               const box = detection.detection.box;
               const drawBox = new faceapi.draw.DrawBox(box, {
-                label: matchInfo.confidence > threshold
-                  ? `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`
-                  : 'Chưa nhận diện',
-                boxColor: matchInfo.confidence > threshold ? 'green' : 'red'
+                label: `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`,
+                boxColor: 'green'
               });
 
               // Ensure canvas element is not null before drawing
