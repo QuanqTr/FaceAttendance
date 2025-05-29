@@ -26,13 +26,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Employee } from "@shared/schema";
-import { CalendarIcon, Check, Filter, Loader2, Plus, Search, SlidersHorizontal, Users2, X } from "lucide-react";
+import { CalendarIcon, Check, Filter, Loader2, Plus, Search, SlidersHorizontal, Users2, X, UserPlus, Eye, Edit, Grid, List } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useTranslation } from "react-i18next";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+// Helper function to get full name and initials
+const getFullName = (employee: Employee) => `${employee.firstName} ${employee.lastName}`.trim();
+const getInitials = (employee: Employee) => {
+  const firstName = employee.firstName || '';
+  const lastName = employee.lastName || '';
+  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+};
 
 export default function Employees() {
   const { user } = useAuth();
@@ -44,7 +54,6 @@ export default function Employees() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(8);
   const [searchQuery, setSearchQuery] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [joinDateFilter, setJoinDateFilter] = useState<Date | undefined>(undefined);
@@ -76,10 +85,6 @@ export default function Employees() {
       params.append('search', debouncedSearchQuery);
     }
 
-    if (departmentFilter !== "all") {
-      params.append('departmentId', departmentFilter);
-    }
-
     if (statusFilter !== "all") {
       params.append('status', statusFilter);
     }
@@ -101,10 +106,11 @@ export default function Employees() {
 
   const queryParams = buildQueryParams();
 
-  const { data, isLoading, refetch } = useQuery<{ employees: Employee[], total: number }>({
-    queryKey: ["/api/employees", queryParams],
+  // Modified query to only fetch employees from manager's department
+  const { data, isLoading, refetch } = useQuery<{ employees: (Employee & { department?: { name: string } })[], total: number }>({
+    queryKey: ["/api/manager/employees", queryParams],
     queryFn: async () => {
-      const res = await fetch(`/api/employees?${queryParams}`);
+      const res = await fetch(`/api/manager/employees?${queryParams}`);
       if (!res.ok) throw new Error("Failed to fetch employees");
       return await res.json();
     }
@@ -113,7 +119,7 @@ export default function Employees() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearchQuery, departmentFilter, statusFilter, positionFilter, joinDateFilter, sortBy, limit]);
+  }, [debouncedSearchQuery, statusFilter, positionFilter, joinDateFilter, sortBy, limit]);
 
   const employees = data?.employees || [];
   const totalCount = data?.total || 0;
@@ -125,7 +131,6 @@ export default function Employees() {
 
   const clearAllFilters = () => {
     setSearchQuery("");
-    setDepartmentFilter("all");
     setStatusFilter("all");
     setJoinDateFilter(undefined);
     setPositionFilter("");
@@ -133,263 +138,382 @@ export default function Employees() {
   };
 
   const handleAddEmployee = () => {
-    navigate("/employees/new");
+    navigate("/manager/employees/new");
   };
 
   const activeFiltersCount = [
-    departmentFilter !== "all",
     statusFilter !== "all",
     positionFilter !== "",
     joinDateFilter !== undefined
   ].filter(Boolean).length;
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-indigo-50 to-blue-50">
       <Header
         title=""
         onSearch={handleSearch}
         showSearch={true}
-        searchPlaceholder={t('employees.searchByName')}
+        searchPlaceholder="Search team members..."
       />
 
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl font-bold">{t('employees.title')}</h1>
+        {/* Header Section */}
+        <div className="mb-6">
+          <div className="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-xl p-6 text-white">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+              <div className="mb-4 md:mb-0">
+                <h1 className="text-2xl font-bold mb-2 flex items-center">
+                  <Users2 className="mr-3 h-6 w-6" />
+                  My Team Members
+                </h1>
+                <p className="opacity-90">Manage employees in your department and track their performance</p>
+              </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0">
-            <Button
-              variant="outline"
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className="relative"
-            >
-              <Filter className="mr-2 h-4 w-4" />
-              {t('common.filter')}
-              {activeFiltersCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {activeFiltersCount}
-                </span>
-              )}
-            </Button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setViewMode(viewMode === "grid" ? "table" : "grid")}
+                  >
+                    {viewMode === "grid" ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
+                  </Button>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder={t('common.filter')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="newest">{t('employees.sortNewest')}</SelectItem>
-                <SelectItem value="oldest">{t('employees.sortOldest')}</SelectItem>
-                <SelectItem value="name_asc">{t('employees.sortNameAsc')}</SelectItem>
-                <SelectItem value="name_desc">{t('employees.sortNameDesc')}</SelectItem>
-              </SelectContent>
-            </Select>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    className="relative bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  >
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filters
+                    {activeFiltersCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        {activeFiltersCount}
+                      </span>
+                    )}
+                  </Button>
+                </div>
 
-            <Button onClick={handleAddEmployee}>
-              <Plus className="mr-2 h-4 w-4" /> {t('employees.addNew')}
-            </Button>
+                <Button onClick={handleAddEmployee} variant="secondary">
+                  <UserPlus className="mr-2 h-4 w-4" /> Add Member
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-white border-blue-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{totalCount}</div>
+                <div className="text-sm text-gray-600">Total Members</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-green-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  {employees.filter(e => e.status === 'active').length}
+                </div>
+                <div className="text-sm text-gray-600">Active</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-yellow-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {employees.filter(e => e.status === 'on_leave').length}
+                </div>
+                <div className="text-sm text-gray-600">On Leave</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-red-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">
+                  {employees.filter(e => e.status === 'inactive').length}
+                </div>
+                <div className="text-sm text-gray-600">Inactive</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {showAdvancedFilters && (
-          <Card className="mb-6">
+          <Card className="mb-6 bg-white border-indigo-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle>{t('employees.advancedFilters')}</CardTitle>
+                <CardTitle className="text-indigo-800">Advanced Filters</CardTitle>
                 <Button variant="ghost" size="sm" onClick={clearAllFilters}>
-                  <X className="h-4 w-4 mr-1" /> {t('employees.clearAll')}
+                  <X className="h-4 w-4 mr-1" /> Clear All
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="department">{t('employees.department')}</Label>
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                  <SelectTrigger id="department">
-                    <SelectValue placeholder={t('employees.allDepartments')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('employees.allDepartments')}</SelectItem>
-                    {departments?.map((dept: { id: number, name: string }) => (
-                      <SelectItem key={dept.id} value={dept.id.toString()}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="status" className="text-sm font-medium text-gray-700">Status</Label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="mt-1 border-indigo-200">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="on_leave">On Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="status">{t('common.status')}</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger id="status">
-                    <SelectValue placeholder={t('employees.allStatus')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('employees.allStatus')}</SelectItem>
-                    <SelectItem value="active">{t('employees.active')}</SelectItem>
-                    <SelectItem value="inactive">{t('employees.inactive')}</SelectItem>
-                    <SelectItem value="on_leave">{t('employees.onLeave')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div>
+                  <Label htmlFor="position" className="text-sm font-medium text-gray-700">Position</Label>
+                  <Input
+                    id="position"
+                    placeholder="Search position..."
+                    value={positionFilter}
+                    onChange={(e) => setPositionFilter(e.target.value)}
+                    className="mt-1 border-indigo-200"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="position">{t('employees.position')}</Label>
-                <Input
-                  id="position"
-                  placeholder={t('employees.anyPosition')}
-                  value={positionFilter}
-                  onChange={(e) => setPositionFilter(e.target.value)}
-                />
-              </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Join Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal mt-1 border-indigo-200",
+                          !joinDateFilter && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {joinDateFilter ? format(joinDateFilter, "PPP") : "Pick date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={joinDateFilter}
+                        onSelect={setJoinDateFilter}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="joinDate">{t('employees.joinDate')}</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="joinDate"
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !joinDateFilter && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {joinDateFilter ? format(joinDateFilter, "PPP") : t('employees.anyDate')}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={joinDateFilter}
-                      onSelect={setJoinDateFilter}
-                      initialFocus
-                    />
-                    {joinDateFilter && (
-                      <div className="p-3 border-t border-border">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setJoinDateFilter(undefined)}
-                          className="w-full"
-                        >
-                          <X className="h-4 w-4 mr-1" /> {t('employees.clearDate')}
-                        </Button>
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
+                <div>
+                  <Label htmlFor="sort" className="text-sm font-medium text-gray-700">Sort By</Label>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="mt-1 border-indigo-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
+                      <SelectItem value="name_asc">Name A-Z</SelectItem>
+                      <SelectItem value="name_desc">Name Z-A</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {isLoading ? (
-          <div className="flex justify-center items-center min-h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
           </div>
-        ) : employees.length > 0 ? (
+        )}
+
+        {/* Employee List */}
+        {!isLoading && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {employees.map(employee => (
-                <EmployeeCard
-                  key={employee.id}
-                  employee={employee}
-                />
-              ))}
-            </div>
-
-            {totalPages > 1 && (
-              <Pagination className="mt-8">
-                <PaginationContent>
-                  <PaginationItem>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                    >
-                      {t('common.back')}
-                    </Button>
-                  </PaginationItem>
-
-                  {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
-                    // Show pages around current page for large number of pages
-                    let pageToShow = i + 1;
-                    if (totalPages > 5) {
-                      if (page > 3 && page <= totalPages - 2) {
-                        pageToShow = page - 2 + i;
-                      } else if (page > totalPages - 2) {
-                        pageToShow = totalPages - 4 + i;
-                      }
-                    }
-
-                    return (
-                      <PaginationItem key={i}>
-                        <Button
-                          variant={page === pageToShow ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setPage(pageToShow)}
+            {viewMode === "grid" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+                {employees.map((employee) => (
+                  <Card key={employee.id} className="group hover:shadow-lg transition-all duration-200 bg-white border-indigo-100 hover:border-indigo-300">
+                    <CardContent className="p-4">
+                      <div className="flex flex-col items-center text-center">
+                        <Avatar className="h-16 w-16 mb-3">
+                          <AvatarFallback className="bg-indigo-500 text-white text-lg">
+                            {getInitials(employee)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <h3 className="font-semibold text-gray-900 mb-1">{getFullName(employee)}</h3>
+                        <p className="text-sm text-gray-500 mb-2">{employee.position || 'No position'}</p>
+                        <Badge
+                          variant={employee.status === 'active' ? 'default' :
+                            employee.status === 'on_leave' ? 'secondary' : 'destructive'}
+                          className="mb-3"
                         >
-                          {pageToShow}
-                        </Button>
-                      </PaginationItem>
-                    );
-                  })}
-
-                  <PaginationItem>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                    >
-                      {t('common.next')}
-                    </Button>
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            )}
-
-            <div className="flex justify-end mt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">{t('common.rowsPerPage')}:</span>
-                <Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
-                  <SelectTrigger className="w-[80px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="4">4</SelectItem>
-                    <SelectItem value="8">8</SelectItem>
-                    <SelectItem value="12">12</SelectItem>
-                    <SelectItem value="16">16</SelectItem>
-                    <SelectItem value="24">24</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-muted-foreground">
-                  {t('common.showing')} {Math.min((page - 1) * limit + 1, totalCount)} - {Math.min(page * limit, totalCount)} {t('common.of')} {totalCount}
-                </span>
+                          {employee.status.replace('_', ' ')}
+                        </Badge>
+                        <div className="flex gap-2 w-full">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/manager/employees/${employee.id}`)}
+                            className="flex-1"
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/manager/employees/${employee.id}/edit`)}
+                            className="flex-1"
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center text-center h-[400px] bg-muted/20 rounded-lg">
-            <Users2 className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-medium mb-2">{t('employees.noEmployeesFound')}</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter
-                ? t('employees.adjustFilters')
-                : t('employees.getStarted')}
-            </p>
-            {(searchQuery || departmentFilter !== "all" || statusFilter !== "all" || positionFilter || joinDateFilter) && (
-              <Button variant="outline" onClick={clearAllFilters} className="mb-4">
-                <X className="h-4 w-4 mr-1" /> {t('employees.clearAllFilters')}
-              </Button>
+            ) : (
+              // Table view
+              <Card className="mb-6 bg-white">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-indigo-50 border-b border-indigo-200">
+                        <tr>
+                          <th className="text-left p-4 font-medium text-gray-700">Employee</th>
+                          <th className="text-left p-4 font-medium text-gray-700">Position</th>
+                          <th className="text-left p-4 font-medium text-gray-700">Department</th>
+                          <th className="text-left p-4 font-medium text-gray-700">Status</th>
+                          <th className="text-left p-4 font-medium text-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employees.map((employee) => (
+                          <tr key={employee.id} className="border-b border-gray-100 hover:bg-indigo-50">
+                            <td className="p-4">
+                              <div className="flex items-center space-x-3">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarFallback className="bg-indigo-500 text-white">
+                                    {getInitials(employee)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium text-gray-900">{getFullName(employee)}</div>
+                                  <div className="text-sm text-gray-500">{employee.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4 text-gray-900">{employee.position || 'No position'}</td>
+                            <td className="p-4 text-gray-900">{employee.department?.name || 'No department'}</td>
+                            <td className="p-4">
+                              <Badge
+                                variant={employee.status === 'active' ? 'default' :
+                                  employee.status === 'on_leave' ? 'secondary' : 'destructive'}
+                              >
+                                {employee.status.replace('_', ' ')}
+                              </Badge>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => navigate(`/manager/employees/${employee.id}`)}
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => navigate(`/manager/employees/${employee.id}/edit`)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
             )}
-            <Button onClick={handleAddEmployee}>
-              <Plus className="mr-2 h-4 w-4" /> {t('employees.addNew')}
-            </Button>
-          </div>
+          </>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && employees.length === 0 && (
+          <Card className="bg-white">
+            <CardContent className="text-center py-12">
+              <Users2 className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No team members found</h3>
+              <p className="text-gray-500 mb-4">
+                {searchQuery || activeFiltersCount > 0
+                  ? "Try adjusting your search or filters"
+                  : "You don't have any team members in your department yet"}
+              </p>
+              <Button onClick={handleAddEmployee}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Team Member
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && totalPages > 1 && (
+          <Card className="bg-white">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, totalCount)} of {totalCount} results
+                </div>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setPage(Math.max(1, page - 1))}
+                        className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const pageNum = i + 1;
+                      return (
+                        <PaginationItem key={pageNum}>
+                          <PaginationLink
+                            onClick={() => setPage(pageNum)}
+                            isActive={page === pageNum}
+                            className="cursor-pointer"
+                          >
+                            {pageNum}
+                          </PaginationLink>
+                        </PaginationItem>
+                      );
+                    })}
+
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setPage(Math.min(totalPages, page + 1))}
+                        className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

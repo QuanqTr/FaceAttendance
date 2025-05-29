@@ -110,25 +110,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: `Welcome back, ${data.fullName}!`,
       });
 
-      console.log("Login successful, checking for redirect URL");
+      console.log("Login successful, redirecting based on role");
 
-      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-      console.log("Redirect URL from session:", redirectUrl);
-
-      if (redirectUrl && redirectUrl !== '/auth' && redirectUrl !== '') {
-        console.log("Redirecting to:", redirectUrl);
-        sessionStorage.removeItem('redirectAfterLogin');
-
-        setTimeout(() => {
-          window.location.replace(redirectUrl);
-        }, 100);
-      } else {
-        console.log("No valid redirect URL found, redirecting to dashboard");
-        const dashboardUrl = data.role === 'employee' ? '/user' : '/';
-        setTimeout(() => {
-          window.location.replace(dashboardUrl);
-        }, 100);
+      // Always redirect to role-specific dashboard, no callback to previous interface
+      let dashboardUrl = '/';
+      if (data.role === 'employee') {
+        dashboardUrl = '/user';
+      } else if (data.role === 'manager') {
+        dashboardUrl = '/manager';
+      } else if (data.role === 'admin') {
+        dashboardUrl = '/';
       }
+
+      setTimeout(() => {
+        window.location.replace(dashboardUrl);
+      }, 100);
     },
     onError: (error: Error) => {
       console.error("Login mutation error:", error);

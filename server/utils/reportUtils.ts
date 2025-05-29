@@ -13,7 +13,8 @@ import {
     eq,
     and,
     or,
-    sql
+    sql,
+    inArray
 } from "drizzle-orm";
 
 // Declare the autoTable method for TypeScript
@@ -180,7 +181,9 @@ export async function generateDepartmentReport(startDate: Date, endDate: Date): 
                 .from(attendanceSummary)
                 .where(
                     and(
-                        sql`employee_id IN (${deptEmployees.map(e => e.id).join(',') || '0'})`,
+                        deptEmployees.length > 0 ?
+                            inArray(attendanceSummary.employeeId, deptEmployees.map(e => e.id)) :
+                            sql`1=0`,
                         or(
                             and(eq(attendanceSummary.year, startYear), sql`${attendanceSummary.month} >= ${startMonth}`),
                             sql`${attendanceSummary.year} > ${startYear}`
@@ -204,6 +207,7 @@ export async function generateDepartmentReport(startDate: Date, endDate: Date): 
                 (summariesData.filter(s => parseFloat(s.totalHours?.toString() || '0') > 0).length / summariesData.length * 100) : 0;
 
             departmentData.push({
+                departmentId: dept.id,
                 departmentName: dept.name,
                 employeeCount: deptEmployees.length,
                 totalHours: totalHours.toFixed(2),

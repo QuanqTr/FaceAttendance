@@ -5,31 +5,39 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
-import Dashboard from "@/pages/dashboard";
-import Attendance from "@/pages/attendance";
-import Employees from "@/pages/employees";
-import Reports from "@/pages/reports";
+
+// Admin pages
+import Dashboard from "@/pages/admin/dashboard";
+import Attendance from "@/pages/admin/attendance";
+import Employees from "@/pages/admin/employees";
+import Reports from "@/pages/admin/reports";
+import Settings from "@/pages/admin/settings";
+import EmployeeDetail from "@/pages/admin/employee-detail";
+import EmployeeForm from "@/pages/admin/employee-form";
+import LeaveRequestsPage from "@/pages/admin/leave-requests";
+import LeaveRequestFormPage from "@/pages/admin/leave-request-form";
+import LeaveRequestDetailsPage from "@/pages/admin/leave-request-details";
+import AccountsPage from "@/pages/admin/accounts";
+import AccountFormPage from "@/pages/admin/account-form";
+import Departments from "@/pages/admin/departments";
+
+// Manager pages
 import ManagerReports from "@/pages/manager/reports";
-import Settings from "@/pages/settings";
 import ManagerSettings from "@/pages/manager/settings";
 import ManagerDashboard from "@/pages/manager/dashboard";
 import ManagerEmployees from "@/pages/manager/employees";
 import ManagerEmployeeDetail from "@/pages/manager/employee-detail";
 import ManagerEmployeeForm from "@/pages/manager/employee-form";
-import EmployeeDetail from "@/pages/employee-detail";
-import EmployeeForm from "@/pages/employee-form";
-import LeaveRequestsPage from "@/pages/leave-requests";
-import LeaveRequestFormPage from "@/pages/leave-request-form";
-import LeaveRequestDetailsPage from "@/pages/leave-request-details";
 import ManagerLeaveRequestsPage from "@/pages/manager/leave-requests";
 import ManagerLeaveRequestDetailsPage from "@/pages/manager/leave-request-details";
 import ManagerLeaveRequestFormPage from "@/pages/manager/leave-request-form";
-import ManagerStatistics from "@/pages/manager/statistics";
+import ManagerAttendance from "@/pages/manager/attendance";
 import ManagerWorkHours from "@/pages/manager/work-hours";
-import AccountsPage from "@/pages/accounts";
-import AccountFormPage from "@/pages/account-form";
+
+// Public pages
 import FaceRecognitionLive from "@/pages/face-recognition-live";
-import Departments from "@/pages/departments";
+
+// Providers and auth
 import { AuthProvider } from "@/hooks/use-auth";
 import { LanguageProvider } from "@/hooks/use-language";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -43,6 +51,13 @@ import UserAttendanceHistory from "@/pages/user/attendance-history";
 import UserProfile from "@/pages/user/profile";
 import UserLeaveRequests from "@/pages/user/leave-requests";
 import UserSettings from "@/pages/user/settings";
+import UserReportsPage from "@/pages/user/reports";
+
+// TEST COMPONENTS - Temporary for demo
+const TestManagerDashboard = () => <ManagerDashboard />;
+const TestManagerEmployees = () => <ManagerEmployees />;
+const TestManagerReports = () => <ManagerReports />;
+const TestManagerSettings = () => <ManagerSettings />;
 
 // Đảm bảo mỗi component export mặc định một React component
 const AuthPageComponent = () => <AuthPage />;
@@ -50,11 +65,15 @@ const FaceRecognitionLiveComponent = () => <FaceRecognitionLive />;
 const NotFoundComponent = () => <NotFound />;
 
 // Đảm bảo các component user luôn trả về một React element
-const UserDashboardComponent = () => <UserDashboard />;
-const UserAttendanceHistoryComponent = () => <UserAttendanceHistory />;
-const UserProfileComponent = () => <UserProfile />;
-const UserLeaveRequestsComponent = () => <UserLeaveRequests />;
-const UserSettingsComponent = () => <UserSettings />;
+const UserDashboardComponent = (): React.ReactElement => <UserDashboard />;
+const UserAttendanceHistoryComponent = (): React.ReactElement => <UserAttendanceHistory />;
+const UserProfileComponent = (): React.ReactElement => <UserProfile />;
+const UserLeaveRequestsComponent = (): React.ReactElement => <UserLeaveRequests />;
+const UserSettingsComponent = (): React.ReactElement => <UserSettings />;
+const UserReportsComponent = (): React.ReactElement => <UserReportsPage />;
+
+// Manager wrapper components
+const ManagerReportsComponent = (): React.ReactElement => <ManagerReports />;
 
 // Router cho các trang yêu cầu xác thực
 function AuthenticatedRouter(): React.ReactElement {
@@ -64,7 +83,7 @@ function AuthenticatedRouter(): React.ReactElement {
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <Switch>
-            {/* Manager Routes - Put before admin routes to avoid conflicts */}
+            {/* Manager Routes */}
             <ProtectedRoute path="/manager" component={ManagerDashboard} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/employees" component={ManagerEmployees} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/employees/new" component={ManagerEmployeeForm} requiredRoles={["manager"]} />
@@ -73,8 +92,10 @@ function AuthenticatedRouter(): React.ReactElement {
             <ProtectedRoute path="/manager/leave-requests" component={ManagerLeaveRequestsPage} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/leave-requests/new" component={ManagerLeaveRequestFormPage} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/leave-requests/:id" component={ManagerLeaveRequestDetailsPage} requiredRoles={["manager"]} />
-            <ProtectedRoute path="/manager/statistics" component={ManagerStatistics} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/attendance" component={ManagerAttendance} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/work-hours" component={ManagerWorkHours} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/reports" component={ManagerReportsComponent} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/settings" component={ManagerSettings} requiredRoles={["manager"]} />
 
             {/* Admin Routes */}
             <ProtectedRoute path="/" component={Dashboard} requiredRoles={["admin"]} />
@@ -90,12 +111,8 @@ function AuthenticatedRouter(): React.ReactElement {
             <ProtectedRoute path="/leave-requests" component={LeaveRequestsPage} requiredRoles={["admin", "manager"]} />
             <ProtectedRoute path="/leave-requests/new" component={LeaveRequestFormPage} requiredRoles={["admin", "manager"]} />
             <ProtectedRoute path="/leave-requests/:id" component={LeaveRequestDetailsPage} requiredRoles={["admin", "manager"]} />
-            <ProtectedRoute path="/manager/leave-requests" component={ManagerLeaveRequestsPage} requiredRoles={["admin", "manager"]} />
             <ProtectedRoute path="/profile" component={UserProfileComponent} requiredRoles={["admin", "manager"]} />
-            <ProtectedRoute path="/reports" component={Reports} requiredRoles={["admin"]} />
-            <ProtectedRoute path="/manager/reports" component={ManagerReports} requiredRoles={["manager"]} />
-            <ProtectedRoute path="/settings" component={Settings} requiredRoles={["admin"]} />
-            <ProtectedRoute path="/manager/settings" component={ManagerSettings} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/settings" component={() => <Settings />} requiredRoles={["admin"]} />
 
             {/* Employee Routes */}
             <ProtectedRoute path="/user" component={UserDashboardComponent} />
@@ -103,7 +120,11 @@ function AuthenticatedRouter(): React.ReactElement {
             <ProtectedRoute path="/user/profile" component={UserProfileComponent} />
             <ProtectedRoute path="/user/leave-requests" component={UserLeaveRequestsComponent} />
             <ProtectedRoute path="/user/leave-requests/:id" component={LeaveRequestDetailsPage} />
+            <ProtectedRoute path="/user/reports" component={UserReportsComponent} />
             <ProtectedRoute path="/user/settings" component={UserSettingsComponent} />
+
+            {/* Reports - accessible for admin and manager only */}
+            <ProtectedRoute path="/reports" component={() => <Reports />} requiredRoles={["admin", "manager"]} />
 
             {/* Public Routes */}
             <Route path="/auth" component={AuthPageComponent} />
@@ -145,6 +166,27 @@ function App(): React.ReactElement {
         </TooltipProvider>
       </LanguageProvider>
     </QueryClientProvider>
+  );
+}
+
+// Test Manager Router - để demo giao diện manager
+function TestManagerRouter(): React.ReactElement {
+  return (
+    <AuthProvider>
+      <div className="flex min-h-screen bg-background">
+        <Sidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <Switch>
+            <Route path="/test-manager" component={TestManagerDashboard} />
+            <Route path="/test-manager/employees" component={TestManagerEmployees} />
+            <Route path="/test-manager/reports" component={TestManagerReports} />
+            <Route path="/test-manager/settings" component={TestManagerSettings} />
+            <Route component={() => <TestManagerDashboard />} />
+          </Switch>
+        </div>
+        <MobileNav />
+      </div>
+    </AuthProvider>
   );
 }
 

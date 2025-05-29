@@ -61,17 +61,17 @@ export default function AuthPage() {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      console.log("AuthPage: User already logged in, checking for redirect URL");
-      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
-
-      if (redirectUrl && redirectUrl !== '/auth' && redirectUrl !== '') {
-        console.log("AuthPage: Redirecting to saved location:", redirectUrl);
-        sessionStorage.removeItem('redirectAfterLogin');
-        navigate(redirectUrl);
-      } else {
-        console.log("AuthPage: Redirecting to dashboard");
-        navigate("/");
+      console.log("AuthPage: User already logged in, redirecting to dashboard");
+      // Always redirect to role-specific dashboard
+      let dashboardUrl = '/';
+      if (user.role === 'employee') {
+        dashboardUrl = '/user';
+      } else if (user.role === 'manager') {
+        dashboardUrl = '/manager';
+      } else if (user.role === 'admin') {
+        dashboardUrl = '/';
       }
+      navigate(dashboardUrl);
     }
   }, [user, navigate]);
 

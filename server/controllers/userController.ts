@@ -5,7 +5,7 @@ import { hashPassword } from "../middlewares/auth";
 // Get all users
 export const getAllUsers = async (req: Request, res: Response) => {
     try {
-        const { page = 1, limit = 10 } = req.query;
+        const { page = 1, limit = 100 } = req.query;
         const result = await storage.getAllUsers(
             parseInt(page as string),
             parseInt(limit as string)
@@ -20,7 +20,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 // Get all accounts (alias for users)
 export const getAllAccounts = async (req: Request, res: Response) => {
     try {
-        const { page = 1, limit = 10 } = req.query;
+        const { page = 1, limit = 100 } = req.query;
         const result = await storage.getAllUsers(
             parseInt(page as string),
             parseInt(limit as string)

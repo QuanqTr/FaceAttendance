@@ -45,7 +45,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
-import { EmailVerification } from "@/components/face-recognition/email-verification";
+import { UserEmailVerification } from "@/components/face-recognition/user-email-verification";
 
 // Define the Department type
 interface Department {
@@ -221,7 +221,7 @@ export default function ProfilePage() {
         queryFn: async () => {
             if (!user?.employeeId) return null;
 
-            const response = await fetch(`/api/employees/${user.employeeId}`, {
+            const response = await fetch(`/api/employees/profile/${user.employeeId}`, {
                 credentials: "include",
             });
 
@@ -293,7 +293,7 @@ export default function ProfilePage() {
         mutationFn: async (data: ProfileFormValues) => {
             if (!user?.employeeId) throw new Error("Employee ID not found");
 
-            const response = await fetch(`/api/employees/${user.employeeId}`, {
+            const response = await fetch(`/api/employees/profile/${user.employeeId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(data),
@@ -704,13 +704,52 @@ export default function ProfilePage() {
 
         // Parse token to get expiry time
         try {
-            const payload = JSON.parse(atob(token));
+            const payload = JSON.parse(atob(token.split('.')[1] || token));
             setAccessTokenExpiry(payload.expiresAt);
             console.log("Access token expires at:", new Date(payload.expiresAt));
         } catch (error) {
             console.error("Error parsing access token:", error);
-            // Set default 10 minutes expiry
-            setAccessTokenExpiry(Date.now() + 10 * 60 * 1000);
+            // Try parsing as base64 encoded JSON (our format)
+            try {
+                const payload = JSON.parse(Buffer.from(token, 'base64').toString());
+                setAccessTokenExpiry(payload.expiresAt);
+                console.log("Access token expires at:", new Date(payload.expiresAt));
+            } catch (parseError) {
+                console.error("Error parsing base64 token:", parseError);
+                // Set default 15 minutes expiry
+                setAccessTokenExpiry(Date.now() + 15 * 60 * 1000);
+            }
+        }
+    };
+
+    // Validate access token with server
+    const validateAccessToken = async (token: string): Promise<boolean> => {
+        try {
+            const response = await fetch('/api/user/face-profile/validate-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    accessToken: token,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.log("Token validation failed:", data.error);
+                return false;
+            }
+
+            console.log("Token validation successful:", data);
+            setAccessTokenExpiry(data.expiresAt);
+            return true;
+
+        } catch (error) {
+            console.error("Error validating token:", error);
+            return false;
         }
     };
 
@@ -719,6 +758,20 @@ export default function ProfilePage() {
         if (!accessToken || !accessTokenExpiry) return false;
         return Date.now() < accessTokenExpiry;
     };
+
+    // Check and validate access token on mount
+    useEffect(() => {
+        if (accessToken && isAccessTokenValid()) {
+            // Validate with server
+            validateAccessToken(accessToken).then((isValid) => {
+                if (!isValid) {
+                    setAccessToken(null);
+                    setAccessTokenExpiry(null);
+                    setIsVerified(false);
+                }
+            });
+        }
+    }, [accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Update the face tab content to show loading state
     const renderFaceTabContent = () => {
@@ -757,7 +810,7 @@ export default function ProfilePage() {
         // Show email verification if not verified
         if (showEmailVerification) {
             return (
-                <EmailVerification
+                <UserEmailVerification
                     employeeId={profileData?.id || 0}
                     employeeEmail={profileData?.email || ""}
                     onVerificationSuccess={handleVerificationSuccess}
@@ -895,11 +948,11 @@ export default function ProfilePage() {
                             </p>
 
                             <div className="mx-auto max-w-md">
-                                <div className="relative w-full aspect-[4/3] mb-4 bg-muted rounded-md overflow-hidden">
+                                <div className="relative w-full aspect-[4/3] mb-4 bg-muted rounded-md overflow-hidden border-2 border-dashed border-muted-foreground/20">
                                     {/* Video element */}
                                     <video
                                         ref={videoRef}
-                                        className="absolute inset-0 w-full h-full object-contain z-10"
+                                        className="absolute inset-0 w-full h-full object-cover z-10"
                                         autoPlay
                                         muted
                                         playsInline
@@ -913,27 +966,61 @@ export default function ProfilePage() {
                                         style={{ background: 'transparent' }}
                                     />
 
-                                    {/* Indicator when no camera is available */}
-                                    {!cameraStream && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-30">
+                                    {/* Loading indicator when camera is starting */}
+                                    {!cameraStream && currentTab === 'face' && activeWebcamTab === 'webcam' && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-muted z-30">
+                                            <div className="text-center space-y-2">
+                                                <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                                                <p className="text-sm font-medium">{t('user.faceProfile.initializingCamera')}</p>
+                                                <p className="text-xs text-muted-foreground">Đang kết nối camera...</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Camera not available placeholder */}
+                                    {currentTab !== 'face' || activeWebcamTab !== 'webcam' ? (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-30">
                                             <div className="text-center">
-                                                <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary mb-2" />
-                                                <p className="text-white text-sm">{t('user.faceProfile.initializingCamera')}</p>
+                                                <Camera className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                                                <p className="text-sm text-muted-foreground">Camera preview</p>
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    {/* Camera instructions overlay */}
+                                    {cameraStream && (
+                                        <div className="absolute bottom-2 left-2 right-2 z-30">
+                                            <div className="bg-black/60 rounded-md p-2 text-white text-xs text-center">
+                                                📹 Đảm bảo khuôn mặt nằm trong khung hình
                                             </div>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="flex justify-center">
+                            <div className="flex justify-center space-x-4">
                                 <Button
-                                    className="w-1/4"
                                     onClick={startWebcamCapture}
                                     disabled={!isModelsLoaded || !cameraStream}
+                                    className="px-8"
                                 >
                                     <Camera className="mr-2 h-4 w-4" />
                                     {t('user.faceProfile.takePicture')}
                                 </Button>
+
+                                {!cameraStream && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            // Trigger camera restart
+                                            setCurrentTab('details');
+                                            setTimeout(() => setCurrentTab('face'), 100);
+                                        }}
+                                    >
+                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                        Kết nối lại camera
+                                    </Button>
+                                )}
                             </div>
                         </TabsContent>
 
@@ -1034,14 +1121,24 @@ export default function ProfilePage() {
                         // Đảm bảo video hiển thị
                         videoRef.current.style.display = 'block';
 
-                        // Thêm sự kiện loadedmetadata để đảm bảo video có kích thước phù hợp
-                        videoRef.current.onloadedmetadata = () => {
-                            if (videoRef.current && canvasRef.current) {
-                                canvasRef.current.width = videoRef.current.videoWidth;
-                                canvasRef.current.height = videoRef.current.videoHeight;
-                                console.log("Video dimensions set:", videoRef.current.videoWidth, videoRef.current.videoHeight);
+                        // Đợi video load xong và play
+                        await new Promise<void>((resolve) => {
+                            if (videoRef.current) {
+                                videoRef.current.onloadedmetadata = () => {
+                                    if (videoRef.current && canvasRef.current) {
+                                        canvasRef.current.width = videoRef.current.videoWidth;
+                                        canvasRef.current.height = videoRef.current.videoHeight;
+                                        console.log("Video dimensions set:", videoRef.current.videoWidth, videoRef.current.videoHeight);
+                                    }
+                                    resolve();
+                                };
+
+                                // Tự động play video
+                                videoRef.current.play().catch(e => {
+                                    console.log("Auto-play blocked, user interaction required:", e);
+                                });
                             }
-                        };
+                        });
 
                         // Thêm sự kiện để đảm bảo video đang chạy
                         videoRef.current.onplaying = () => {
@@ -1057,7 +1154,9 @@ export default function ProfilePage() {
                     console.error("Error starting camera preview:", error);
                     toast({
                         title: t('user.faceProfile.cameraError'),
-                        description: t('user.faceProfile.checkCameraPermissions'),
+                        description: error instanceof Error && error.message.includes('NotAllowedError')
+                            ? 'Vui lòng cho phép truy cập camera để sử dụng tính năng này'
+                            : t('user.faceProfile.checkCameraPermissions'),
                         variant: "destructive",
                     });
                 }
@@ -1285,7 +1384,9 @@ export default function ProfilePage() {
                                 <div className="flex items-center">
                                     <UserCheck className="h-4 w-4 mr-2 text-muted-foreground" />
                                     <span className="text-sm">
-                                        {t("employees.joinDate")}: {format(new Date(profileData.joinDate), "dd/MM/yyyy")}
+                                        {t("employees.joinDate")}: {profileData.joinDate
+                                            ? format(new Date(profileData.joinDate), "dd/MM/yyyy")
+                                            : "-"}
                                     </span>
                                 </div>
                             </div>

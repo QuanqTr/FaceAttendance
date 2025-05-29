@@ -29,7 +29,7 @@ import { BellRing, Clock, Database, Globe, Key, Save, User } from "lucide-react"
 
 export default function Settings() {
   const { user } = useAuth();
-  const { toast } = useI18nToast();
+  const i18nToast = useI18nToast();
   const { t } = useTranslation();
   const { currentLanguage, changeLanguage } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
@@ -91,7 +91,7 @@ export default function Settings() {
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
-      toast.success('common.success', 'common.changesSaved');
+      i18nToast.success('common.success', 'common.changesSaved');
     }, 1000);
   };
 

@@ -51,13 +51,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import faceapi, { initFaceAPI } from "@/lib/faceapi";
 import { EmployeeWorkHours } from "@/components/employee/employee-work-hours";
-import AttendanceCalendar from "@/components/employee/attendance-calendar";
 import { AttendanceTable } from "@/components/attendance/attendance-table";
 import { MonthlyAttendanceCalendar } from "@/components/attendance/monthly-attendance-calendar";
-import { AttendanceProfile } from "@/components/face-recognition/attendance-profile";
 
 export default function EmployeeDetail() {
-  const [, params] = useRoute<{ id: string }>("/employees/:id");
+  const [, params] = useRoute<{ id: string }>("/manager/employees/:id");
   const { toast } = useToast();
   const { t } = useTranslation();
   const i18nToast = useI18nToast();
@@ -97,59 +95,52 @@ export default function EmployeeDetail() {
     loadModels();
   }, [i18nToast]);
 
+  // Use manager API endpoint
   const { data: employee, isLoading: employeeLoading, refetch } = useQuery<Employee>({
-    queryKey: [`/api/employees/${employeeId}`],
+    queryKey: [`/api/manager/employees/${employeeId}`],
     queryFn: async () => {
       if (!employeeId) return null;
-      const res = await fetch(`/api/employees/${employeeId}`);
+      const res = await fetch(`/api/manager/employees/${employeeId}`);
       if (!res.ok) throw new Error("Failed to fetch employee details");
       return await res.json();
     },
     enabled: !!employeeId,
   });
 
-  const { data: attendanceRecords } = useQuery({
-    queryKey: [`/api/attendance/employee/${employeeId}`, format(date, 'yyyy-MM')],
+  // Lấy thông tin chi tiết phòng ban
+  const { data: department, isLoading: departmentLoading } = useQuery({
+    queryKey: [`/api/departments/${employee?.departmentId}`],
     queryFn: async () => {
-      if (!employeeId) return [];
-
-      const startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-      const endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      console.log(`Fetching attendance records from ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
-
-      const res = await fetch(`/api/attendance/employee/${employeeId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
-      if (!res.ok) throw new Error("Failed to fetch attendance records");
-
-      const data = await res.json();
-      console.log(`Đã tải ${data.length} bản ghi điểm danh cho tháng ${format(date, 'MM/yyyy')}`);
-
-      // Nhóm các bản ghi theo ngày để kiểm tra
-      const recordsByDate = data.reduce((acc: any, record: any) => {
-        const recordDate = record.date ? new Date(record.date) : new Date(record.time);
-        const dateStr = format(recordDate, 'yyyy-MM-dd');
-
-        if (!acc[dateStr]) {
-          acc[dateStr] = [];
-        }
-        acc[dateStr].push(record);
-        return acc;
-      }, {});
-
-      console.log(`Có ${Object.keys(recordsByDate).length} ngày có điểm danh`);
-
-      return data;
+      if (!employee?.departmentId) return null;
+      const res = await fetch(`/api/departments/${employee.departmentId}`);
+      if (!res.ok) return null; // Không báo lỗi, chỉ trả về null
+      return await res.json();
     },
-    enabled: !!employeeId,
+    enabled: !!employee?.departmentId,
   });
 
+  const isValidDate = date instanceof Date && !isNaN(date.getTime());
+  const { data: workHoursData, isLoading: workHoursLoading, error: workHoursError } = useQuery({
+    queryKey: isValidDate ? [`/api/work-hours/employee/${employeeId}`, format(date, 'yyyy-MM')] : [],
+    queryFn: async () => {
+      if (!employeeId || !isValidDate) return [];
+      const startDate = format(new Date(date.getFullYear(), date.getMonth(), 1), 'yyyy-MM-dd');
+      const endDate = format(new Date(date.getFullYear(), date.getMonth() + 1, 0), 'yyyy-MM-dd');
+      const res = await fetch(`/api/work-hours/employee/${employeeId}?startDate=${startDate}&endDate=${endDate}`);
+      if (!res.ok) throw new Error('Failed to fetch work hours');
+      return await res.json();
+    },
+    enabled: !!employeeId && isValidDate,
+  });
+
+  // Use manager API for delete
   const deleteEmployeeMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", `/api/employees/${employeeId}`);
+      await apiRequest("DELETE", `/api/manager/employees/${employeeId}`);
     },
     onSuccess: () => {
       i18nToast.success('employees.deleteSuccess', 'employees.deleteSuccessMessage');
-      window.location.href = "/employees";
+      window.location.href = "/manager/employees";
     },
     onError: (error) => {
       i18nToast.error('common.error', 'employees.deleteError', { error: error.message });
@@ -180,7 +171,7 @@ export default function EmployeeDetail() {
             <p className="text-muted-foreground mb-4">
               {t('employees.notFoundDesc')}
             </p>
-            <Link href="/employees">
+            <Link href="/manager/employees">
               <Button>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {t('employees.backToEmployees')}
@@ -213,347 +204,429 @@ export default function EmployeeDetail() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Kiểm tra loại file
+    // Validate file type
     if (!file.type.startsWith('image/')) {
       i18nToast.error('common.error', 'employees.invalidFileType');
       return;
     }
 
-    if (!isModelsLoaded) {
-      i18nToast.error('common.error', 'employees.modelsLoading');
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      i18nToast.error('common.error', 'employees.fileTooLarge');
       return;
     }
 
-    // Đóng dialog ngay sau khi chọn file - người dùng không cần phải đợi
-    const dialogElement = document.querySelector('[data-state="open"][role="dialog"]');
-    if (dialogElement) {
-      // Tìm nút close trong dialog
-      const closeButton = dialogElement.querySelector('button[data-state="closed"]');
-      if (closeButton && 'click' in closeButton) {
-        (closeButton as HTMLElement).click();
-      } else {
-        // Backup method - tìm kiếm theo attribute aria-label
-        const closeButtonAlt = dialogElement.querySelector('button[aria-label="Close"]');
-        if (closeButtonAlt && 'click' in closeButtonAlt) {
-          (closeButtonAlt as HTMLElement).click();
-        }
-      }
-    }
-
-    // Hiển thị toast loading khi đang xử lý
-    i18nToast.info('common.processing', 'employees.extractingFeatures');
-
     setIsLoading(true);
-    let objectUrl: string | null = null;
 
     try {
-      // Tạo URL cho ảnh
-      objectUrl = URL.createObjectURL(file);
-      console.log("Đã tạo object URL:", objectUrl);
-
-      // Load ảnh
-      console.log("Đang tải ảnh...");
-      const img = await faceapi.fetchImage(objectUrl);
-      console.log("Đã tải xong ảnh, kích thước:", img.width, "x", img.height);
-
-      // Nhận diện khuôn mặt
-      console.log("Đang nhận diện khuôn mặt...");
-      const detections = await faceapi.detectSingleFace(img)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!detections) {
-        throw new Error("Không tìm thấy khuôn mặt trong ảnh");
+      // Kiểm tra face-api models đã tải chưa
+      if (!isModelsLoaded) {
+        i18nToast.error('common.error', 'employees.modelsNotLoaded');
+        return;
       }
 
-      console.log("Đã nhận diện khuôn mặt thành công");
+      // Validate face in image
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const detections = await faceapi.detectAllFaces(img).withFaceLandmarks().withFaceDescriptors();
 
-      // Chuyển đổi descriptor thành mảng
-      const descriptor = Array.from(detections.descriptor);
-      console.log("Descriptor có độ dài:", descriptor.length);
+          if (detections.length === 0) {
+            i18nToast.error('common.error', 'employees.noFaceDetected');
+            return;
+          }
 
-      console.log("Đã phát hiện khuôn mặt, gửi dữ liệu lên server...");
+          if (detections.length > 1) {
+            i18nToast.error('common.error', 'employees.multipleFacesDetected');
+            return;
+          }
 
-      // Dữ liệu gửi lên server
-      const postData = {
-        descriptor: descriptor
+          // Upload file
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const response = await fetch(`/api/manager/employees/${employeeId}/avatar`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error('Upload failed');
+          }
+
+          const result = await response.json();
+
+          // Update query cache
+          queryClient.invalidateQueries({ queryKey: [`/api/manager/employees/${employeeId}`] });
+
+          i18nToast.success('employees.uploadSuccess', 'employees.avatarUpdated');
+
+          // Trigger a refetch
+          refetch();
+        } catch (error) {
+          console.error('Face detection error:', error);
+          i18nToast.error('common.error', 'employees.faceDetectionError');
+        } finally {
+          setIsLoading(false);
+        }
       };
-      console.log("Dữ liệu gửi lên server:", postData);
 
-      // Sử dụng URL tương đối, Vite sẽ proxy tới server
-      const apiUrl = `/api/employees/${employee.id}/face-profile`;
-      console.log("Gọi API tới URL:", apiUrl);
+      img.onerror = () => {
+        i18nToast.error('common.error', 'employees.invalidImage');
+        setIsLoading(false);
+      };
 
-      // Gửi lên server
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(postData),
-      });
-
-      console.log("Phản hồi từ server:", {
-        status: response.status,
-        statusText: response.statusText,
-        headers: {
-          'content-type': response.headers.get('content-type'),
-          'content-length': response.headers.get('content-length')
-        }
-      });
-
-      if (!response.ok) {
-        // Kiểm tra loại content của response
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || "Không thể lưu dữ liệu khuôn mặt");
-        } else {
-          // Nếu không phải JSON, đọc response dưới dạng text
-          const errorText = await response.text();
-          console.error("Phản hồi không phải JSON:", errorText);
-          throw new Error(`Lỗi server: ${response.status} ${response.statusText}`);
-        }
-      }
-
-      // Đọc response theo content-type
-      const contentType = response.headers.get('content-type');
-      let data;
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        console.log("Phản hồi dạng text:", text);
-        data = { message: "Đã lưu dữ liệu thành công" };
-      }
-
-      console.log("Dữ liệu từ server:", data);
-
-      // Thông báo thành công và cập nhật UI
-      i18nToast.success('common.success', 'employees.faceDataSaved');
-
-      // Cập nhật lại dữ liệu nhân viên
-      await refetch();
+      img.src = URL.createObjectURL(file);
     } catch (error) {
-      console.error('Lỗi khi xử lý khuôn mặt:', error);
-      i18nToast.error('common.error', 'employees.faceProcessingError', { error: error instanceof Error ? error.message : "Không thể xử lý khuôn mặt" });
-    } finally {
+      console.error('Upload error:', error);
+      i18nToast.error('common.error', 'employees.uploadError');
       setIsLoading(false);
-      // Dọn dẹp URL
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     }
+
+    // Reset input value để có thể upload lại cùng file
+    event.target.value = '';
   };
 
   const handlePreviousMonth = () => {
-    setDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() - 1, 1));
+    setDate(new Date(date.getFullYear(), date.getMonth() - 1, 1));
   };
 
   const handleNextMonth = () => {
-    setDate(prevDate => new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 1));
+    setDate(new Date(date.getFullYear(), date.getMonth() + 1, 1));
   };
 
-  // Hàm chuyển đổi thời gian từ UTC sang giờ địa phương
   const utcToLocalTime = (utcTime: string | Date): string => {
     try {
-      // Tạo đối tượng Date từ chuỗi UTC hoặc đối tượng Date
       const date = typeof utcTime === 'string' ? new Date(utcTime) : utcTime;
+      if (isNaN(date.getTime())) return 'Invalid date';
 
-      // Kiểm tra tính hợp lệ của Date
-      if (isNaN(date.getTime())) {
-        console.warn("Thời gian không hợp lệ:", utcTime);
-        return "--:--";
-      }
-
-      // Format thành HH:mm trong múi giờ địa phương
-      return format(date, 'HH:mm');
+      // Chuyển từ UTC sang local time
+      const localTime = new Date(date.getTime() + (7 * 60 * 60 * 1000)); // UTC+7
+      return format(localTime, 'HH:mm:ss');
     } catch (error) {
-      console.error("Lỗi khi chuyển đổi thời gian:", error);
-      return "--:--";
+      console.error('Error converting time:', error);
+      return 'Invalid time';
     }
   };
 
-  // Chuẩn hóa dữ liệu điểm danh cho bảng và calendar
-  const normalizedRecords = (attendanceRecords || []).map((record: any) => ({
-    id: record.id,
-    date: record.date,
-    checkinTime: record.checkinTime,
-    checkoutTime: record.checkoutTime,
-    regularHours: record.regularHours,
-    overtimeHours: record.overtimeHours,
-    status: record.status,
-  }));
-
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title={t('employees.details')} />
-
+      <Header title={`${employee.fullName || `${employee.firstName} ${employee.lastName}`}`} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <div className="flex items-center">
-            <Link href="/employees">
-              <Button variant="ghost" className="mr-2 p-0 h-8 w-8">
-                <ArrowLeft className="h-4 w-4" />
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Header Actions */}
+          <div className="flex items-center justify-between">
+            <Link href="/manager/employees">
+              <Button>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                {t('employees.backToEmployees')}
               </Button>
             </Link>
-            <h1 className="text-2xl font-bold">{t('employees.profile')}</h1>
-          </div>
-
-          <div className="flex items-center mt-4 md:mt-0 space-x-2">
-            <Link href={`/employees/${employeeId}/edit`}>
-              <Button variant="outline">
-                <Edit2 className="mr-2 h-4 w-4" />
-                {t('common.edit')}
-              </Button>
-            </Link>
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t('common.delete')}
+            <div className="flex gap-2">
+              <Link href={`/manager/employees/${employeeId}/edit`}>
+                <Button variant="outline">
+                  <Edit2 className="mr-2 h-4 w-4" />
+                  {t('common.edit')}
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('employees.confirmDelete')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('employees.deleteWarning', { name: `${employee.lastName} ${employee.firstName}` })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-                  <AlertDialogAction
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    onClick={() => deleteEmployeeMutation.mutate()}
-                  >
-                    {deleteEmployeeMutation.isPending ? t('employees.deleting') : t('common.delete')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              </Link>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t('common.delete')}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t('employees.deleteEmployee')}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('employees.deleteEmployeeConfirm', { name: employee.fullName || `${employee.firstName} ${employee.lastName}` })}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteEmployeeMutation.mutate()}
+                      className="bg-destructive hover:bg-destructive/90"
+                    >
+                      {deleteEmployeeMutation.isPending ? (
+                        <div className="flex items-center">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {t('common.deleting')}
+                        </div>
+                      ) : (
+                        t('common.delete')
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
-        </div>
 
-        {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-1">
-            <CardHeader className="text-center">
-              <div className="flex justify-center mb-4">
-                <Avatar className="h-24 w-24">
-                  <AvatarFallback className="text-xl bg-primary text-primary-foreground">
-                    {getInitials(employee.firstName, employee.lastName)}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-              <CardTitle className="text-xl">
-                {employee.lastName} {employee.firstName}
-              </CardTitle>
-              <CardDescription>{employee.position || t('employees.notSpecified')}</CardDescription>
-              <div className="mt-2">{getStatusBadge(employee.status)}</div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">{t('employees.id')}</Label>
-                  <p className="font-medium">{employee.employeeId}</p>
-                </div>
+          <Tabs defaultValue="info" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="info">{t('employees.information')}</TabsTrigger>
+              <TabsTrigger value="face">{t('employees.faceRecognition')}</TabsTrigger>
+              <TabsTrigger value="attendance">{t('employees.attendance')}</TabsTrigger>
+              <TabsTrigger value="hours">{t('employees.workHours')}</TabsTrigger>
+            </TabsList>
 
-                <Separator />
-
-                <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">{t('employees.email')}</Label>
-                  <div className="flex items-center">
-                    <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <p className="font-medium">{employee.email}</p>
-                  </div>
-                </div>
-
-                {employee.phone && (
-                  <>
-                    <Separator />
+            <TabsContent value="info" className="space-y-6">
+              {/* Basic Information */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-16 w-16">
+                      <AvatarFallback className="text-lg">
+                        {getInitials(employee.firstName, employee.lastName)}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="space-y-1">
-                      <Label className="text-sm text-muted-foreground">{t('employees.phone')}</Label>
-                      <div className="flex items-center">
-                        <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
-                        <p className="font-medium">{employee.phone}</p>
+                      <CardTitle className="text-2xl">
+                        {employee.fullName || `${employee.firstName} ${employee.lastName}`}
+                      </CardTitle>
+                      <CardDescription>
+                        {employee.position} • {department?.name || t('employees.noDepartment')}
+                      </CardDescription>
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(employee.status)}
+                        <Badge variant="outline">ID: {employee.employeeId}</Badge>
                       </div>
                     </div>
-                  </>
-                )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        {t('employees.fullName')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        {employee.fullName || `${employee.firstName} ${employee.lastName}`}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {t('employees.employeeId')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">{employee.employeeId}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        {t('employees.email')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">{employee.email}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        {t('employees.phone')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">{employee.phone || t('common.notSet')}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {t('employees.position')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">{employee.position}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {t('employees.department')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        {department?.name || t('employees.noDepartment')}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {t('employees.joinDate')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        {employee.joinDate ? format(new Date(employee.joinDate), 'PPP') : t('common.notSet')}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {t('employees.status')}
+                      </Label>
+                      <div>{getStatusBadge(employee.status)}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <Separator />
+            <TabsContent value="face" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('employees.faceRecognition')}</CardTitle>
+                  <CardDescription>
+                    {t('employees.faceRecognitionDesc')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {isInitializing ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>{t('employees.loadingModels')}</span>
+                      </div>
+                    </div>
+                  ) : !isModelsLoaded ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        {t('employees.faceModelError')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Current Avatar */}
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-20 w-20">
+                          <AvatarFallback className="text-xl">
+                            {getInitials(employee.firstName, employee.lastName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="space-y-2">
+                          <Label>{t('employees.currentAvatar')}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {employee.faceDescriptor ? t('employees.faceRegistered') : t('employees.noFaceRegistered')}
+                          </p>
+                        </div>
+                      </div>
 
-                <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">{t('employees.department')}</Label>
-                  <p className="font-medium">{employee.departmentId}</p>
-                </div>
+                      <Separator />
 
-                <Separator />
+                      {/* Upload New Avatar */}
+                      <div className="space-y-4">
+                        <Label>{t('employees.uploadNewAvatar')}</Label>
+                        <div className="flex items-center gap-4">
+                          <Input
+                            id="avatar-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileUpload}
+                            disabled={isLoading}
+                            className="hidden"
+                          />
+                          <Button
+                            onClick={() => document.getElementById('avatar-upload')?.click()}
+                            disabled={isLoading}
+                            variant="outline"
+                          >
+                            {isLoading ? (
+                              <div className="flex items-center">
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                {t('common.uploading')}
+                              </div>
+                            ) : (
+                              <div className="flex items-center">
+                                <Upload className="mr-2 h-4 w-4" />
+                                {t('employees.selectImage')}
+                              </div>
+                            )}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {t('employees.uploadNote')}
+                        </p>
+                      </div>
 
-                <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">{t('employees.joinDate')}</Label>
-                  <p className="font-medium">
-                    {employee.joinDate ?
-                      format(
-                        typeof employee.joinDate === 'string' ?
-                          new Date(employee.joinDate) :
-                          employee.joinDate,
-                        'PPP'
-                      ) :
-                      t('employees.notSpecified')
-                    }
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                      <Separator />
 
-          <div className="lg:col-span-2">
-            <Tabs defaultValue="attendance" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="attendance">{t('employees.attendanceHistory')}</TabsTrigger>
-                <TabsTrigger value="profile">{t('employees.faceProfile')}</TabsTrigger>
-              </TabsList>
+                      {/* Face Registration */}
+                      <div className="space-y-4">
+                        <Label>{t('employees.liveRegistration')}</Label>
+                        <FaceRegistration
+                          employeeId={employeeId}
+                          onSuccess={() => {
+                            refetch();
+                            i18nToast.success('employees.faceRegistered', 'employees.faceRegisteredDesc');
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-              <TabsContent value="attendance">
-                <div className="flex flex-col gap-6 mb-6">
-                  <AttendanceTable
-                    data={normalizedRecords}
-                    isLoading={false}
-                    error={null}
-                    onExport={null}
-                    searchTerm={""}
-                    onSearchChange={() => { }}
-                    date={date}
-                    onDateChange={setDate}
-                    statusFilter={"all"}
-                    onStatusFilterChange={() => { }}
-                    onClearFilters={() => { }}
-                    page={1}
-                    totalPages={1}
-                    onPageChange={() => { }}
-                    t={t}
-                  />
+            <TabsContent value="attendance" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{t('employees.attendanceHistory')}</span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={handlePreviousMonth}>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-medium min-w-[120px] text-center">
+                        {format(date, 'MMMM yyyy')}
+                      </span>
+                      <Button variant="outline" size="sm" onClick={handleNextMonth}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <MonthlyAttendanceCalendar
-                    monthData={normalizedRecords}
-                    currentMonth={date}
-                    onMonthChange={setDate}
-                    onDateClick={() => { }}
-                    t={t}
+                    employeeId={employeeId}
+                    month={date}
                   />
-                </div>
-                <div className="mt-6">
-                  <EmployeeWorkHours employeeId={employee.id} />
-                </div>
-              </TabsContent>
+                </CardContent>
+              </Card>
 
-              <TabsContent value="profile">
-                <AttendanceProfile employeeId={employee.id} type="employee" t={t} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div> */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('employees.attendanceDetails')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <AttendanceTable
+                    employeeId={employeeId}
+                    startDate={format(new Date(date.getFullYear(), date.getMonth(), 1), 'yyyy-MM-dd')}
+                    endDate={format(new Date(date.getFullYear(), date.getMonth() + 1, 0), 'yyyy-MM-dd')}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="hours" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{t('employees.workHours')}</span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={handlePreviousMonth}>
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-medium min-w-[120px] text-center">
+                        {format(date, 'MMMM yyyy')}
+                      </span>
+                      <Button variant="outline" size="sm" onClick={handleNextMonth}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <EmployeeWorkHours
+                    employeeId={employeeId}
+                    month={date}
+                    workHoursData={workHoursData}
+                    isLoading={workHoursLoading}
+                    error={workHoursError}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </main>
     </div>
   );

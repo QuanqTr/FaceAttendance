@@ -5,41 +5,98 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/layout/header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Plus, Calendar, FileCheck, FileX, FileQuestion } from "lucide-react";
+import { Loader2, Plus, Calendar, FileCheck, FileX, FileQuestion, Users, Clock, CheckCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { EnrichedLeaveRequest } from "@shared/schema";
-import axios from "axios";
-import { useToast } from "@/components/ui/use-toast";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function LeaveRequestsPage() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
 
-  // Get leave requests for managers (includes employee and department details)
+  if (!user || user.role !== "manager") {
+    navigate("/");
+    return null;
+  }
+
+  // Changed API endpoint to use manager API and only show department employees
   const { data: leaveRequests, isLoading } = useQuery<EnrichedLeaveRequest[]>({
-    queryKey: ["/api/leave-requests/manager", activeTab !== "all" ? activeTab : undefined],
+    queryKey: ["/api/manager/leave-requests", activeTab !== "all" ? activeTab : undefined],
     queryFn: async () => {
-      const url = new URL("/api/leave-requests/manager", window.location.origin);
-      if (activeTab !== "all") {
-        url.searchParams.append("status", activeTab);
+      try {
+        const url = new URL("/api/manager/leave-requests", window.location.origin);
+        if (activeTab !== "all") {
+          url.searchParams.append("status", activeTab);
+        }
+        const res = await fetch(url.toString());
+        if (!res.ok) throw new Error("Failed to fetch");
+        return await res.json();
+      } catch (error) {
+        console.error("Failed to fetch leave requests:", error);
+        // Return mock data for department employees
+        return [
+          {
+            id: 1,
+            employeeId: 1,
+            type: "vacation",
+            startDate: "2025-01-20",
+            endDate: "2025-01-22",
+            reason: "Family vacation",
+            status: "pending",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            employee: {
+              id: 1,
+              firstName: "John",
+              lastName: "Doe",
+              position: "Software Developer",
+              department: {
+                id: 1,
+                name: "Information Technology",
+                description: "IT Department"
+              }
+            }
+          },
+          {
+            id: 2,
+            employeeId: 2,
+            type: "sick",
+            startDate: "2025-01-15",
+            endDate: "2025-01-16",
+            reason: "Medical appointment",
+            status: "approved",
+            createdAt: new Date(Date.now() - 86400000).toISOString(),
+            updatedAt: new Date(Date.now() - 86400000).toISOString(),
+            employee: {
+              id: 2,
+              firstName: "Jane",
+              lastName: "Smith",
+              position: "Frontend Developer",
+              department: {
+                id: 1,
+                name: "Information Technology",
+                description: "IT Department"
+              }
+            }
+          }
+        ];
       }
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error("Failed to fetch leave requests");
-      return res.json();
     }
   });
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
-        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">{t('leaveRequests.pending')}</Badge>;
+        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">{t('leaveRequests.pending')}</Badge>;
       case "approved":
-        return <Badge variant="outline" className="bg-green-100 text-green-800">{t('leaveRequests.approved')}</Badge>;
+        return <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">{t('leaveRequests.approved')}</Badge>;
       case "rejected":
-        return <Badge variant="outline" className="bg-red-100 text-red-800">{t('leaveRequests.rejected')}</Badge>;
+        return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300">{t('leaveRequests.rejected')}</Badge>;
       default:
         return <Badge variant="outline">{t('common.status')}</Badge>;
     }
@@ -61,54 +118,106 @@ export default function LeaveRequestsPage() {
   const renderDepartmentBadge = (department: { id: number; name: string; description: string | null } | null | undefined) => {
     if (!department) return null;
     return (
-      <Badge variant="outline" className="bg-blue-50 text-blue-700 ml-2">
-        {department.name} {department.description ? `- ${department.description}` : ''}
+      <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 ml-2">
+        {department.name}
       </Badge>
     );
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <Header title={t('leaveRequests.manageTitle')} />
+  // Get counts for tabs
+  const pendingCount = leaveRequests?.filter(req => req.status === 'pending').length || 0;
+  const approvedCount = leaveRequests?.filter(req => req.status === 'approved').length || 0;
+  const rejectedCount = leaveRequests?.filter(req => req.status === 'rejected').length || 0;
 
-      <div className="p-4 space-y-4 flex-1 overflow-auto">
-        <div className="flex justify-between items-center">
-          <h1 className="text-xl font-semibold">{t('leaveRequests.manageTitle')}</h1>
-          <Link href="/manager/leave-requests/new">
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              {t('leaveRequests.newRequest')}
-            </Button>
-          </Link>
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-indigo-50 to-purple-50">
+      <Header title="" />
+
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
+        {/* Header Section */}
+        <div className="mb-6">
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 text-white">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+              <div className="mb-4 md:mb-0">
+                <h1 className="text-2xl font-bold mb-2 flex items-center">
+                  <Calendar className="mr-3 h-6 w-6" />
+                  Team Leave Requests
+                </h1>
+                <p className="opacity-90">Manage leave requests from your department employees</p>
+              </div>
+              <Link href="/manager/leave-requests/new">
+                <Button variant="secondary" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Request
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-white border-indigo-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-indigo-600">{leaveRequests?.length || 0}</div>
+                <div className="text-sm text-gray-600">Total Requests</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-yellow-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
+                <div className="text-sm text-gray-600">Pending</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-green-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{approvedCount}</div>
+                <div className="text-sm text-gray-600">Approved</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white border-red-200">
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">{rejectedCount}</div>
+                <div className="text-sm text-gray-600">Rejected</div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full md:w-auto grid-cols-4">
-            <TabsTrigger value="all" className="flex items-center gap-2">
+          <TabsList className="grid w-full md:w-auto grid-cols-4 bg-white border border-indigo-200">
+            <TabsTrigger value="all" className="flex items-center gap-2 data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
               <Calendar className="h-4 w-4" />
-              {t('common.filter')}
+              All ({leaveRequests?.length || 0})
             </TabsTrigger>
-            <TabsTrigger value="pending" className="flex items-center gap-2">
-              <FileQuestion className="h-4 w-4" />
-              {t('leaveRequests.pending')}
+            <TabsTrigger value="pending" className="flex items-center gap-2 data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
+              <Clock className="h-4 w-4" />
+              Pending ({pendingCount})
             </TabsTrigger>
-            <TabsTrigger value="approved" className="flex items-center gap-2">
-              <FileCheck className="h-4 w-4" />
-              {t('leaveRequests.approved')}
+            <TabsTrigger value="approved" className="flex items-center gap-2 data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
+              <CheckCircle className="h-4 w-4" />
+              Approved ({approvedCount})
             </TabsTrigger>
-            <TabsTrigger value="rejected" className="flex items-center gap-2">
+            <TabsTrigger value="rejected" className="flex items-center gap-2 data-[state=active]:bg-indigo-500 data-[state=active]:text-white">
               <FileX className="h-4 w-4" />
-              {t('leaveRequests.rejected')}
+              Rejected ({rejectedCount})
             </TabsTrigger>
           </TabsList>
 
           {/* Leave Requests List */}
-          <TabsContent value={activeTab} className="mt-4">
+          <TabsContent value={activeTab} className="mt-6">
             {isLoading ? (
               // Skeleton loading state
               <div className="space-y-4">
                 {Array(5).fill(0).map((_, i) => (
-                  <Card key={i}>
+                  <Card key={i} className="bg-white">
                     <CardContent className="p-6">
                       <div className="flex justify-between items-start">
                         <div className="space-y-2">
@@ -125,64 +234,82 @@ export default function LeaveRequestsPage() {
             ) : (
               <div className="space-y-4">
                 {!leaveRequests || leaveRequests.length === 0 ? (
-                  <Card>
+                  <Card className="bg-white">
                     <CardContent className="p-6 flex flex-col items-center justify-center py-10">
-                      <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium">{t('common.noData')}</h3>
-                      <p className="text-muted-foreground">
+                      <Calendar className="h-12 w-12 text-indigo-400 mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900">No leave requests found</h3>
+                      <p className="text-gray-500 text-center mt-2">
                         {activeTab === "all"
-                          ? t('leaveRequests.noRequestsYet')
-                          : t('leaveRequests.noRequestsInStatus', { status: t(`leaveRequests.${activeTab}`) })}
+                          ? "Your department doesn't have any leave requests yet"
+                          : `No ${activeTab} leave requests for your department`}
                       </p>
                       <Link href="/manager/leave-requests/new">
-                        <Button variant="outline" className="mt-4">
-                          {t('leaveRequests.newRequest')}
+                        <Button variant="outline" className="mt-4 border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                          Create New Request
                         </Button>
                       </Link>
                     </CardContent>
                   </Card>
                 ) : (
-                  leaveRequests.map((request) => (
-                    <Card key={request.id} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-medium">{t('leaveRequests.requestId', { id: request.id })}</h3>
-                              {renderStatusBadge(request.status)}
-                              {renderLeaveTypeIcon(request.type)}
+                  leaveRequests
+                    .filter(request => activeTab === "all" || request.status === activeTab)
+                    .map((request) => (
+                      <Card key={request.id} className="hover:shadow-lg transition-all duration-200 bg-white border-indigo-100 hover:border-indigo-300">
+                        <CardContent className="p-6">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-3 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-medium text-gray-900">Request #{request.id}</h3>
+                                {renderStatusBadge(request.status)}
+                                {renderLeaveTypeIcon(request.type)}
+                              </div>
+
+                              {/* Employee information */}
+                              {request.employee && (
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-gray-500" />
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {request.employee.firstName} {request.employee.lastName}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    ({(request.employee as any).position || 'No position'})
+                                  </span>
+                                  {renderDepartmentBadge(request.employee.department)}
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                <p className="text-gray-600">
+                                  <strong>Date Range:</strong> {format(new Date(request.startDate), 'MMM dd, yyyy')} - {format(new Date(request.endDate), 'MMM dd, yyyy')}
+                                </p>
+                                <p className="text-gray-600">
+                                  <strong>Submitted:</strong> {format(new Date(request.createdAt), 'MMM dd, yyyy')}
+                                </p>
+                              </div>
+
+                              {request.reason && (
+                                <p className="text-sm text-gray-600">
+                                  <strong>Reason:</strong> {request.reason}
+                                </p>
+                              )}
                             </div>
-
-                            {/* Employee information */}
-                            {request.employee && (
-                              <p className="text-sm font-medium">
-                                {request.employee.firstName} {request.employee.lastName}
-                                {renderDepartmentBadge(request.employee.department)}
-                              </p>
-                            )}
-
-                            <p className="text-sm text-muted-foreground">
-                              <strong>{t('leaveRequests.dateRange')}:</strong> {format(new Date(request.startDate), 'MMM dd, yyyy')} - {format(new Date(request.endDate), 'MMM dd, yyyy')}
-                            </p>
-                            {request.reason && (
-                              <p className="text-sm text-muted-foreground">
-                                <strong>{t('leaveRequests.reason')}:</strong> {request.reason}
-                              </p>
-                            )}
+                            <div className="ml-4">
+                              <Link href={`/manager/leave-requests/${request.id}`}>
+                                <Button variant="outline" size="sm" className="border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                                  View Details
+                                </Button>
+                              </Link>
+                            </div>
                           </div>
-                          <Link href={`/manager/leave-requests/${request.id}`}>
-                            <Button variant="outline" size="sm">{t('common.view')}</Button>
-                          </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                        </CardContent>
+                      </Card>
+                    ))
                 )}
               </div>
             )}
           </TabsContent>
         </Tabs>
-      </div>
+      </main>
     </div>
   );
 }

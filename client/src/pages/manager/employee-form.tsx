@@ -143,7 +143,7 @@ function generateEmployeeId(): string {
 }
 
 export default function EmployeeForm() {
-  const [, params] = useRoute<{ id: string }>("/employees/:id/edit");
+  const [, params] = useRoute<{ id: string }>("/manager/employees/:id/edit");
   const [isEditMode, setIsEditMode] = useState(false);
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -161,12 +161,12 @@ export default function EmployeeForm() {
     }
   });
 
-  // Get employee data if in edit mode
+  // Get employee data if in edit mode - use manager API
   const { data: employee, isLoading: isLoadingEmployee } = useQuery({
-    queryKey: [`/api/employees/${employeeId}`],
+    queryKey: [`/api/manager/employees/${employeeId}`],
     queryFn: async () => {
       if (!employeeId) return null;
-      const res = await fetch(`/api/employees/${employeeId}`);
+      const res = await fetch(`/api/manager/employees/${employeeId}`);
       if (!res.ok) throw new Error("Failed to fetch employee details");
       return await res.json();
     },
@@ -272,32 +272,33 @@ export default function EmployeeForm() {
     }
   }, [employee, form]);
 
-  // Create employee mutation
+  // Create employee mutation - use manager API
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
-      const res = await apiRequest("POST", "/api/employees", data);
+      const res = await apiRequest("POST", "/api/manager/employees", data);
       return await res.json();
     },
     onSuccess: () => {
       i18nToast.success('employees.createSuccess', 'employees.createSuccessMessage');
-      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
-      window.location.href = "/employees";
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/employees"] });
+      window.location.href = "/manager/employees";
     },
     onError: (error) => {
       i18nToast.error('common.error', 'employees.createError', { error: error.message });
     },
   });
 
-  // Update employee mutation
+  // Update employee mutation - use manager API
   const updateMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
-      const res = await apiRequest("PUT", `/api/employees/${employeeId}`, data);
+      const res = await apiRequest("PUT", `/api/manager/employees/${employeeId}`, data);
       return await res.json();
     },
     onSuccess: () => {
       i18nToast.success('employees.updateSuccess', 'employees.updateSuccessMessage');
-      queryClient.invalidateQueries({ queryKey: [`/api/employees/${employeeId}`] });
-      window.location.href = "/employees";
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/employees/${employeeId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/employees"] });
+      window.location.href = "/manager/employees";
     },
     onError: (error) => {
       i18nToast.error('common.error', 'employees.updateError', { error: error.message });
@@ -305,38 +306,48 @@ export default function EmployeeForm() {
   });
 
   const onSubmit = async (data: EmployeeFormValues) => {
-    console.log("Form submitted with data:", data);
+    console.log("Submitting form data:", data);
 
-    const sessionValid = await checkSession();
-    if (!sessionValid) {
-      i18nToast.error('employees.sessionExpired', 'employees.sessionExpiredMessage');
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 2000);
-      return;
-    }
+    try {
+      // Check session before submitting
+      const sessionValid = await checkSession();
+      if (!sessionValid) {
+        i18nToast.error('common.error', 'common.sessionExpired');
+        window.location.href = '/auth/login';
+        return;
+      }
 
-    // Format date as YYYY-MM-DD string
-    const formattedData = {
-      ...data,
-      joinDate: parseJoinDate(data.joinDate),
-    };
-    console.log("Formatted data:", formattedData);
+      // Ensure departmentId is a valid number
+      if (!data.departmentId || data.departmentId <= 0) {
+        i18nToast.error('common.error', 'employees.invalidDepartment');
+        return;
+      }
 
-    if (isEditMode && employeeId) {
-      updateMutation.mutate(formattedData);
-    } else {
-      createMutation.mutate(formattedData);
+      // Validate and format join date
+      data.joinDate = parseJoinDate(data.joinDate);
+
+      console.log("Final data to submit:", data);
+
+      if (isEditMode) {
+        updateMutation.mutate(data);
+      } else {
+        createMutation.mutate(data);
+      }
+    } catch (error) {
+      console.error("Form submission error:", error);
+      i18nToast.error('common.error', 'common.unexpectedError');
     }
   };
 
-  if (isEditMode && isLoadingEmployee) {
+  const isLoading = isLoadingEmployee || isLoadingDepartments;
+
+  if (isLoading) {
     return (
       <div className="flex flex-col flex-1 overflow-hidden">
-        <Header title={t('employees.editEmployee')} />
+        <Header title={isEditMode ? t('employees.editEmployee') : t('employees.addEmployee')} />
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
           <div className="flex justify-center items-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </main>
       </div>
@@ -345,21 +356,22 @@ export default function EmployeeForm() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title='Chỉnh sửa thông tin' />
-
+      <Header title={isEditMode ? t('employees.editEmployee') : t('employees.addEmployee')} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
-        <div className="flex items-center mb-6">
-          <Link href="/employees" className="mr-4">
-            <Button variant="ghost" className="h-8 w-8 p-0" aria-label={t('common.back')}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">Chỉnh sửa thông tin cá nhân</h1>
-        </div>
+        <div className="max-w-2xl mx-auto">
+          <div className="flex items-center mb-6">
+            <Link href="/manager/employees">
+              <Button variant="ghost" className="mr-2 p-0 h-8 w-8">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <h1 className="text-2xl font-bold">
+              {isEditMode ? t('employees.editEmployee') : t('employees.addEmployee')}
+            </h1>
+          </div>
 
-        <div className="mx-auto max-w-4xl">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle>{t('employees.personalInfo')}</CardTitle>
@@ -480,7 +492,7 @@ export default function EmployeeForm() {
                                   {t('employees.noDepartments')}
                                 </div>
                               ) : (
-                                departments.map((department) => (
+                                departments.map((department: any) => (
                                   <SelectItem key={department.id} value={department.id.toString()}>
                                     {department.name} - {department.description || t('employees.noDescription')}
                                   </SelectItem>
@@ -540,7 +552,7 @@ export default function EmployeeForm() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => window.location.href = "/employees"}
+                    onClick={() => window.location.href = "/manager/employees"}
                   >
                     {t('common.cancel')}
                   </Button>
@@ -568,7 +580,7 @@ export default function EmployeeForm() {
                         </>
                       ) : (
                         <>
-                          <Save className="mr-2 h-4 w-4" />
+                          <Save className="mr-2 h-4 w-4 animate-spin" />
                           {t('employees.createEmployee')}
                         </>
                       )

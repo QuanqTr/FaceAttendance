@@ -15,7 +15,10 @@ import {
   History,
   UserCircle,
   FileText,
-  Building
+  Building,
+  Clock,
+  Bell,
+  BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -64,7 +67,8 @@ export function Sidebar() {
 
   const isActive = (path: string) => {
     if (path === '/' && location === '/') return true;
-    if (path !== '/' && location.startsWith(path)) return true;
+    if (path === '/manager' && location === '/manager') return true;
+    if (path !== '/' && path !== '/manager' && location.startsWith(path)) return true;
     return false;
   };
 
@@ -105,19 +109,27 @@ export function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink
-                  href="/user/profile"
-                  icon={<UserCircle className="h-5 w-5" />}
-                  isActive={isActive('/user/profile')}
-                >
-                  {t('common.profile')}
-                </SidebarLink>
-
-                <SidebarLink
                   href="/user/leave-requests"
                   icon={<Calendar className="h-5 w-5" />}
                   isActive={isActive('/user/leave-requests')}
                 >
                   {t('common.leaveRequests')}
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/user/reports"
+                  icon={<BarChart3 className="h-5 w-5" />}
+                  isActive={isActive('/user/reports')}
+                >
+                  Báo cáo
+                </SidebarLink>
+
+                <SidebarLink
+                  href="/user/profile"
+                  icon={<UserCircle className="h-5 w-5" />}
+                  isActive={isActive('/user/profile')}
+                >
+                  {t('common.profile')}
                 </SidebarLink>
 
                 <SidebarLink
@@ -164,16 +176,16 @@ export function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink
-                  href="/manager/statistics"
-                  icon={<DollarSign className="h-5 w-5" />}
-                  isActive={isActive('/manager/statistics')}
+                  href="/manager/attendance"
+                  icon={<ClipboardList className="h-5 w-5" />}
+                  isActive={isActive('/manager/attendance')}
                 >
-                  Statistics
+                  {t('common.attendance')}
                 </SidebarLink>
 
                 <SidebarLink
                   href="/manager/work-hours"
-                  icon={<ClipboardList className="h-5 w-5" />}
+                  icon={<Clock className="h-5 w-5" />}
                   isActive={isActive('/manager/work-hours')}
                 >
                   Work Hours

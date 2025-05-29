@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,12 +27,39 @@ import {
     Fingerprint,
     UserCog,
     FileSpreadsheet,
-    FileCheck
+    FileCheck,
+    User,
+    Building,
+    TrendingUp,
+    AlertCircle,
+    Sun,
+    Moon,
+    Sunrise,
+    Sunset
 } from "lucide-react";
 
 export default function UserDashboard() {
     const { t } = useTranslation();
     const { user } = useAuth();
+
+    // State for real-time clock
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    // Update time every second for real-time feel
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Get greeting based on time
+    const getGreeting = () => {
+        const hour = currentTime.getHours();
+        if (hour < 12) return "🌅 Chào buổi sáng";
+        if (hour < 18) return "☀️ Chào buổi chiều";
+        return "🌙 Chào buổi tối";
+    };
 
     // Query to get employee data
     const {
@@ -43,7 +70,7 @@ export default function UserDashboard() {
         queryFn: async () => {
             if (!user?.employeeId) return null;
 
-            const response = await fetch(`/api/employees/${user.employeeId}`, {
+            const response = await fetch(`/api/employees/profile/${user.employeeId}`, {
                 credentials: "include",
             });
 
@@ -158,14 +185,6 @@ export default function UserDashboard() {
         enabled: !!user?.employeeId,
     });
 
-    // Get current time
-    const [currentTime, setCurrentTime] = useState(new Date());
-
-    // Update time every minute
-    setTimeout(() => {
-        setCurrentTime(new Date());
-    }, 60000);
-
     // Format currency
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('vi-VN', {
@@ -182,8 +201,8 @@ export default function UserDashboard() {
         return (
             <>
                 <Header
-                    title={t("user.dashboard.title")}
-                    description={t("user.dashboard.welcomeMessage", { name: user?.fullName })}
+                    title="🏠 Trang chủ nhân viên"
+                    description={`Chào mừng ${employeeData?.firstName || user?.fullName || 'bạn'} đến với hệ thống chấm công`}
                 />
                 <div className="p-4 md:p-6">
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -200,102 +219,189 @@ export default function UserDashboard() {
     return (
         <>
             <Header
-                title={t("user.dashboard.title")}
-                description={t("user.dashboard.welcomeMessage", { name: user?.fullName })}
+                title="🏠 Trang chủ nhân viên"
+                description={`Chào mừng ${employeeData?.firstName || user?.fullName || 'bạn'} đến với hệ thống chấm công`}
             />
 
             <div className="p-4 md:p-6 space-y-6">
-                {/* Quick Info Cards */}
+                {/* Welcome Banner */}
+                <Card className="bg-gradient-to-br from-blue-500 via-blue-600 to-purple-700 text-white border-none shadow-lg">
+                    <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-2">
+                                <h2 className="text-2xl font-bold">{getGreeting()}</h2>
+                                <p className="text-blue-100 text-lg">
+                                    {employeeData?.firstName} {employeeData?.lastName}
+                                </p>
+                                <div className="flex items-center space-x-4 text-sm text-blue-100">
+                                    <span className="flex items-center">
+                                        <User className="h-4 w-4 mr-1" />
+                                        {employeeData?.position || "Nhân viên"}
+                                    </span>
+                                    <span className="flex items-center">
+                                        <Building className="h-4 w-4 mr-1" />
+                                        {employeeData?.department?.name || "Chưa xác định"}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-3xl font-bold">{format(currentTime, "HH:mm")}</div>
+                                <div className="text-blue-100 text-sm">{format(currentTime, "dd/MM/yyyy")}</div>
+                                <div className="text-blue-200 text-xs mt-1">{format(currentTime, "EEEE")}</div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Quick Stats Grid */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {/* Today's Attendance Card */}
-                    <Card>
+                    <Card className="hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">
-                                {t("user.dashboard.todayAttendance")}
+                            <CardTitle className="text-sm font-medium text-gray-600">
+                                Điểm danh hôm nay
                             </CardTitle>
-                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            <div className="p-2 bg-green-100 rounded-full">
+                                <Clock className="h-4 w-4 text-green-600" />
+                            </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-lg font-bold">
-                                {format(currentTime, "EEEE, dd MMM yyyy")}
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                                {format(currentTime, "HH:mm")}
-                            </div>
-
-                            <div className="mt-4">
-                                {todayAttendance ? (
-                                    <div className="space-y-1">
-                                        <div className="text-sm flex justify-between">
-                                            <span>{t("attendance.checkIn")}:</span>
-                                            <span className="font-medium">
+                            {todayAttendance ? (
+                                <div className="space-y-3">
+                                    <div className="text-center">
+                                        <StatusBadge status={todayAttendance.status} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="text-center p-2 bg-green-50 rounded">
+                                            <div className="font-medium text-green-700">Vào làm</div>
+                                            <div className="text-green-600">
                                                 {todayAttendance.checkIn
                                                     ? format(new Date(todayAttendance.checkIn), "HH:mm")
-                                                    : "-"}
-                                            </span>
+                                                    : "Chưa có"}
+                                            </div>
                                         </div>
-                                        <div className="text-sm flex justify-between">
-                                            <span>{t("attendance.checkOut")}:</span>
-                                            <span className="font-medium">
+                                        <div className="text-center p-2 bg-red-50 rounded">
+                                            <div className="font-medium text-red-700">Tan làm</div>
+                                            <div className="text-red-600">
                                                 {todayAttendance.checkOut
                                                     ? format(new Date(todayAttendance.checkOut), "HH:mm")
-                                                    : "-"}
-                                            </span>
-                                        </div>
-                                        <div className="text-sm flex justify-between">
-                                            <span>{t("attendance.status")}:</span>
-                                            <StatusBadge status={todayAttendance.status} />
+                                                    : "Chưa có"}
+                                            </div>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="text-sm text-muted-foreground">
-                                        {t("user.dashboard.noAttendanceRecordToday")}
+                                    <div className="text-center">
+                                        <div className="text-lg font-bold text-blue-600">
+                                            {todayAttendance.workHours || 0}h
+                                        </div>
+                                        <div className="text-xs text-gray-500">Giờ làm việc</div>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-4">
+                                    <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                                    <div className="text-sm text-gray-500">Chưa có dữ liệu hôm nay</div>
+                                </div>
+                            )}
                         </CardContent>
                         <CardFooter>
                             <Button variant="outline" className="w-full" asChild>
                                 <Link href="/face-recognition-live">
                                     <Fingerprint className="mr-2 h-4 w-4" />
-                                    {t("user.dashboard.checkInOut")}
+                                    Điểm danh
                                 </Link>
                             </Button>
                         </CardFooter>
                     </Card>
 
-                    {/* Leave Requests Card */}
-                    <Card>
+                    {/* Monthly Attendance Card */}
+                    <Card className="hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">
-                                {t("user.dashboard.leaveRequests")}
+                            <CardTitle className="text-sm font-medium text-gray-600">
+                                Chấm công tháng này
                             </CardTitle>
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <div className="p-2 bg-blue-100 rounded-full">
+                                <TrendingUp className="h-4 w-4 text-blue-600" />
+                            </div>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">
-                                {leaveRequests?.length || 0}
+                            {attendanceStats ? (
+                                <div className="space-y-3">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-bold text-blue-600">
+                                            {attendanceStats.attendanceRate}%
+                                        </div>
+                                        <div className="text-xs text-gray-500">Tỷ lệ chấm công</div>
+                                    </div>
+                                    <Progress
+                                        value={attendanceStats.attendanceRate}
+                                        className="h-2"
+                                    />
+                                    <div className="grid grid-cols-3 gap-2 text-xs">
+                                        <div className="text-center">
+                                            <div className="font-bold text-green-600">{attendanceStats.present}</div>
+                                            <div className="text-gray-500">Có mặt</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="font-bold text-orange-600">{attendanceStats.late}</div>
+                                            <div className="text-gray-500">Muộn</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="font-bold text-red-600">{attendanceStats.absent}</div>
+                                            <div className="text-gray-500">Vắng</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-4">
+                                    <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                                    <div className="text-sm text-gray-500">Chưa có dữ liệu tháng này</div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Leave Requests Card */}
+                    <Card className="hover:shadow-md transition-shadow duration-200">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-gray-600">
+                                Đơn xin nghỉ
+                            </CardTitle>
+                            <div className="p-2 bg-purple-100 rounded-full">
+                                <Calendar className="h-4 w-4 text-purple-600" />
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                {t("user.dashboard.pendingLeaveRequests")}
-                            </p>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-center space-y-2">
+                                <div className="text-2xl font-bold text-purple-600">
+                                    {leaveRequests?.length || 0}
+                                </div>
+                                <div className="text-xs text-gray-500">Đơn đang chờ duyệt</div>
+                            </div>
 
                             <div className="mt-4 space-y-2">
                                 {leaveRequests && leaveRequests.length > 0 ? (
                                     leaveRequests.slice(0, 2).map((request: any) => (
-                                        <div key={request.id} className="text-sm flex justify-between items-center">
-                                            <span>
-                                                {t(`leaveRequests.${request.type}`)}:{" "}
-                                                <span className="text-muted-foreground">
-                                                    {format(new Date(request.startDate), "dd/MM")} - {format(new Date(request.endDate), "dd/MM")}
+                                        <div key={request.id} className="p-2 bg-purple-50 rounded text-xs">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-medium text-purple-700">
+                                                    {request.type === 'annual' ? 'Nghỉ phép' :
+                                                        request.type === 'sick' ? 'Nghỉ ốm' :
+                                                            request.type === 'personal' ? 'Nghỉ cá nhân' :
+                                                                request.type === 'maternity' ? 'Nghỉ thai sản' :
+                                                                    request.type}
                                                 </span>
-                                            </span>
-                                            <Badge variant="outline">{request.days} {t("common.days")}</Badge>
+                                                <Badge variant="secondary" className="text-xs">
+                                                    {request.days} ngày
+                                                </Badge>
+                                            </div>
+                                            <div className="text-purple-600 mt-1">
+                                                {format(new Date(request.startDate), "dd/MM")} - {format(new Date(request.endDate), "dd/MM")}
+                                            </div>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="text-sm text-muted-foreground">
-                                        {t("user.dashboard.noLeaveRequests")}
+                                    <div className="text-center py-2 text-xs text-gray-500">
+                                        Không có đơn xin nghỉ
                                     </div>
                                 )}
                             </div>
@@ -304,87 +410,48 @@ export default function UserDashboard() {
                             <Button variant="outline" className="w-full" asChild>
                                 <Link href="/user/leave-requests">
                                     <FileCheck className="mr-2 h-4 w-4" />
-                                    {t("user.dashboard.viewRequests")}
+                                    Xem đơn xin nghỉ
                                 </Link>
                             </Button>
                         </CardFooter>
                     </Card>
 
-                    {/* Attendance Stats Card */}
-                    <Card>
+                    {/* Quick Actions Card */}
+                    <Card className="hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium">
-                                {t("user.dashboard.monthlyAttendance")}
+                            <CardTitle className="text-sm font-medium text-gray-600">
+                                Thao tác nhanh
                             </CardTitle>
-                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <div className="p-2 bg-orange-100 rounded-full">
+                                <Settings className="h-4 w-4 text-orange-600" />
+                            </div>
                         </CardHeader>
-                        <CardContent>
-                            {attendanceStats ? (
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="text-2xl font-bold">
-                                                {attendanceStats.present + attendanceStats.late}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">
-                                                {t("user.dashboard.daysPresent")}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-2xl font-bold">
-                                                {attendanceStats.workingDays}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">
-                                                {t("user.dashboard.workingDays")}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs">
-                                            <span className="flex items-center">
-                                                <span className="h-2 w-2 rounded-full bg-green-500 mr-1" />
-                                                {t("attendance.present")}
-                                            </span>
-                                            <span>{attendanceStats.present}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="flex items-center">
-                                                <span className="h-2 w-2 rounded-full bg-yellow-500 mr-1" />
-                                                {t("attendance.late")}
-                                            </span>
-                                            <span>{attendanceStats.late}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="flex items-center">
-                                                <span className="h-2 w-2 rounded-full bg-blue-500 mr-1" />
-                                                {t("attendance.leave")}
-                                            </span>
-                                            <span>{attendanceStats.leave}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                            <span className="flex items-center">
-                                                <span className="h-2 w-2 rounded-full bg-red-500 mr-1" />
-                                                {t("attendance.absent")}
-                                            </span>
-                                            <span>{attendanceStats.absent}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground">
-                                    {t("user.dashboard.noAttendanceStats")}
-                                </div>
-                            )}
-                        </CardContent>
-                        <CardFooter>
-                            <Button variant="outline" className="w-full" asChild>
-                                <Link href="/user/attendance-history">
-                                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                    {t("user.dashboard.viewHistory")}
+                        <CardContent className="space-y-2">
+                            <Button variant="ghost" className="w-full justify-start h-8 text-xs" asChild>
+                                <Link href="/user/profile">
+                                    <UserCog className="mr-2 h-3 w-3" />
+                                    Hồ sơ cá nhân
                                 </Link>
                             </Button>
-                        </CardFooter>
+                            <Button variant="ghost" className="w-full justify-start h-8 text-xs" asChild>
+                                <Link href="/user/attendance-history">
+                                    <FileText className="mr-2 h-3 w-3" />
+                                    Lịch sử chấm công
+                                </Link>
+                            </Button>
+                            <Button variant="ghost" className="w-full justify-start h-8 text-xs" asChild>
+                                <Link href="/reports">
+                                    <FileSpreadsheet className="mr-2 h-3 w-3" />
+                                    Báo cáo
+                                </Link>
+                            </Button>
+                            <Button variant="ghost" className="w-full justify-start h-8 text-xs" asChild>
+                                <Link href="/user/settings">
+                                    <Settings className="mr-2 h-3 w-3" />
+                                    Cài đặt
+                                </Link>
+                            </Button>
+                        </CardContent>
                     </Card>
                 </div>
 
@@ -393,44 +460,46 @@ export default function UserDashboard() {
                     {/* Announcement Section */}
                     <Card className="md:col-span-1">
                         <CardHeader>
-                            <CardTitle>{t("user.dashboard.announcements")}</CardTitle>
+                            <CardTitle className="flex items-center">
+                                <Bell className="mr-2 h-5 w-5 text-blue-600" />
+                                📢 Thông báo công ty
+                            </CardTitle>
                             <CardDescription>
-                                {t("user.dashboard.recentAnnouncements")}
+                                Các thông báo mới nhất từ công ty
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <ScrollArea className="h-[320px]">
-                                <div className="space-y-8">
+                            <ScrollArea className="h-[300px]">
+                                <div className="space-y-4">
                                     {announcements && announcements.length > 0 ? (
                                         announcements.map((announcement: any) => (
-                                            <div key={announcement.id} className="flex items-start">
-                                                <div className="mr-4 mt-0.5">
-                                                    <Avatar className="h-10 w-10">
-                                                        <AvatarImage src={announcement.avatar || ""} alt={announcement.author} />
-                                                        <AvatarFallback>
-                                                            {announcement.author?.[0] || "A"}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <h4 className="text-sm font-semibold">
-                                                        {announcement.title}
-                                                    </h4>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        {announcement.content}
-                                                    </p>
-                                                    <div className="flex items-center pt-1">
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {announcement.author} - {format(new Date(announcement.createdAt), "dd MMM yyyy")}
-                                                        </span>
+                                            <div key={announcement.id} className="p-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                                                <div className="flex items-start space-x-3">
+                                                    <div className="flex-shrink-0">
+                                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                            <Bell className="h-4 w-4 text-blue-600" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="text-sm font-medium text-gray-900 mb-1">
+                                                            {announcement.title}
+                                                        </h4>
+                                                        <p className="text-sm text-gray-600 mb-2">
+                                                            {announcement.content}
+                                                        </p>
+                                                        <div className="flex items-center text-xs text-gray-500">
+                                                            <span>{announcement.author}</span>
+                                                            <span className="mx-1">•</span>
+                                                            <span>{format(new Date(announcement.createdAt), "dd/MM/yyyy")}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="text-center py-16 text-muted-foreground">
-                                            <Bell className="h-8 w-8 mx-auto mb-4 opacity-20" />
-                                            {t("user.dashboard.noAnnouncements")}
+                                        <div className="text-center py-16 text-gray-500">
+                                            <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                                            <p className="text-sm">Chưa có thông báo mới</p>
                                         </div>
                                     )}
                                 </div>
@@ -438,54 +507,94 @@ export default function UserDashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* Quick Links Section */}
+                    {/* Quick Links Section - Updated với giao diện mới */}
                     <Card className="md:col-span-1">
                         <CardHeader>
-                            <CardTitle>{t("user.dashboard.quickLinks")}</CardTitle>
+                            <CardTitle className="flex items-center">
+                                <ChevronRight className="mr-2 h-5 w-5 text-green-600" />
+                                🔗 Liên kết nhanh
+                            </CardTitle>
                             <CardDescription>
-                                {t("user.dashboard.commonActions")}
+                                Các chức năng thường dùng
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="grid gap-2">
-                            <Button variant="outline" className="justify-between" asChild>
-                                <Link href="/user/profile">
-                                    <div className="flex items-center">
-                                        <UserCog className="mr-2 h-4 w-4" />
-                                        {t("user.dashboard.viewProfile")}
-                                    </div>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Link>
-                            </Button>
+                        <CardContent className="space-y-3">
+                            <div className="grid gap-3">
+                                <Button variant="outline" className="justify-between h-12 px-4" asChild>
+                                    <Link href="/user/profile">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-blue-100 rounded-full mr-3">
+                                                <UserCog className="h-4 w-4 text-blue-600" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">Hồ sơ cá nhân</div>
+                                                <div className="text-xs text-gray-500">Quản lý thông tin cá nhân</div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    </Link>
+                                </Button>
 
-                            <Button variant="outline" className="justify-between" asChild>
-                                <Link href="/user/attendance-history">
-                                    <div className="flex items-center">
-                                        <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                        {t("user.dashboard.attendanceHistory")}
-                                    </div>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Link>
-                            </Button>
+                                <Button variant="outline" className="justify-between h-12 px-4" asChild>
+                                    <Link href="/user/attendance-history">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-green-100 rounded-full mr-3">
+                                                <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">Lịch sử chấm công</div>
+                                                <div className="text-xs text-gray-500">Xem chi tiết chấm công</div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    </Link>
+                                </Button>
 
-                            <Button variant="outline" className="justify-between" asChild>
-                                <Link href="/user/leave-requests">
-                                    <div className="flex items-center">
-                                        <Calendar className="mr-2 h-4 w-4" />
-                                        {t("user.dashboard.applyLeave")}
-                                    </div>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Link>
-                            </Button>
+                                <Button variant="outline" className="justify-between h-12 px-4" asChild>
+                                    <Link href="/user/leave-requests">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-purple-100 rounded-full mr-3">
+                                                <Calendar className="h-4 w-4 text-purple-600" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">Đơn xin nghỉ</div>
+                                                <div className="text-xs text-gray-500">Quản lý đơn xin nghỉ</div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    </Link>
+                                </Button>
 
-                            <Button variant="outline" className="justify-between" asChild>
-                                <Link href="/user/settings">
-                                    <div className="flex items-center">
-                                        <Settings className="mr-2 h-4 w-4" />
-                                        {t("user.dashboard.settings")}
-                                    </div>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Link>
-                            </Button>
+                                <Button variant="outline" className="justify-between h-12 px-4" asChild>
+                                    <Link href="/reports">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-orange-100 rounded-full mr-3">
+                                                <FileText className="h-4 w-4 text-orange-600" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">Báo cáo</div>
+                                                <div className="text-xs text-gray-500">Xem báo cáo hiệu suất</div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    </Link>
+                                </Button>
+
+                                <Button variant="outline" className="justify-between h-12 px-4" asChild>
+                                    <Link href="/user/settings">
+                                        <div className="flex items-center">
+                                            <div className="p-2 bg-gray-100 rounded-full mr-3">
+                                                <Settings className="h-4 w-4 text-gray-600" />
+                                            </div>
+                                            <div className="text-left">
+                                                <div className="font-medium text-sm">Cài đặt</div>
+                                                <div className="text-xs text-gray-500">Tùy chỉnh hệ thống</div>
+                                            </div>
+                                        </div>
+                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                    </Link>
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTranslation } from "react-i18next";
 import { useLanguage } from "@/hooks/use-language";
+import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,13 +25,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { useI18nToast } from "@/hooks/use-i18n-toast";
-import { BellRing, Clock, Database, Globe, Key, Save, User } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import { BellRing, Clock, Database, Globe, Key, Save, User, Settings as SettingsIcon, Users, Building2, Target, Shield } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Settings() {
   const { user } = useAuth();
-  const { toast } = useI18nToast();
   const { t } = useTranslation();
   const { currentLanguage, changeLanguage } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
@@ -41,27 +41,50 @@ export default function Settings() {
     return null;
   }
 
+  // Fetch department info for manager
+  const { data: departmentInfo } = useQuery({
+    queryKey: ["/api/manager/department-info"],
+    queryFn: async () => {
+      const res = await fetch("/api/manager/department-info");
+      if (!res.ok) throw new Error("Failed to fetch department info");
+      return await res.json();
+    }
+  });
+
   const [profileSettings, setProfileSettings] = useState({
     fullName: user?.fullName || "",
-    email: "",
-    role: user?.role || "admin"
+    email: user?.username || "", // Use username as fallback for email
+    role: user?.role || "manager",
+    department: departmentInfo?.name || "",
+    position: "Department Manager"
   });
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    loginAlerts: true,
-    attendanceReports: true,
-    systemUpdates: false
-  });
-
-  const [systemSettings, setSystemSettings] = useState({
+  const [departmentSettings, setDepartmentSettings] = useState({
     workingHours: {
       start: "09:00",
       end: "18:00"
     },
-    lateThreshold: "10", // minutes
-    attendanceReminders: true,
-    exportFormat: "csv"
+    lateThreshold: "15", // minutes
+    approvalWorkflow: true,
+    attendanceTracking: true,
+    overtimePolicy: "auto-approval"
+  });
+
+  const [notificationSettings, setNotificationSettings] = useState({
+    teamAttendance: true,
+    leaveRequests: true,
+    lateArrivals: true,
+    systemUpdates: false,
+    weeklyReports: true,
+    urgentAlerts: true
+  });
+
+  const [reportSettings, setReportSettings] = useState({
+    autoGenerate: true,
+    frequency: "weekly",
+    format: "pdf",
+    includeCharts: true,
+    emailDistribution: true
   });
 
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,15 +99,17 @@ export default function Settings() {
     }));
   };
 
-  const handleSystemChange = (setting: string, value: string) => {
-    setSystemSettings(prev => ({
-      ...prev,
-      [setting]: value
-    }));
+  const handleDepartmentToggle = (setting: keyof typeof departmentSettings) => {
+    if (typeof departmentSettings[setting] === 'boolean') {
+      setDepartmentSettings(prev => ({
+        ...prev,
+        [setting]: !prev[setting]
+      }));
+    }
   };
 
   const handleWorkingHoursChange = (type: 'start' | 'end', value: string) => {
-    setSystemSettings(prev => ({
+    setDepartmentSettings(prev => ({
       ...prev,
       workingHours: {
         ...prev.workingHours,
@@ -98,76 +123,117 @@ export default function Settings() {
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
-      toast.success('common.success', 'common.changesSaved');
+      toast({
+        title: "Success",
+        description: "Settings saved successfully",
+      });
     }, 1000);
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title={t('settings.title')} />
+    <div className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-slate-50 to-purple-50">
+      <Header title="" />
 
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-          <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
+        {/* Header Section */}
+        <div className="mb-6">
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
+              <div className="mb-4 md:mb-0">
+                <h1 className="text-2xl font-bold mb-2 flex items-center">
+                  <SettingsIcon className="mr-3 h-6 w-6" />
+                  Manager Settings
+                </h1>
+                <p className="opacity-90">Configure your department and personal preferences</p>
+              </div>
+              <div className="text-right">
+                <div className="text-sm opacity-75">Department</div>
+                <div className="text-lg font-semibold">{departmentInfo?.name || 'Loading...'}</div>
+                <div className="text-xs opacity-60">
+                  {departmentInfo?.employeeCount || 0} team members
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <Tabs defaultValue="profile" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="profile">{t('settings.companyProfile')}</TabsTrigger>
-            <TabsTrigger value="notifications">{t('settings.generalSettings')}</TabsTrigger>
-            <TabsTrigger value="system">{t('settings.systemSettings')}</TabsTrigger>
-            <TabsTrigger value="language">{t('settings.language')}</TabsTrigger>
-            <TabsTrigger value="security">{t('settings.securitySettings')}</TabsTrigger>
+          <TabsList className="bg-white border border-purple-200">
+            <TabsTrigger value="profile" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </TabsTrigger>
+            <TabsTrigger value="department" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+              <Building2 className="mr-2 h-4 w-4" />
+              Department
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+              <BellRing className="mr-2 h-4 w-4" />
+              Notifications
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+              <Target className="mr-2 h-4 w-4" />
+              Reports
+            </TabsTrigger>
+            <TabsTrigger value="language" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
+              <Globe className="mr-2 h-4 w-4" />
+              Language
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
-            <Card>
+            <Card className="bg-white border-purple-200">
               <CardHeader>
-                <CardTitle>{t('settings.companyProfile')}</CardTitle>
+                <CardTitle className="text-purple-800">Manager Profile</CardTitle>
                 <CardDescription>
-                  {t('settings.companyProfile')}
+                  Manage your personal information and preferences
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="fullName">{t('employees.name')}</Label>
+                  <Label htmlFor="fullName">Full Name</Label>
                   <Input
                     id="fullName"
                     name="fullName"
                     value={profileSettings.fullName}
                     onChange={handleProfileChange}
+                    className="border-purple-200"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t('settings.email')}</Label>
+                  <Label htmlFor="email">Email Address</Label>
                   <Input
                     id="email"
                     name="email"
                     type="email"
                     value={profileSettings.email}
                     onChange={handleProfileChange}
+                    className="border-purple-200"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select
-                    value={profileSettings.role}
-                    onValueChange={(value) => setProfileSettings(prev => ({ ...prev, role: value }))}
-                  >
-                    <SelectTrigger id="role">
-                      <SelectValue placeholder={t('common.search')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="hr">HR Staff</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="department">Department</Label>
+                  <Input
+                    id="department"
+                    value={departmentInfo?.name || 'Loading...'}
+                    disabled
+                    className="border-purple-200 bg-gray-50"
+                  />
+                  <p className="text-sm text-gray-500">Department assignment is managed by administrators</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="position">Position</Label>
+                  <Input
+                    id="position"
+                    value="Department Manager"
+                    disabled
+                    className="border-purple-200 bg-gray-50"
+                  />
                 </div>
               </CardContent>
               <CardFooter>
                 <Button
-                  className="ml-auto"
+                  className="ml-auto bg-purple-600 hover:bg-purple-700"
                   onClick={() => saveSettings('profile')}
                   disabled={isLoading}
                 >
@@ -177,12 +243,12 @@ export default function Settings() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      {t('common.loading')}
+                      Saving...
                     </span>
                   ) : (
                     <span className="flex items-center">
                       <Save className="mr-2 h-4 w-4" />
-                      {t('settings.saveChanges')}
+                      Save Changes
                     </span>
                   )}
                 </Button>
@@ -190,259 +256,341 @@ export default function Settings() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="notifications">
-            <Card>
+          <TabsContent value="department">
+            <Card className="bg-white border-purple-200">
               <CardHeader>
-                <CardTitle>{t('settings.generalSettings')}</CardTitle>
+                <CardTitle className="text-purple-800">Department Settings</CardTitle>
                 <CardDescription>
-                  {t('settings.generalSettings')}
+                  Configure settings for your department team
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="emailNotifications">{t('settings.emailNotifications')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.emailNotificationsDescription')}
-                    </p>
-                  </div>
-                  <Switch
-                    id="emailNotifications"
-                    checked={notificationSettings.emailNotifications}
-                    onCheckedChange={() => handleNotificationToggle('emailNotifications')}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="loginAlerts">{t('settings.loginAlerts')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.loginAlertsDescription')}
-                    </p>
-                  </div>
-                  <Switch
-                    id="loginAlerts"
-                    checked={notificationSettings.loginAlerts}
-                    onCheckedChange={() => handleNotificationToggle('loginAlerts')}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="attendanceReports">{t('settings.attendanceReports')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.attendanceReportsDescription')}
-                    </p>
-                  </div>
-                  <Switch
-                    id="attendanceReports"
-                    checked={notificationSettings.attendanceReports}
-                    onCheckedChange={() => handleNotificationToggle('attendanceReports')}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="systemUpdates">{t('settings.systemUpdates')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.systemUpdatesDescription')}
-                    </p>
-                  </div>
-                  <Switch
-                    id="systemUpdates"
-                    checked={notificationSettings.systemUpdates}
-                    onCheckedChange={() => handleNotificationToggle('systemUpdates')}
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  className="ml-auto"
-                  onClick={() => saveSettings('notification')}
-                  disabled={isLoading}
-                >
-                  {isLoading ? t('common.loading') : t('settings.saveChanges')}
-                </Button>
-              </CardFooter>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="system">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('settings.systemSettings')}</CardTitle>
-                <CardDescription>
-                  {t('settings.systemSettings')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="workingHoursStart">{t('settings.workingHoursStart')}</Label>
+                    <Label htmlFor="startTime">Work Start Time</Label>
                     <Input
-                      id="workingHoursStart"
+                      id="startTime"
                       type="time"
-                      value={systemSettings.workingHours.start}
+                      value={departmentSettings.workingHours.start}
                       onChange={(e) => handleWorkingHoursChange('start', e.target.value)}
+                      className="border-purple-200"
                     />
                   </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="workingHoursEnd">{t('settings.workingHoursEnd')}</Label>
+                    <Label htmlFor="endTime">Work End Time</Label>
                     <Input
-                      id="workingHoursEnd"
+                      id="endTime"
                       type="time"
-                      value={systemSettings.workingHours.end}
+                      value={departmentSettings.workingHours.end}
                       onChange={(e) => handleWorkingHoursChange('end', e.target.value)}
+                      className="border-purple-200"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lateThreshold">{t('settings.lateThreshold')}</Label>
-                  <Input
-                    id="lateThreshold"
-                    type="number"
-                    min="0"
-                    max="60"
-                    value={systemSettings.lateThreshold}
-                    onChange={(e) => handleSystemChange('lateThreshold', e.target.value)}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    {t('settings.lateThresholdDescription')}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="attendanceReminders">{t('settings.attendanceReminders')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('settings.attendanceRemindersDescription')}
-                    </p>
-                  </div>
-                  <Switch
-                    id="attendanceReminders"
-                    checked={systemSettings.attendanceReminders}
-                    onCheckedChange={() => setSystemSettings(prev => ({
-                      ...prev,
-                      attendanceReminders: !prev.attendanceReminders
-                    }))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="exportFormat">{t('settings.exportFormat')}</Label>
+                  <Label htmlFor="lateThreshold">Late Arrival Threshold (minutes)</Label>
                   <Select
-                    value={systemSettings.exportFormat}
-                    onValueChange={(value) => handleSystemChange('exportFormat', value)}
+                    value={departmentSettings.lateThreshold}
+                    onValueChange={(value) => setDepartmentSettings(prev => ({ ...prev, lateThreshold: value }))}
                   >
-                    <SelectTrigger id="exportFormat">
-                      <SelectValue placeholder={t('common.search')} />
+                    <SelectTrigger className="border-purple-200">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="csv">CSV</SelectItem>
-                      <SelectItem value="xlsx">Excel (XLSX)</SelectItem>
-                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="10">10 minutes</SelectItem>
+                      <SelectItem value="15">15 minutes</SelectItem>
+                      <SelectItem value="20">20 minutes</SelectItem>
+                      <SelectItem value="30">30 minutes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Approval Workflow</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Require manager approval for leave requests
+                      </p>
+                    </div>
+                    <Switch
+                      checked={departmentSettings.approvalWorkflow}
+                      onCheckedChange={() => handleDepartmentToggle('approvalWorkflow')}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Attendance Tracking</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable detailed attendance monitoring
+                      </p>
+                    </div>
+                    <Switch
+                      checked={departmentSettings.attendanceTracking}
+                      onCheckedChange={() => handleDepartmentToggle('attendanceTracking')}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Overtime Policy</Label>
+                  <Select
+                    value={departmentSettings.overtimePolicy}
+                    onValueChange={(value) => setDepartmentSettings(prev => ({ ...prev, overtimePolicy: value }))}
+                  >
+                    <SelectTrigger className="border-purple-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto-approval">Auto Approval</SelectItem>
+                      <SelectItem value="manual-approval">Manual Approval</SelectItem>
+                      <SelectItem value="disabled">Disabled</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </CardContent>
               <CardFooter>
                 <Button
-                  className="ml-auto"
-                  onClick={() => saveSettings('system')}
+                  className="ml-auto bg-purple-600 hover:bg-purple-700"
+                  onClick={() => saveSettings('department')}
                   disabled={isLoading}
                 >
-                  {isLoading ? t('common.loading') : t('settings.saveChanges')}
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Department Settings
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <Card className="bg-white border-purple-200">
+              <CardHeader>
+                <CardTitle className="text-purple-800">Notification Preferences</CardTitle>
+                <CardDescription>
+                  Configure which notifications you want to receive
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Team Attendance Alerts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Get notified about team attendance issues
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationSettings.teamAttendance}
+                    onCheckedChange={() => handleNotificationToggle('teamAttendance')}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Leave Request Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receive notifications for new leave requests
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationSettings.leaveRequests}
+                    onCheckedChange={() => handleNotificationToggle('leaveRequests')}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Late Arrival Alerts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Get alerted when team members arrive late
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationSettings.lateArrivals}
+                    onCheckedChange={() => handleNotificationToggle('lateArrivals')}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Weekly Reports</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receive weekly department performance reports
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationSettings.weeklyReports}
+                    onCheckedChange={() => handleNotificationToggle('weeklyReports')}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Urgent Alerts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Get immediate notifications for urgent matters
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notificationSettings.urgentAlerts}
+                    onCheckedChange={() => handleNotificationToggle('urgentAlerts')}
+                  />
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  className="ml-auto bg-purple-600 hover:bg-purple-700"
+                  onClick={() => saveSettings('notifications')}
+                  disabled={isLoading}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Preferences
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <Card className="bg-white border-purple-200">
+              <CardHeader>
+                <CardTitle className="text-purple-800">Report Settings</CardTitle>
+                <CardDescription>
+                  Configure automatic report generation and distribution
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Auto-Generate Reports</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically generate department reports
+                    </p>
+                  </div>
+                  <Switch
+                    checked={reportSettings.autoGenerate}
+                    onCheckedChange={(checked) => setReportSettings(prev => ({ ...prev, autoGenerate: checked }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Report Frequency</Label>
+                  <Select
+                    value={reportSettings.frequency}
+                    onValueChange={(value) => setReportSettings(prev => ({ ...prev, frequency: value }))}
+                  >
+                    <SelectTrigger className="border-purple-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Report Format</Label>
+                  <Select
+                    value={reportSettings.format}
+                    onValueChange={(value) => setReportSettings(prev => ({ ...prev, format: value }))}
+                  >
+                    <SelectTrigger className="border-purple-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="excel">Excel</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Include Charts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Include visual charts in reports
+                    </p>
+                  </div>
+                  <Switch
+                    checked={reportSettings.includeCharts}
+                    onCheckedChange={(checked) => setReportSettings(prev => ({ ...prev, includeCharts: checked }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Email Distribution</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Email reports to stakeholders automatically
+                    </p>
+                  </div>
+                  <Switch
+                    checked={reportSettings.emailDistribution}
+                    onCheckedChange={(checked) => setReportSettings(prev => ({ ...prev, emailDistribution: checked }))}
+                  />
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  className="ml-auto bg-purple-600 hover:bg-purple-700"
+                  onClick={() => saveSettings('reports')}
+                  disabled={isLoading}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Report Settings
                 </Button>
               </CardFooter>
             </Card>
           </TabsContent>
 
           <TabsContent value="language">
-            <Card>
+            <Card className="bg-white border-purple-200">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="h-5 w-5" />
-                  {t('settings.language')}
-                </CardTitle>
+                <CardTitle className="text-purple-800">Language & Localization</CardTitle>
                 <CardDescription>
-                  {t('settings.selectLanguage')}
+                  Choose your preferred language and regional settings
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="language">{t('settings.language')}</Label>
+                  <Label>Language</Label>
                   <Select
                     value={currentLanguage}
-                    onValueChange={(value) => changeLanguage(value)}
+                    onValueChange={changeLanguage}
                   >
-                    <SelectTrigger id="language">
-                      <SelectValue placeholder={t('settings.selectLanguage')} />
+                    <SelectTrigger className="border-purple-200">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="en">{t('settings.english')}</SelectItem>
-                      <SelectItem value="vi">{t('settings.vietnamese')}</SelectItem>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="vi">Tiếng Việt</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </CardContent>
               <CardFooter>
-                <p className="text-sm text-muted-foreground">
-                  {t('settings.language')} {currentLanguage === 'en' ? t('settings.english') : t('settings.vietnamese')}
-                </p>
-              </CardFooter>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('settings.securitySettings')}</CardTitle>
-                <CardDescription>
-                  {t('settings.securitySettings')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">{t('settings.currentPassword')}</Label>
-                  <Input id="currentPassword" type="password" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">{t('settings.newPassword')}</Label>
-                  <Input id="newPassword" type="password" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">{t('settings.confirmPassword')}</Label>
-                  <Input id="confirmPassword" type="password" />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label>{t('settings.twoFactorAuthentication')}</Label>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    {t('settings.twoFactorAuthenticationDescription')}
-                  </p>
-                  <Button variant="outline" className="w-full">
-                    <Key className="mr-2 h-4 w-4" />
-                    {t('settings.enableTwoFactorAuthentication')}
-                  </Button>
-                </div>
-              </CardContent>
-              <CardFooter>
                 <Button
-                  className="ml-auto"
-                  onClick={() => saveSettings('security')}
+                  className="ml-auto bg-purple-600 hover:bg-purple-700"
+                  onClick={() => saveSettings('language')}
                   disabled={isLoading}
                 >
-                  {isLoading ? t('common.loading') : t('settings.saveChanges')}
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Language Settings
                 </Button>
               </CardFooter>
             </Card>

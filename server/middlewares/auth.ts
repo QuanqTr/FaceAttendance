@@ -35,9 +35,21 @@ export async function hashPassword(password: string) {
 }
 
 export async function comparePasswords(password: string, hash: string) {
-    const [hashedPassword, salt] = hash.split(".");
-    const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-    return timingSafeEqual(Buffer.from(hashedPassword, "hex"), buf);
+    // Check if it's a bcrypt hash (starts with $2b$, $2a$, or $2y$)
+    if (hash.startsWith('$2b$') || hash.startsWith('$2a$') || hash.startsWith('$2y$')) {
+        return await bcrypt.compare(password, hash);
+    }
+
+    // Otherwise assume it's scrypt hash (contains a dot)
+    if (hash.includes('.')) {
+        const [hashedPassword, salt] = hash.split(".");
+        const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+        return timingSafeEqual(Buffer.from(hashedPassword, "hex"), buf);
+    }
+
+    // If neither format is recognized, return false
+    console.error('Unknown password hash format:', hash.substring(0, 10) + '...');
+    return false;
 }
 
 // Authentication middleware
@@ -69,12 +81,13 @@ export function setupAuth(app: Express) {
         secret: sessionSecret,
         resave: false,
         saveUninitialized: false,
-        store: storage.sessionStore,
+        // store: storage.sessionStore, // Tạm thời comment để dùng memory store
         rolling: true,
         cookie: {
             maxAge: 15 * 60 * 1000, // 15 minutes
-            secure: process.env.NODE_ENV === 'production',
+            secure: false, // Tạm thời tắt secure để test localhost
             sameSite: 'lax',
+            httpOnly: true // Thêm httpOnly cho bảo mật
         }
     };
 
@@ -91,20 +104,36 @@ export function setupAuth(app: Express) {
             },
             async (username: string, password: string, done) => {
                 try {
+                    console.log(`🔐 Login attempt for username: ${username}`);
+
                     const user = await storage.getUserByUsername(username);
-                    
+
                     if (!user) {
+                        console.log(`❌ User not found: ${username}`);
                         return done(null, false, { message: 'Invalid username or password' });
                     }
+
+                    console.log(`✅ User found: ${user.username} (${user.role})`);
+                    console.log(`🔍 Password hash format: ${user.password.startsWith('$2b$') ? 'bcrypt' : user.password.includes('.') ? 'scrypt' : 'unknown'}`);
 
                     const isValidPassword = await comparePasswords(password, user.password);
-                    
+
                     if (!isValidPassword) {
+                        console.log(`❌ Invalid password for user: ${username}`);
                         return done(null, false, { message: 'Invalid username or password' });
                     }
 
-                    return done(null, user);
+                    console.log(`✅ Password valid for user: ${username}`);
+
+                    // Ensure fullName is not null for the User type
+                    const userWithFullName = {
+                        ...user,
+                        fullName: user.fullName || user.username // fallback to username if fullName is null
+                    };
+
+                    return done(null, userWithFullName);
                 } catch (error) {
+                    console.error(`💥 Authentication error for ${username}:`, error);
                     return done(error);
                 }
             }
@@ -118,7 +147,14 @@ export function setupAuth(app: Express) {
             if (!user) {
                 return done(null, false);
             }
-            done(null, user);
+
+            // Ensure fullName is not null for the User type
+            const userWithFullName = {
+                ...user,
+                fullName: user.fullName || user.username // fallback to username if fullName is null
+            };
+
+            done(null, userWithFullName);
         } catch (error) {
             done(error);
         }

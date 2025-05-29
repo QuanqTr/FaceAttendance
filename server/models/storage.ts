@@ -448,6 +448,7 @@ export class DatabaseStorage implements IStorage {
         const filterOptions = filters as {
             search?: string;
             departmentId?: number;
+            departmentIds?: number[]; // Support multiple departments
             status?: string;
             position?: string;
             joinDate?: Date;
@@ -507,8 +508,13 @@ export class DatabaseStorage implements IStorage {
             });
         }
 
-        // Lọc theo department
-        if (filterOptions.departmentId) {
+        // Lọc theo multiple departments (priority over single department)
+        if (filterOptions.departmentIds && filterOptions.departmentIds.length > 0) {
+            filteredEmployees = filteredEmployees.filter(emp =>
+                emp.departmentId && filterOptions.departmentIds!.includes(emp.departmentId)
+            );
+        } else if (filterOptions.departmentId) {
+            // Fallback to single department filter for backward compatibility
             filteredEmployees = filteredEmployees.filter(emp =>
                 emp.departmentId === filterOptions.departmentId
             );

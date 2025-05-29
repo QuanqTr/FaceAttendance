@@ -80,15 +80,17 @@ export default function LeaveRequestForm() {
   // Mutation to create a leave request
   const createMutation = useMutation({
     mutationFn: async (data: FormValues) => {
-      const response = await apiRequest("POST", "/api/leave-requests", data);
-      return response.json();
+      const response = await apiRequest("POST", "/api/manager/leave-requests", data);
+      return response.data;
     },
     onSuccess: () => {
-      i18nToast.success('common.success', 'leaveRequests.createSuccess');
-      // Invalidate the queries to refresh the data
-      queryClient.invalidateQueries({ queryKey: ["/api/leave-requests"] });
-      // Navigate back to the leave requests page
-      navigate("/leave-requests");
+      toast({
+        title: "Success",
+        description: "Leave request submitted successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/leave-requests"] });
+
+      navigate("/manager/leave-requests");
     },
     onError: (error: Error) => {
       i18nToast.error('common.error', 'leaveRequests.createError', { error: error.message });
@@ -324,7 +326,7 @@ export default function LeaveRequestForm() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate("/leave-requests")}
+                  onClick={() => navigate("/manager/leave-requests")}
                 >
                   {t('common.cancel')}
                 </Button>

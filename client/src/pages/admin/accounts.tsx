@@ -61,7 +61,7 @@ export default function AccountsPage() {
 
     // Estado para paginação e filtragem
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(25);
+    const [limit, setLimit] = useState(100);
     const [searchTerm, setSearchTerm] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [accountToDelete, setAccountToDelete] = useState<number | null>(null);
@@ -82,10 +82,17 @@ export default function AccountsPage() {
 
     // Simulating server-side pagination (ideally this would be handled by the API)
     const { data, isLoading, error } = useQuery<{ accounts: UserAccount[], total: number }>({
-        queryKey: ["/api/users", page, limit, debouncedSearchQuery, roleFilter],
+        queryKey: ["/api/accounts", page, limit, debouncedSearchQuery, roleFilter],
         queryFn: async () => {
             try {
-                const res = await fetch("/api/users");
+                // Build query parameters
+                const queryParams = new URLSearchParams({
+                    page: page.toString(),
+                    limit: limit.toString(),
+                });
+
+                // Call the correct API endpoint with query parameters
+                const res = await fetch(`/api/accounts?${queryParams.toString()}`);
 
                 if (!res.ok) {
                     console.error(`API Error: ${res.status} ${res.statusText}`);
@@ -100,32 +107,27 @@ export default function AccountsPage() {
                     throw new Error("Server returned non-JSON response");
                 }
 
-                // TODO: In a real implementation, the API would handle pagination and filtering
-                const allAccounts = await res.json();
+                const apiResponse = await res.json();
+                console.log("API Response:", apiResponse); // Debug log
 
-                // Handle different API response formats
+                // Handle pagination response format from storage.getAllUsers()
                 let accountsArray = [];
-                if (Array.isArray(allAccounts)) {
-                    // Direct array response
-                    accountsArray = allAccounts;
-                } else if (allAccounts && typeof allAccounts === 'object') {
-                    // Object response with users property
-                    if (Array.isArray(allAccounts.users)) {
-                        accountsArray = allAccounts.users;
-                    } else if (Array.isArray(allAccounts.accounts)) {
-                        accountsArray = allAccounts.accounts;
-                    } else if (Array.isArray(allAccounts.data)) {
-                        accountsArray = allAccounts.data;
-                    } else {
-                        console.error("API response object doesn't contain expected arrays:", allAccounts);
-                        throw new Error("Invalid API response format");
-                    }
+                let totalCount = 0;
+
+                if (apiResponse && typeof apiResponse === 'object' && 'users' in apiResponse) {
+                    // Correct format: { users: User[], total: number }
+                    accountsArray = apiResponse.users || [];
+                    totalCount = apiResponse.total || 0;
+                } else if (Array.isArray(apiResponse)) {
+                    // Fallback: Direct array response (from old API)
+                    accountsArray = apiResponse;
+                    totalCount = apiResponse.length;
                 } else {
-                    console.error("API response is not an array or object:", allAccounts);
+                    console.error("Unexpected API response format:", apiResponse);
                     throw new Error("Invalid API response format");
                 }
 
-                // Filter accounts based on search term and role
+                // Apply client-side filtering for search and role (since API doesn't handle this yet)
                 const filteredAccounts = accountsArray.filter((account: UserAccount) => {
                     const matchesSearch =
                         !debouncedSearchQuery ||
@@ -138,14 +140,10 @@ export default function AccountsPage() {
                     return matchesSearch && matchesRole;
                 });
 
-                // Apply pagination
-                const paginatedAccounts = filteredAccounts.slice(
-                    (page - 1) * limit,
-                    page * limit
-                );
+                console.log(`Total accounts from API: ${accountsArray.length}, After filtering: ${filteredAccounts.length}`); // Debug log
 
                 return {
-                    accounts: paginatedAccounts,
+                    accounts: filteredAccounts,
                     total: filteredAccounts.length
                 };
             } catch (err) {
@@ -168,7 +166,7 @@ export default function AccountsPage() {
                 title: t("common.success"),
                 description: t("Account deleted successfully"),
             });
-            queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
             setAccountToDelete(null);
         },
         onError: (err) => {
@@ -411,18 +409,18 @@ export default function AccountsPage() {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm text-muted-foreground">{t('common.rowsPerPage')}:</span>
                                         <Select
-                                            value={limit ? limit.toString() : "10"}
-                                            onValueChange={(value) => setLimit(Number(value) || 10)}
+                                            value={limit ? limit.toString() : "100"}
+                                            onValueChange={(value) => setLimit(Number(value) || 100)}
                                         >
                                             <SelectTrigger className="w-[80px]">
-                                                <SelectValue placeholder="10" />
+                                                <SelectValue placeholder="100" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="5">5</SelectItem>
                                                 <SelectItem value="10">10</SelectItem>
-                                                <SelectItem value="15">15</SelectItem>
-                                                <SelectItem value="20">20</SelectItem>
                                                 <SelectItem value="25">25</SelectItem>
+                                                <SelectItem value="50">50</SelectItem>
+                                                <SelectItem value="100">100</SelectItem>
+                                                <SelectItem value="200">200</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <span className="text-sm text-muted-foreground">
