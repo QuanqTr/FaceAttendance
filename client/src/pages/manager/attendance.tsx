@@ -5,7 +5,7 @@ import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, Users, TrendingUp, Download, Calendar as CalendarIcon, RefreshCw } from "lucide-react";
+import { CalendarDays, Users, TrendingUp, Download, Calendar as CalendarIcon, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,6 +25,23 @@ export default function ManagerAttendance() {
     navigate("/");
     return null;
   }
+
+  // Helper functions for date navigation
+  const goToPreviousDay = () => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() - 1);
+    setSelectedDate(newDate);
+  };
+
+  const goToNextDay = () => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + 1);
+    setSelectedDate(newDate);
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
 
   // Fetch attendance data
   const { data: attendanceData, isLoading: isAttendanceLoading, refetch } = useQuery({
@@ -59,7 +76,7 @@ export default function ManagerAttendance() {
         record.checkInTime ? new Date(record.checkInTime).toLocaleTimeString() : 'N/A',
         record.checkOutTime ? new Date(record.checkOutTime).toLocaleTimeString() : 'N/A',
         record.status,
-        record.workHours?.toFixed(1) || '0'
+        record.workHours || '0.0'
       ].join(','))
     ].join('\n');
 
@@ -122,7 +139,7 @@ export default function ManagerAttendance() {
                   <span className="text-sm font-medium">Total</span>
                 </div>
                 <div className="text-2xl font-bold text-blue-600">{attendanceStats.total}</div>
-                {attendanceData?.debug?.timeLogsCount === '0' || attendanceData?.debug?.timeLogsCount === 0 ? (
+                {attendanceData?.debug?.workHoursCount === '0' || attendanceData?.debug?.workHoursCount === 0 ? (
                   <p className="text-xs text-muted-foreground mt-1">Chưa có dữ liệu chấm công</p>
                 ) : null}
               </CardContent>
@@ -185,22 +202,54 @@ export default function ManagerAttendance() {
                 <TabsContent value="table" className="space-y-4">
                   {/* Filters */}
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="gap-2">
-                          <CalendarIcon className="h-4 w-4" />
-                          {format(selectedDate, "PPP")}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={selectedDate}
-                          onSelect={(date) => date && setSelectedDate(date)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    {/* Date Picker with Navigation */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={goToPreviousDay}
+                        className="h-8 w-8"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="min-w-[180px] justify-start text-left font-normal"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(selectedDate, "PPP")}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={(date) => date && setSelectedDate(date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={goToNextDay}
+                        className="h-8 w-8"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={goToToday}
+                      >
+                        Today
+                      </Button>
+                    </div>
 
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                       <SelectTrigger className="w-40">
@@ -241,7 +290,7 @@ export default function ManagerAttendance() {
                                 Loading attendance data...
                               </td>
                             </tr>
-                          ) : attendanceData?.debug?.timeLogsCount === '0' || attendanceData?.debug?.timeLogsCount === 0 ? (
+                          ) : attendanceData?.debug?.workHoursCount === '0' || attendanceData?.debug?.workHoursCount === 0 ? (
                             <tr>
                               <td colSpan={7} className="text-center p-8">
                                 <div className="flex flex-col items-center gap-4">
@@ -281,7 +330,7 @@ export default function ManagerAttendance() {
                                     : 'N/A'
                                   }
                                 </td>
-                                <td className="p-4">{record.workHours?.toFixed(1) || '0'} hrs</td>
+                                <td className="p-4">{Number(record.workHours || 0).toFixed(1)} hrs</td>
                                 <td className="p-4">{getStatusBadge(record.status)}</td>
                               </tr>
                             ))
@@ -299,7 +348,7 @@ export default function ManagerAttendance() {
                 </TabsContent>
 
                 <TabsContent value="summary" className="space-y-4">
-                  {attendanceData?.debug?.timeLogsCount === '0' || attendanceData?.debug?.timeLogsCount === 0 ? (
+                  {attendanceData?.debug?.workHoursCount === '0' || attendanceData?.debug?.workHoursCount === 0 ? (
                     <div className="flex flex-col items-center justify-center p-12 text-center">
                       <div className="text-8xl mb-4">📅</div>
                       <h3 className="text-xl font-medium text-muted-foreground mb-2">

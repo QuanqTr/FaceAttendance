@@ -133,6 +133,17 @@ export const workHours = pgTable("work_hours", {
   status: text("status").default("normal"), // 'normal', 'late', 'early_leave', 'absent', 'leave'
 });
 
+// Face recognition logs table for tracking checkin/checkout attempts
+export const faceRecognitionLogs = pgTable("face_recognition_logs", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  success: boolean("success").notNull(),
+  confidenceScore: decimal("confidence_score", { precision: 5, scale: 2 }),
+  imagePath: text("image_path"), // Will store base64 image data
+  errorMessage: text("error_message"),
+});
+
 // Attendance summary table for monthly/yearly aggregations
 export const attendanceSummary = pgTable("attendance_summary", {
   id: serial("id").primaryKey(),
@@ -204,6 +215,13 @@ export const attendanceRecordsRelations = relations(attendanceRecords, ({ one })
 export const timeLogsRelations = relations(timeLogs, ({ one }) => ({
   employee: one(employees, {
     fields: [timeLogs.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const faceRecognitionLogsRelations = relations(faceRecognitionLogs, ({ one }) => ({
+  employee: one(employees, {
+    fields: [faceRecognitionLogs.employeeId],
     references: [employees.id],
   }),
 }));
@@ -294,6 +312,10 @@ export const insertNotificationsSchema = createInsertSchema(notifications).omit(
   createdAt: true,
   updatedAt: true
 });
+export const insertFaceRecognitionLogSchema = createInsertSchema(faceRecognitionLogs).omit({
+  id: true,
+  timestamp: true
+});
 
 // Export types
 export type User = typeof users.$inferSelect;
@@ -325,6 +347,9 @@ export type InsertAttendanceSummary = z.infer<typeof insertAttendanceSummarySche
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationsSchema>;
+
+export type FaceRecognitionLog = typeof faceRecognitionLogs.$inferSelect;
+export type InsertFaceRecognitionLog = z.infer<typeof insertFaceRecognitionLogSchema>;
 
 // Login schema (subset of InsertUser)
 export const loginSchema = insertUserSchema.pick({ username: true, password: true });

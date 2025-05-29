@@ -120,10 +120,10 @@ export default function ManagerWorkHours() {
                                                         }
                                                     </TableCell>
                                                     <TableCell>
-                                                        {employee.regularHours.toFixed(2)}h
+                                                        {Number(employee.regularHours || 0).toFixed(2)}h
                                                     </TableCell>
                                                     <TableCell>
-                                                        {employee.overtimeHours.toFixed(2)}h
+                                                        {Number(employee.overtimeHours || 0).toFixed(2)}h
                                                     </TableCell>
                                                     <TableCell>
                                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${employee.status === 'present' ? 'bg-green-100 text-green-800' :
@@ -185,7 +185,7 @@ export default function ManagerWorkHours() {
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">
-                                    {workHoursData?.reduce((sum: number, emp: any) => sum + emp.regularHours + emp.overtimeHours, 0).toFixed(1) || 0}h
+                                    {workHoursData?.reduce((sum: number, emp: any) => sum + Number(emp.regularHours || 0) + Number(emp.overtimeHours || 0), 0).toFixed(1) || 0}h
                                 </div>
                             </CardContent>
                         </Card>

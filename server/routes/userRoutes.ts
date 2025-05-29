@@ -16,6 +16,7 @@ import { db } from "../db";
 import { employees, attendanceSummary, leaveRequests, departments, workHours } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { storage } from "../models/storage";
+import nodemailer from 'nodemailer';
 
 // User Face OTP Store - tạm thời dùng memory, nên chuyển sang Redis
 const userFaceOtpStore = new Map<string, {
@@ -26,6 +27,122 @@ const userFaceOtpStore = new Map<string, {
     expiresAt: Date;
     attempts: number;
 }>();
+
+// Hàm gửi email xác thực cho User Face Profile
+async function sendUserFaceAuthEmail(email: string, otpCode: string, fullName: string): Promise<void> {
+    try {
+        console.log("Setting up user face auth email transporter...");
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.GMAIL_USER || 'mynameisquanq@gmail.com',
+                pass: process.env.GMAIL_APP_PASSWORD || 'aixk pfwa xfin uswp'
+            }
+        });
+
+        console.log("User face auth email transporter created successfully");
+
+        const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body { font-family: Arial, sans-serif; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #059669; color: white; padding: 20px; text-align: center; }
+                .content { padding: 20px; background-color: #f8fafc; }
+                .code-box { background-color: #ffffff; border: 2px solid #059669; padding: 20px; margin: 20px 0; text-align: center; border-radius: 8px; }
+                .code { font-size: 32px; font-weight: bold; color: #059669; letter-spacing: 4px; font-family: monospace; }
+                .warning { background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 10px; margin: 15px 0; }
+                .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
+                .user-badge { background-color: #10b981; color: white; padding: 4px 12px; border-radius: 16px; font-size: 12px; display: inline-block; margin: 5px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>👤 FaceAttend - Mã xác thực User</h1>
+                    <div class="user-badge">USER PROFILE ACCESS</div>
+                </div>
+                <div class="content">
+                    <h2>Xin chào ${fullName},</h2>
+                    
+                    <p>Bạn đã yêu cầu truy cập vào tính năng cập nhật dữ liệu khuôn mặt cá nhân.</p>
+                    
+                    <div class="code-box">
+                        <p><strong>Mã xác thực của bạn là:</strong></p>
+                        <div class="code">${otpCode}</div>
+                    </div>
+                    
+                    <div class="warning">
+                        <h3>⚠️ Lưu ý quan trọng:</h3>
+                        <ul>
+                            <li>Mã này có hiệu lực trong <strong>10 phút</strong></li>
+                            <li>Chỉ sử dụng một lần</li>
+                            <li>Chỉ dành cho việc cập nhật dữ liệu khuôn mặt cá nhân</li>
+                            <li>Không chia sẻ mã này với bất kỳ ai</li>
+                            <li>Sau khi xác thực, bạn có quyền cập nhật trong 15 phút</li>
+                        </ul>
+                    </div>
+                    
+                    <p>Với xác thực này, bạn có thể:</p>
+                    <ul>
+                        <li>✅ Cập nhật dữ liệu khuôn mặt cho chấm công</li>
+                        <li>✅ Quản lý thông tin nhận diện cá nhân</li>
+                        <li>✅ Đảm bảo tính bảo mật của dữ liệu sinh trắc học</li>
+                    </ul>
+                    
+                    <p>Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này và liên hệ IT Department.</p>
+                    
+                    <div class="footer">
+                        <p>Email này được gửi tự động từ hệ thống FaceAttend.<br>
+                        Vui lòng không trả lời email này.</p>
+                        <p>© 2024 FaceAttend - Hệ thống chấm công nhận diện khuôn mặt</p>
+                        <p><strong>User Portal</strong> | Personal Profile Management</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+
+        const mailOptions = {
+            from: {
+                name: 'FaceAttend User System',
+                address: process.env.GMAIL_USER || 'mynameisquanq@gmail.com'
+            },
+            to: email,
+            subject: `👤 [FaceAttend] Mã xác thực User Profile - ${otpCode}`,
+            html: htmlContent,
+            text: `
+Xin chào ${fullName},
+
+Mã xác thực User Profile của bạn là: ${otpCode}
+
+Mã này có hiệu lực trong 10 phút và chỉ sử dụng một lần.
+Dành cho việc cập nhật dữ liệu khuôn mặt cá nhân.
+
+Sau khi xác thực, bạn có quyền cập nhật trong 15 phút.
+
+Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email này.
+
+Trân trọng,
+FaceAttend User System
+            `
+        };
+
+        console.log("Sending user face auth email to:", email);
+        const info = await transporter.sendMail(mailOptions);
+        console.log("User face auth email sent successfully!");
+        console.log("Message ID:", info.messageId);
+
+    } catch (error) {
+        console.error("Error sending user face auth email:", error);
+        throw new Error(`Không thể gửi email xác thực User: ${(error as Error).message}`);
+    }
+}
 
 export function userRoutes(app: Express) {
     // User endpoints
@@ -648,18 +765,10 @@ export function userRoutes(app: Express) {
                 attempts: 0
             });
 
-            // TODO: Gửi email thực tế
-            // Tạm thời log ra console để test
-            console.log(`[UserFaceOTP] OTP Code for ${employee.email}: ${otpCode}`);
-            console.log(`[UserFaceOTP] OTP expires at: ${expiresAt}`);
-
-            // Giả lập gửi email
-            setTimeout(() => {
-                console.log(`📧 [EMAIL SENT] To: ${employee.email}`);
-                console.log(`📧 Subject: Xác thực cập nhật khuôn mặt - FaceAttend`);
-                console.log(`📧 Body: Mã xác thực của bạn là: ${otpCode}`);
-                console.log(`📧 Mã sẽ hết hạn sau 10 phút.`);
-            }, 100);
+            // Gửi email thực sự thay vì chỉ log
+            console.log("Sending user face OTP email to:", employee.email);
+            await sendUserFaceAuthEmail(employee.email, otpCode, `${employee.firstName} ${employee.lastName}`);
+            console.log("User face OTP email sent successfully");
 
             res.json({
                 success: true,

@@ -222,6 +222,7 @@ export default function EmployeeDetail() {
       // Kiểm tra face-api models đã tải chưa
       if (!isModelsLoaded) {
         i18nToast.error('common.error', 'employees.modelsNotLoaded');
+        setIsLoading(false);
         return;
       }
 
@@ -233,11 +234,13 @@ export default function EmployeeDetail() {
 
           if (detections.length === 0) {
             i18nToast.error('common.error', 'employees.noFaceDetected');
+            setIsLoading(false);
             return;
           }
 
           if (detections.length > 1) {
             i18nToast.error('common.error', 'employees.multipleFacesDetected');
+            setIsLoading(false);
             return;
           }
 
@@ -311,7 +314,7 @@ export default function EmployeeDetail() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title={`${employee.fullName || `${employee.firstName} ${employee.lastName}`}`} />
+      <Header title={`${employee.firstName} ${employee.lastName}`} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Header Actions */}
@@ -340,7 +343,7 @@ export default function EmployeeDetail() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>{t('employees.deleteEmployee')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      {t('employees.deleteEmployeeConfirm', { name: employee.fullName || `${employee.firstName} ${employee.lastName}` })}
+                      {t('employees.deleteEmployeeConfirm', { name: `${employee.firstName} ${employee.lastName}` })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -384,7 +387,7 @@ export default function EmployeeDetail() {
                     </Avatar>
                     <div className="space-y-1">
                       <CardTitle className="text-2xl">
-                        {employee.fullName || `${employee.firstName} ${employee.lastName}`}
+                        {`${employee.firstName} ${employee.lastName}`}
                       </CardTitle>
                       <CardDescription>
                         {employee.position} • {department?.name || t('employees.noDepartment')}
@@ -404,7 +407,7 @@ export default function EmployeeDetail() {
                         {t('employees.fullName')}
                       </Label>
                       <p className="text-sm text-muted-foreground">
-                        {employee.fullName || `${employee.firstName} ${employee.lastName}`}
+                        {`${employee.firstName} ${employee.lastName}`}
                       </p>
                     </div>
                     <div className="space-y-2">

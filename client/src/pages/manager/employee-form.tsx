@@ -166,9 +166,9 @@ export default function EmployeeForm() {
     queryKey: [`/api/manager/employees/${employeeId}`],
     queryFn: async () => {
       if (!employeeId) return null;
-      const res = await fetch(`/api/manager/employees/${employeeId}`);
+      const res = await apiRequest("GET", `/api/manager/employees/${employeeId}`);
       if (!res.ok) throw new Error("Failed to fetch employee details");
-      return await res.json();
+      return res.data;
     },
     enabled: !!employeeId,
   });
@@ -276,7 +276,7 @@ export default function EmployeeForm() {
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
       const res = await apiRequest("POST", "/api/manager/employees", data);
-      return await res.json();
+      return res.data;
     },
     onSuccess: () => {
       i18nToast.success('employees.createSuccess', 'employees.createSuccessMessage');
@@ -292,7 +292,7 @@ export default function EmployeeForm() {
   const updateMutation = useMutation({
     mutationFn: async (data: EmployeeFormValues) => {
       const res = await apiRequest("PUT", `/api/manager/employees/${employeeId}`, data);
-      return await res.json();
+      return res.data;
     },
     onSuccess: () => {
       i18nToast.success('employees.updateSuccess', 'employees.updateSuccessMessage');

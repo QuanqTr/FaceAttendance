@@ -441,9 +441,11 @@ export const createManagerLeaveRequest = async (req: Request, res: Response) => 
     try {
         const { employeeId, type, startDate, endDate, reason, status } = req.body;
 
-        if (!employeeId || !type || !startDate || !endDate || !reason) {
+        console.log('📝 Creating leave request with data:', { employeeId, type, startDate, endDate, reason, status });
+
+        if (!employeeId || !type || !startDate || !endDate) {
             return res.status(400).json({
-                error: 'Employee ID, type, start date, end date, and reason are required'
+                error: 'Employee ID, type, start date, and end date are required'
             });
         }
 
@@ -452,9 +454,11 @@ export const createManagerLeaveRequest = async (req: Request, res: Response) => 
             type,
             startDate,
             endDate,
-            reason,
+            reason: reason || null, // Allow null/empty reason
             status: status || 'pending'
         };
+
+        console.log('✅ Formatted leave request data:', leaveRequestData);
 
         const newLeaveRequest = await storage.createLeaveRequest(leaveRequestData);
         res.status(201).json(newLeaveRequest);
@@ -979,89 +983,58 @@ export const getManagerAttendance = async (req: Request, res: Response) => {
 
         console.log(`🏢 Manager manages department IDs: ${managerDepartmentIds.join(', ')}`);
 
-        // First, let's check if there are any time_logs for today
-        const timeLogsCheck = await pool.query(`
-            SELECT COUNT(*) as count, MIN(log_time) as min_time, MAX(log_time) as max_time 
-            FROM time_logs 
-            WHERE DATE(log_time) = $1
-        `, [dateStr]);
-
-        console.log(`📊 Time logs for ${dateStr}:`, timeLogsCheck.rows[0]);
-
-        // Also check if time_logs table exists and its structure
-        const tableCheck = await pool.query(`
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'time_logs'
-            ORDER BY ordinal_position
-        `);
-
-        console.log(`🗃️ Time logs table structure:`, tableCheck.rows);
-
-        // Get attendance records for all employees in managed departments
+        // Get attendance records using work_hours table with employee info
         let statusCondition = '';
         let params: any[] = [managerDepartmentIds, dateStr];
 
         if (status && status !== 'all') {
-            statusCondition = ' AND final_status = $3';
+            statusCondition = ' AND wh.status = $3';
             params.push(status);
         }
 
-        // Updated query with more detailed logging
+        // Fixed Query: JOIN from work_hours to employees (not LEFT JOIN from employees)
         const query = `
-            WITH daily_attendance AS (
-                SELECT 
-                    e.id as employee_id,
-                    e.first_name,
-                    e.last_name,
-                    e.position,
-                    e.department_id,
-                    d.name as department_name,
-                    MIN(tl.log_time) as check_in_time,
-                    MAX(tl.log_time) as check_out_time,
-                    COUNT(tl.id) as log_count,
-                    CASE 
-                        WHEN COUNT(tl.id) = 0 THEN 'absent'
-                        WHEN MIN(tl.log_time) IS NULL THEN 'absent'
-                        WHEN MIN(tl.log_time)::time > '09:00:00' THEN 'late'
-                        ELSE 'present'
-                    END as final_status
-                FROM employees e
-                LEFT JOIN departments d ON e.department_id = d.id
-                LEFT JOIN time_logs tl ON e.id = tl.employee_id 
-                    AND DATE(tl.log_time) = $2
-                WHERE e.department_id = ANY($1)
-                    AND e.status = 'active'
-                GROUP BY e.id, e.first_name, e.last_name, e.position, e.department_id, d.name
-            )
-            SELECT *, 
-                   CASE 
-                       WHEN check_in_time IS NOT NULL AND check_out_time IS NOT NULL 
-                       THEN EXTRACT(EPOCH FROM (check_out_time - check_in_time)) / 3600.0
-                       ELSE 0 
-                   END as calculated_hours
-            FROM daily_attendance
-            WHERE 1=1 ${statusCondition}
-            ORDER BY check_in_time ASC NULLS LAST, first_name, last_name
+            SELECT 
+                e.id as employee_id,
+                e.first_name,
+                e.last_name,
+                e.position,
+                e.department_id,
+                d.name as department_name,
+                wh.first_checkin,
+                wh.last_checkout,
+                wh.status,
+                wh.regular_hours,
+                wh.ot_hours,
+                wh.work_date
+            FROM work_hours wh
+            JOIN employees e ON wh.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE e.department_id = ANY($1)
+                AND e.status = 'active'
+                AND wh.work_date = $2
+                ${statusCondition}
+            ORDER BY wh.first_checkin ASC NULLS LAST, e.first_name, e.last_name
         `;
 
-        console.log(`🔍 Executing query with params:`, params);
+        console.log(`🔍 Executing work_hours query for date: ${dateStr}`);
         const result = await pool.query(query, params);
 
-        console.log(`📋 Raw query results (first 3):`, result.rows.slice(0, 3));
+        console.log(`📋 Found ${result.rows.length} attendance records with work_hours data`);
 
-        // Transform data for frontend
+        // Transform data for frontend  
         const attendanceRecords = result.rows.map((row: any) => ({
             employeeId: row.employee_id,
             employeeName: `${row.first_name} ${row.last_name}`,
             position: row.position || 'Unknown',
             departmentId: row.department_id,
             departmentName: row.department_name || 'Unknown Department',
-            checkInTime: row.check_in_time,
-            checkOutTime: row.check_out_time,
-            status: row.final_status,
-            workHours: row.calculated_hours || 0,
-            logCount: row.log_count || 0, // Debug field
+            checkInTime: row.first_checkin,
+            checkOutTime: row.last_checkout,
+            status: row.status || 'absent',
+            workHours: row.regular_hours ? parseFloat(row.regular_hours).toFixed(1) : '0.0',
+            overtimeHours: row.ot_hours ? parseFloat(row.ot_hours).toFixed(1) : '0.0',
+            regularHours: row.regular_hours ? parseFloat(row.regular_hours).toFixed(1) : '0.0',
             employee: {
                 id: row.employee_id,
                 firstName: row.first_name,
@@ -1077,7 +1050,6 @@ export const getManagerAttendance = async (req: Request, res: Response) => {
         const paginatedRecords = attendanceRecords.slice(offset, offset + parseInt(limit as string));
 
         console.log(`✅ Returning ${paginatedRecords.length} attendance records out of ${attendanceRecords.length} total for date ${dateStr}`);
-        console.log(`📊 Sample record with work hours:`, paginatedRecords[0]);
 
         res.json({
             attendance: paginatedRecords,
@@ -1087,8 +1059,8 @@ export const getManagerAttendance = async (req: Request, res: Response) => {
             limit: parseInt(limit as string),
             departmentIds: managerDepartmentIds,
             debug: {
-                timeLogsCount: timeLogsCheck.rows[0]?.count,
-                tableExists: tableCheck.rows.length > 0
+                workHoursCount: result.rows.length,
+                dataSource: 'work_hours_table'
             }
         });
     } catch (error) {
@@ -1179,4 +1151,269 @@ export const createSampleTimeLogs = async (req: Request, res: Response) => {
         console.error('❌ Error creating sample time logs:', error);
         res.status(500).json({ error: 'Failed to create sample time logs' });
     }
-}; 
+};
+
+// Debug endpoint to check time logs
+export const debugTimeLogs = async (req: Request, res: Response) => {
+    try {
+        const { date } = req.query;
+        const targetDate = date ? new Date(date as string) : new Date();
+        const dateStr = targetDate.toISOString().split('T')[0];
+
+        console.log(`🔍 Debug: Checking time logs for ${dateStr}`);
+
+        const timeLogsQuery = await pool.query(`
+            SELECT 
+                tl.id,
+                tl.employee_id,
+                e.first_name,
+                e.last_name,
+                tl.log_time,
+                tl.type,
+                tl.source
+            FROM time_logs tl
+            JOIN employees e ON tl.employee_id = e.id
+            WHERE DATE(tl.log_time) = $1
+            ORDER BY tl.employee_id, tl.log_time
+        `, [dateStr]);
+
+        res.json({
+            date: dateStr,
+            timeLogs: timeLogsQuery.rows,
+            count: timeLogsQuery.rows.length
+        });
+    } catch (error) {
+        console.error('❌ Error checking time logs:', error);
+        res.status(500).json({ error: 'Failed to check time logs' });
+    }
+};
+
+// Debug endpoint to check work_hours data
+export const debugWorkHours = async (req: Request, res: Response) => {
+    try {
+        const { date } = req.query;
+        const targetDate = date ? new Date(date as string) : new Date();
+        const dateStr = targetDate.toISOString().split('T')[0];
+
+        console.log(`🔍 Debug: Checking work_hours for ${dateStr}`);
+
+        // First check what's in work_hours table for this date
+        const workHoursQuery = await pool.query(`
+            SELECT 
+                wh.id,
+                wh.employee_id,
+                e.first_name,
+                e.last_name,
+                e.department_id,
+                wh.work_date,
+                wh.first_checkin,
+                wh.last_checkout,
+                wh.regular_hours,
+                wh.ot_hours,
+                wh.status
+            FROM work_hours wh
+            JOIN employees e ON wh.employee_id = e.id
+            WHERE wh.work_date = $1
+            ORDER BY wh.employee_id
+        `, [dateStr]);
+
+        // Also check what employees are in managed departments
+        const employeesQuery = await pool.query(`
+            SELECT 
+                e.id,
+                e.first_name,
+                e.last_name,
+                e.department_id,
+                d.name as department_name
+            FROM employees e
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE e.department_id = ANY($1)
+                AND e.status = 'active'
+            ORDER BY e.id
+        `, [[10, 12, 8]]);
+
+        // Check if there's any work_hours data at all
+        const allWorkHoursQuery = await pool.query(`
+            SELECT work_date, COUNT(*) as count
+            FROM work_hours 
+            GROUP BY work_date
+            ORDER BY work_date DESC
+            LIMIT 10
+        `);
+
+        res.json({
+            date: dateStr,
+            workHoursForDate: workHoursQuery.rows,
+            workHoursCount: workHoursQuery.rows.length,
+            employeesInDepartments: employeesQuery.rows,
+            employeesCount: employeesQuery.rows.length,
+            allWorkHoursDates: allWorkHoursQuery.rows,
+            debug: {
+                query: `work_date = '${dateStr}'`,
+                departments: [10, 12, 8]
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error checking work hours:', error);
+        res.status(500).json({ error: 'Failed to check work hours' });
+    }
+};
+
+// Manager Profile Management Functions
+
+// Get manager profile
+export const getManagerProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = (req.user as any)?.id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'User ID not found' });
+        }
+
+        console.log(`🔍 Getting manager profile for user ID: ${userId}`);
+
+        // Get manager's employee record
+        const employee = await storage.getEmployeeByUserId(userId);
+
+        if (!employee) {
+            return res.status(404).json({ error: 'Manager employee record not found' });
+        }
+
+        // Get department info
+        let departmentName = 'N/A';
+        if (employee.departmentId) {
+            try {
+                const department = await storage.getDepartment(employee.departmentId);
+                departmentName = department?.name || 'N/A';
+            } catch (error) {
+                console.log('Could not fetch department info:', error);
+            }
+        }
+
+        const profile = {
+            id: employee.id,
+            employeeId: employee.employeeId,
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            email: employee.email,
+            phone: employee.phone,
+            position: employee.position,
+            departmentId: employee.departmentId,
+            departmentName: departmentName,
+            status: employee.status,
+            joinDate: employee.joinDate,
+            hasFaceData: !!employee.faceDescriptor
+        };
+
+        console.log(`✅ Manager profile retrieved for ${employee.firstName} ${employee.lastName}`);
+        res.json(profile);
+
+    } catch (error) {
+        console.error('Error getting manager profile:', error);
+        res.status(500).json({ error: 'Failed to get manager profile' });
+    }
+};
+
+// Update manager profile
+export const updateManagerProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = (req.user as any)?.id;
+        const { email, phone, position, departmentId } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'User ID not found' });
+        }
+
+        console.log(`🔄 Updating manager profile for user ID: ${userId}`);
+
+        // Get manager's employee record
+        const employee = await storage.getEmployeeByUserId(userId);
+
+        if (!employee) {
+            return res.status(404).json({ error: 'Manager employee record not found' });
+        }
+
+        // Update employee record
+        const updateData: any = {};
+        if (email) updateData.email = email;
+        if (phone) updateData.phone = phone;
+        if (position) updateData.position = position;
+        if (departmentId !== undefined) updateData.departmentId = departmentId;
+
+        const updatedEmployee = await storage.updateEmployee(employee.id, updateData);
+
+        console.log(`✅ Manager profile updated for ${employee.firstName} ${employee.lastName}`);
+        res.json({
+            success: true,
+            message: 'Manager profile updated successfully',
+            employee: updatedEmployee
+        });
+
+    } catch (error) {
+        console.error('Error updating manager profile:', error);
+        res.status(500).json({ error: 'Failed to update manager profile' });
+    }
+};
+
+// Change manager password
+export const changeManagerPassword = async (req: Request, res: Response) => {
+    try {
+        const userId = (req.user as any)?.id;
+        const { currentPassword, newPassword } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'User ID not found' });
+        }
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+        }
+
+        console.log(`🔐 Changing password for manager user ID: ${userId}`);
+
+        // Get user record to verify current password
+        const user = await storage.getUser(userId);
+
+        if (!user) {
+            return res.status(404).json({ error: 'Manager user not found' });
+        }
+
+        console.log(`🔍 Debug info:`);
+        console.log(`  - Input password: "${currentPassword}"`);
+        console.log(`  - Stored hash: "${user.password}"`);
+        console.log(`  - Hash format: ${user.password.startsWith('$2b$') ? 'bcrypt' : user.password.includes('.') ? 'scrypt' : 'unknown'}`);
+
+        // Verify current password using the same method as login
+        const { comparePasswords, hashPassword } = await import('../middlewares/auth');
+        const isCurrentPasswordValid = await comparePasswords(currentPassword, user.password);
+
+        console.log(`🔍 Password comparison result: ${isCurrentPasswordValid}`);
+
+        if (!isCurrentPasswordValid) {
+            console.log(`❌ Current password validation failed for user ${userId}`);
+            return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+
+        console.log(`✅ Current password validated successfully for user ${userId}`);
+
+        // Hash new password using the same method as registration
+        const hashedNewPassword = await hashPassword(newPassword);
+
+        // Update password
+        await storage.updateUserPassword(userId, hashedNewPassword);
+
+        console.log(`✅ Password changed successfully for manager user ID: ${userId}`);
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+
+    } catch (error) {
+        console.error('Error changing manager password:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+};

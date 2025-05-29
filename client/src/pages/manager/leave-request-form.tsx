@@ -56,15 +56,20 @@ export default function LeaveRequestForm() {
   const i18nToast = useI18nToast();
   const [selectedEmployee, setSelectedEmployee] = useState<{ id: number; name: string } | null>(null);
 
-  // Get list of employees for dropdown
-  const { data: employees = [], isLoading: employeesLoading } = useQuery({
-    queryKey: ["/api/employees"],
+  // Get list of employees for dropdown - use manager API to get department employees only
+  const { data: employeesResponse, isLoading: employeesLoading } = useQuery({
+    queryKey: ["/api/manager/employees"],
     queryFn: async () => {
-      const res = await fetch("/api/employees");
+      const res = await apiRequest("GET", "/api/manager/employees");
       if (!res.ok) throw new Error("Failed to fetch employees");
-      return res.json();
+      return res.data;
     }
   });
+
+  // Extract employees array from response, handle both array and object responses
+  const employees = Array.isArray(employeesResponse)
+    ? employeesResponse
+    : (employeesResponse?.employees || []);
 
   // Form setup with default values
   const form = useForm<FormValues>({
@@ -79,7 +84,7 @@ export default function LeaveRequestForm() {
 
   // Mutation to create a leave request
   const createMutation = useMutation({
-    mutationFn: async (data: FormValues) => {
+    mutationFn: async (data: any) => {
       const response = await apiRequest("POST", "/api/manager/leave-requests", data);
       return response.data;
     },
@@ -99,15 +104,20 @@ export default function LeaveRequestForm() {
 
   // Form submission handler
   const onSubmit = (data: FormValues) => {
-    // Format dates to ISO string and keep only the date part
+    // Format dates and handle reason field properly
     const formattedData = {
       ...data,
+      employeeId: data.employeeId,
+      type: data.type,
       startDate: data.startDate instanceof Date ? data.startDate.toISOString().split('T')[0] : data.startDate,
       endDate: data.endDate instanceof Date ? data.endDate.toISOString().split('T')[0] : data.endDate,
+      reason: data.reason && data.reason.trim() ? data.reason.trim() : null, // Convert empty string to null
     };
 
-    // Use create mutation with the original data that has Date objects
-    createMutation.mutate(data);
+    console.log('Submitting leave request data:', formattedData);
+
+    // Use formattedData instead of original data
+    createMutation.mutate(formattedData);
   };
 
   // Handle employee selection

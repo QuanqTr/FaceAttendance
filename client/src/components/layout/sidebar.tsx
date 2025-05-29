@@ -183,12 +183,14 @@ export function Sidebar() {
                   {t('common.attendance')}
                 </SidebarLink>
 
+
+
                 <SidebarLink
-                  href="/manager/work-hours"
-                  icon={<Clock className="h-5 w-5" />}
-                  isActive={isActive('/manager/work-hours')}
+                  href="/manager/profile"
+                  icon={<UserCircle className="h-5 w-5" />}
+                  isActive={isActive('/manager/profile')}
                 >
-                  Work Hours
+                  {t('common.profile')}
                 </SidebarLink>
 
                 <SidebarLink

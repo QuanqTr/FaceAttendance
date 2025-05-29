@@ -225,8 +225,17 @@ export const updateUserFaceProfile = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid user ID' });
         }
 
+        console.log(`[UserController] Updating face profile for user ${userId}`);
+        console.log(`[UserController] Face descriptor type:`, typeof faceDescriptor);
+        console.log(`[UserController] Face descriptor length:`, Array.isArray(faceDescriptor) ? faceDescriptor.length : 'not array');
+
         if (!faceDescriptor) {
             return res.status(400).json({ error: 'Face descriptor is required' });
+        }
+
+        // Validate face descriptor format
+        if (!Array.isArray(faceDescriptor) || faceDescriptor.length === 0) {
+            return res.status(400).json({ error: 'Invalid face descriptor format' });
         }
 
         // Get employee by user ID
@@ -236,18 +245,39 @@ export const updateUserFaceProfile = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Employee not found for this user' });
         }
 
+        console.log(`[UserController] Found employee ${employee.id} for user ${userId}`);
+
+        // Validate and prepare face descriptor for storage
+        let faceDescriptorString: string;
+        try {
+            faceDescriptorString = JSON.stringify(faceDescriptor);
+        } catch (error) {
+            console.error('Error serializing face descriptor:', error);
+            return res.status(400).json({ error: 'Invalid face descriptor data' });
+        }
+
         // Update employee's face descriptor
-        await storage.updateEmployee(employee.id, {
-            faceDescriptor: JSON.stringify(faceDescriptor)
+        const updatedEmployee = await storage.updateEmployee(employee.id, {
+            faceDescriptor: faceDescriptorString
         });
+
+        if (!updatedEmployee) {
+            return res.status(500).json({ error: 'Failed to update employee face data' });
+        }
+
+        console.log(`[UserController] Successfully updated face descriptor for employee ${employee.id}`);
 
         res.json({
             success: true,
-            message: 'Face profile updated successfully'
+            message: 'Face profile updated successfully',
+            hasFaceData: true
         });
     } catch (error) {
         console.error('Error updating face profile:', error);
-        res.status(500).json({ error: 'Failed to update face profile' });
+        res.status(500).json({
+            error: 'Failed to update face profile',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 };
 

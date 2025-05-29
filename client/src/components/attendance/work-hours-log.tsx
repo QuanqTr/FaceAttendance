@@ -298,10 +298,10 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                                         <TableCell>
                                             {safeFormatDate(record.checkoutTime)}
                                         </TableCell>
-                                        <TableCell>{(record.regularHours || 0).toFixed(2)}</TableCell>
-                                        <TableCell>{(record.overtimeHours || 0).toFixed(2)}</TableCell>
+                                        <TableCell>{Number(record.regularHours || 0).toFixed(2)}</TableCell>
+                                        <TableCell>{Number(record.overtimeHours || 0).toFixed(2)}</TableCell>
                                         <TableCell className="font-medium">
-                                            {((record.regularHours || 0) + (record.overtimeHours || 0)).toFixed(2)}
+                                            {(Number(record.regularHours || 0) + Number(record.overtimeHours || 0)).toFixed(2)}
                                         </TableCell>
                                         <TableCell>
                                             <Badge className={cn("text-xs", statusInfo.color)}>

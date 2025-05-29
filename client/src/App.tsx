@@ -33,6 +33,7 @@ import ManagerLeaveRequestDetailsPage from "@/pages/manager/leave-request-detail
 import ManagerLeaveRequestFormPage from "@/pages/manager/leave-request-form";
 import ManagerAttendance from "@/pages/manager/attendance";
 import ManagerWorkHours from "@/pages/manager/work-hours";
+import ManagerProfile from "@/pages/manager/profile";
 
 // Public pages
 import FaceRecognitionLive from "@/pages/face-recognition-live";
@@ -94,6 +95,7 @@ function AuthenticatedRouter(): React.ReactElement {
             <ProtectedRoute path="/manager/leave-requests/:id" component={ManagerLeaveRequestDetailsPage} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/attendance" component={ManagerAttendance} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/work-hours" component={ManagerWorkHours} requiredRoles={["manager"]} />
+            <ProtectedRoute path="/manager/profile" component={ManagerProfile} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/reports" component={ManagerReportsComponent} requiredRoles={["manager"]} />
             <ProtectedRoute path="/manager/settings" component={ManagerSettings} requiredRoles={["manager"]} />
 

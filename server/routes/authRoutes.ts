@@ -11,7 +11,7 @@ export function authRoutes(app: Express) {
 
     // Face auth verification endpoints
     app.post("/api/face-auth/send-verification", sendFaceAuthVerification);
-    app.post("/api/face-auth/verify", verifyFaceAuthCode);
+    app.post("/api/face-auth/verify-code", verifyFaceAuthCode);
 
     // Debug route to check users
     app.get("/api/debug/users", async (req, res) => {
