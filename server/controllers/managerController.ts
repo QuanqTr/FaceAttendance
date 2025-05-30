@@ -321,18 +321,48 @@ export const getManagerLeaveRequests = async (req: Request, res: Response) => {
         console.log('🔍 Manager Leave Requests API called');
         const { page = 1, limit = 10, status = 'all' } = req.query;
 
+        // Parse pagination parameters
+        const pageNum = parseInt(page as string) || 1;
+        const limitNum = parseInt(limit as string) || 10;
+        const offset = (pageNum - 1) * limitNum;
+
         // Get manager's departments
         const managerId = (req.user as any)?.id;
         const managerDepartmentIds = managerId ? await getManagerDepartmentIds(managerId) : [];
 
         if (managerDepartmentIds.length === 0) {
             console.log('❌ Manager does not manage any department');
-            return res.json([]);
+            return res.json({
+                data: [],
+                total: 0,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: 0
+            });
         }
 
         console.log(`🏢 Manager manages department IDs: ${managerDepartmentIds.join(', ')}`);
 
-        // Get all leave requests with employee details using direct database query
+        // Get total count first
+        let countStatusCondition = '';
+        let countParams: any[] = [managerDepartmentIds];
+
+        if (status && status !== 'all') {
+            countStatusCondition = ' AND lr.status = $2';
+            countParams.push(status);
+        }
+
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM leave_requests lr
+            INNER JOIN employees e ON lr.employee_id = e.id
+            WHERE e.department_id = ANY($1)${countStatusCondition}
+        `;
+
+        const countResult = await pool.query(countQuery, countParams);
+        const totalCount = parseInt(countResult.rows[0].total);
+
+        // Get paginated leave requests with employee details using direct database query
         let statusCondition = '';
         let params: any[] = [managerDepartmentIds];
 
@@ -340,6 +370,10 @@ export const getManagerLeaveRequests = async (req: Request, res: Response) => {
             statusCondition = ' AND lr.status = $2';
             params.push(status);
         }
+
+        // Add pagination parameters
+        const limitClause = ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limitNum, offset);
 
         const query = `
             SELECT 
@@ -361,7 +395,7 @@ export const getManagerLeaveRequests = async (req: Request, res: Response) => {
             INNER JOIN employees e ON lr.employee_id = e.id
             LEFT JOIN departments d ON e.department_id = d.id
             WHERE e.department_id = ANY($1)${statusCondition}
-            ORDER BY lr.created_at DESC
+            ORDER BY lr.created_at DESC${limitClause}
         `;
 
         const result = await pool.query(query, params);
@@ -389,14 +423,27 @@ export const getManagerLeaveRequests = async (req: Request, res: Response) => {
                 lastName: row.last_name,
                 position: row.position,
                 departmentId: row.department_id,
-                departmentName: row.department_name
+                departmentName: row.department_name,
+                department: {
+                    id: row.department_id,
+                    name: row.department_name || 'Unknown Department',
+                    description: null
+                }
             },
             requestDate: row.created_at,
             days: calculateDaysBetween(row.start_date, row.end_date)
         }));
 
-        console.log(`✅ Returning ${formattedRequests.length} leave requests from departments ${managerDepartmentIds.join(', ')}`);
-        res.json(formattedRequests);
+        console.log(`✅ Returning ${formattedRequests.length} leave requests from departments ${managerDepartmentIds.join(', ')}, page ${pageNum}, total: ${totalCount}`);
+
+        // Return paginated response
+        res.json({
+            data: formattedRequests,
+            total: totalCount,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(totalCount / limitNum)
+        });
     } catch (error) {
         console.error('❌ Error fetching manager leave requests:', error);
         res.status(500).json({ error: 'Failed to fetch leave requests' });

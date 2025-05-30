@@ -112,7 +112,7 @@ export const createTimeLog = async (req: Request, res: Response) => {
         // Find best match
         let bestMatch = null;
         let bestDistance = Number.MAX_VALUE;
-        const threshold = 100.0; // Threshold for face recognition
+        const threshold = 0.4; // Threshold for face recognition - updated to match frontend
         console.log(`Starting face comparison with threshold: ${threshold}`);
 
         for (const employee of employeesWithFace) {
@@ -162,52 +162,108 @@ export const createTimeLog = async (req: Request, res: Response) => {
         // Get current time and check for existing logs
         const currentTime = new Date();
         const todayLogs = await storage.getEmployeeTimeLogs(bestMatch.id, currentTime);
-        console.log(`Found ${todayLogs.length} existing logs for employee ${bestMatch.id} today`);
+        console.log(`[TimeLogs] Tìm logs cho nhân viên ${bestMatch.id} ngày ${currentTime.toISOString()}`);
+
+        // Sắp xếp logs theo thời gian (mới nhất trước)
+        const sortedLogs = todayLogs.sort((a, b) => b.logTime.getTime() - a.logTime.getTime());
+
+        // Log chi tiết để debug
+        if (sortedLogs.length > 0) {
+            const startOfDay = new Date(currentTime);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(currentTime);
+            endOfDay.setHours(23, 59, 59, 999);
+
+            console.log(`[TimeLogs] Khoảng thời gian: ${startOfDay.toISOString()} đến ${endOfDay.toISOString()}`);
+            console.log(`[TimeLogs] Tìm thấy ${sortedLogs.length} bản ghi`);
+
+            sortedLogs.forEach((log, index) => {
+                const localTime = new Date(log.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
+                const timeStr = localTime.toTimeString().substring(0, 5); // HH:MM
+                console.log(`[TimeLogs] Bản ghi ${index + 1}: ${log.type} lúc ${log.logTime.toISOString()} (${timeStr})`);
+            });
+        }
+
+        // Lấy trạng thái cuối cùng của nhân viên (log gần nhất)
+        const lastLog = sortedLogs.length > 0 ? sortedLogs[0] : null;
+        const employeeName = `${bestMatch.firstName} ${bestMatch.lastName}`;
 
         // Business logic checks
         if (type === 'checkin') {
-            // Check if already checked in today
-            const lastCheckin = todayLogs
-                .filter(log => log.type === 'checkin')
-                .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
+            // Kiểm tra trạng thái hiện tại
+            if (lastLog && lastLog.type === 'checkin') {
+                // Nhân viên đã checkin rồi, không được checkin lại
+                const lastCheckinTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
+                const timeStr = lastCheckinTime.toTimeString().substring(0, 5); // HH:MM
 
-            if (lastCheckin) {
-                const timeDiff = currentTime.getTime() - lastCheckin.logTime.getTime();
-                const minutesDiff = Math.floor(timeDiff / 60000);
-
-                console.log(`Employee ${bestMatch.id} check-in, time since last check-in: ${minutesDiff} minutes`);
-
-                if (timeDiff < 60000) { // Less than 1 minute
-                    return res.status(400).json({
-                        error: "Vui lòng đợi ít nhất 1 phút trước khi check-in lại."
-                    });
-                }
-            }
-        } else if (type === 'checkout') {
-            // Check if there's a check-in today
-            const todayCheckin = todayLogs.find(log => log.type === 'checkin');
-            if (!todayCheckin) {
+                console.log(`❌ Employee ${bestMatch.id} đã check-in lúc ${timeStr}, không được check-in lại`);
                 return res.status(400).json({
-                    error: "Bạn chưa check-in hôm nay. Vui lòng check-in trước khi check-out."
+                    error: `${employeeName} đã check-in lúc ${timeStr}. Vui lòng check-out trước khi check-in lại.`,
+                    details: {
+                        currentStatus: 'checked_in',
+                        lastAction: 'checkin',
+                        lastActionTime: timeStr,
+                        message: 'Nhân viên hiện đang trong trạng thái đã check-in'
+                    }
                 });
             }
 
-            // Check time between check-outs
-            const lastCheckout = todayLogs
-                .filter(log => log.type === 'checkout')
-                .sort((a, b) => b.logTime.getTime() - a.logTime.getTime())[0];
+            // Cho phép checkin nếu:
+            // 1. Chưa có log nào (lần đầu checkin)
+            // 2. Log cuối cùng là checkout (đã checkout trước đó)
+            console.log(`✅ Employee ${bestMatch.id} được phép check-in`);
 
-            if (lastCheckout) {
-                const timeDiff = currentTime.getTime() - lastCheckout.logTime.getTime();
-                const minutesDiff = Math.floor(timeDiff / 60000);
+        } else if (type === 'checkout') {
+            // Kiểm tra phải có checkin trước đó
+            if (!lastLog || lastLog.type !== 'checkin') {
+                let errorMessage = '';
 
-                console.log(`Employee ${bestMatch.id} check-out, time since last check-out: ${minutesDiff} minutes`);
+                if (!lastLog) {
+                    // Chưa có log nào trong ngày
+                    errorMessage = `${employeeName} chưa check-in hôm nay. Vui lòng check-in trước khi check-out.`;
+                    console.log(`❌ Employee ${bestMatch.id} chưa check-in, không được check-out`);
+                } else if (lastLog.type === 'checkout') {
+                    // Log cuối cùng là checkout
+                    const lastCheckoutTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
+                    const timeStr = lastCheckoutTime.toTimeString().substring(0, 5); // HH:MM
 
-                if (timeDiff < 60000) { // Less than 1 minute
-                    return res.status(400).json({
-                        error: "Vui lòng đợi ít nhất 1 phút trước khi check-out lại."
-                    });
+                    errorMessage = `${employeeName} đã check-out lúc ${timeStr}. Vui lòng check-in trước khi check-out lại.`;
+                    console.log(`❌ Employee ${bestMatch.id} đã check-out lúc ${timeStr}, không được check-out lại`);
                 }
+
+                return res.status(400).json({
+                    error: errorMessage,
+                    details: {
+                        currentStatus: lastLog ? 'checked_out' : 'no_logs',
+                        lastAction: lastLog ? lastLog.type : 'none',
+                        lastActionTime: lastLog ? new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000).toTimeString().substring(0, 5) : null,
+                        message: lastLog ? 'Nhân viên hiện đang trong trạng thái đã check-out' : 'Nhân viên chưa có log nào trong ngày'
+                    }
+                });
+            }
+
+            // Cho phép checkout nếu log cuối cùng là checkin
+            const lastCheckinTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
+            const timeStr = lastCheckinTime.toTimeString().substring(0, 5); // HH:MM
+            console.log(`✅ Employee ${bestMatch.id} được phép check-out (đã check-in lúc ${timeStr})`);
+        }
+
+        // Kiểm tra time limit để tránh spam (1 phút)
+        if (lastLog) {
+            const timeDiff = currentTime.getTime() - lastLog.logTime.getTime();
+            const minutesDiff = Math.floor(timeDiff / 60000);
+
+            if (timeDiff < 60000) { // Ít hơn 1 phút
+                const remainingSeconds = 60 - Math.floor((timeDiff % 60000) / 1000);
+
+                console.log(`❌ Employee ${bestMatch.id} thử ${type} quá nhanh, cần đợi ${remainingSeconds} giây`);
+                return res.status(429).json({
+                    error: `Vui lòng đợi ${remainingSeconds} giây trước khi thực hiện ${type === 'checkin' ? 'check-in' : 'check-out'} tiếp.`,
+                    details: {
+                        timeLimitSeconds: remainingSeconds,
+                        message: 'Thao tác quá nhanh, vui lòng đợi'
+                    }
+                });
             }
         }
 

@@ -30,14 +30,16 @@ import { Header } from "@/components/layout/header";
 import { ArrowLeft } from "lucide-react";
 
 // Define the schema for form validation
-const accountFormSchema = z.object({
+const createAccountFormSchema = (isEditing: boolean) => z.object({
     username: z.string()
         .min(3, "Username must be at least 3 characters")
         .max(50, "Username must be at most 50 characters"),
-    password: z.string()
-        .min(6, "Password must be at least 6 characters")
-        .or(z.literal('')) // Allow empty string for password
-        .optional(),
+    password: isEditing
+        ? z.union([
+            z.string().min(6, "Password must be at least 6 characters"),
+            z.literal(''),
+        ]).optional()
+        : z.string().min(6, "Password must be at least 6 characters"),
     role: z.enum(["admin", "manager", "employee"], {
         required_error: "Please select a role",
     }),
@@ -45,7 +47,7 @@ const accountFormSchema = z.object({
         .optional(),
 });
 
-type AccountFormValues = z.infer<typeof accountFormSchema>;
+type AccountFormValues = z.infer<ReturnType<typeof createAccountFormSchema>>;
 
 type Employee = {
     id: number;
@@ -81,7 +83,7 @@ export default function AccountFormPage() {
 
     // Form setup
     const form = useForm<AccountFormValues>({
-        resolver: zodResolver(accountFormSchema),
+        resolver: zodResolver(createAccountFormSchema(isEditing)),
         defaultValues: {
             username: "",
             password: "",
@@ -185,8 +187,14 @@ export default function AccountFormPage() {
     // Create or update account mutation
     const accountMutation = useMutation({
         mutationFn: async (payload: any) => {
+            console.log("=== MUTATION START ===");
+            console.log("Payload:", payload);
+            console.log("Is editing:", isEditing);
+            console.log("Account ID:", accountId);
+
             if (isEditing && accountId) {
                 // Update existing account
+                console.log("Making PUT request to:", `/api/users/${accountId}`);
                 const res = await fetch(`/api/users/${accountId}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
@@ -194,14 +202,21 @@ export default function AccountFormPage() {
                     body: JSON.stringify(payload),
                 });
 
+                console.log("PUT Response status:", res.status);
+                console.log("PUT Response headers:", Object.fromEntries(res.headers.entries()));
+
                 if (!res.ok) {
                     const errorText = await res.text();
+                    console.error("PUT Error response:", errorText);
                     throw new Error(errorText || "Failed to update account");
                 }
 
-                return res.json();
+                const responseData = await res.json();
+                console.log("PUT Success response:", responseData);
+                return responseData;
             } else {
                 // Create new account
+                console.log("Making POST request to: /api/users");
                 const res = await fetch("/api/users", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -209,15 +224,23 @@ export default function AccountFormPage() {
                     body: JSON.stringify(payload),
                 });
 
+                console.log("POST Response status:", res.status);
+                console.log("POST Response headers:", Object.fromEntries(res.headers.entries()));
+
                 if (!res.ok) {
                     const errorText = await res.text();
+                    console.error("POST Error response:", errorText);
                     throw new Error(errorText || "Failed to create account");
                 }
 
-                return res.json();
+                const responseData = await res.json();
+                console.log("POST Success response:", responseData);
+                return responseData;
             }
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
+            console.log("=== MUTATION SUCCESS ===");
+            console.log("Success data:", data);
             queryClient.invalidateQueries({ queryKey: ["/api/users"] });
             toast({
                 title: isEditing ? "Account updated" : "Account created",
@@ -228,6 +251,9 @@ export default function AccountFormPage() {
             navigate("/accounts");
         },
         onError: (error: Error) => {
+            console.log("=== MUTATION ERROR ===");
+            console.error("Error details:", error);
+            console.error("Error message:", error.message);
             toast({
                 title: "Error",
                 description: error.message || "An error occurred",
@@ -242,6 +268,8 @@ export default function AccountFormPage() {
         const formValues = { ...values };
 
         console.log("Form values before submission:", formValues);
+        console.log("Is editing:", isEditing);
+        console.log("Account ID:", accountId);
 
         // Create proper payload with correct types
         const payload: any = {
@@ -252,16 +280,21 @@ export default function AccountFormPage() {
         // Only include password if it's not empty in edit mode
         if (!isEditing || (formValues.password && formValues.password !== "")) {
             payload.password = formValues.password;
+            console.log("Including password in payload");
+        } else {
+            console.log("Skipping password - editing mode with empty password");
         }
 
         // Handle employee association
         if (formValues.employeeId === "none") {
             payload.employeeId = null; // Set to null to remove association
+            console.log("Setting employeeId to null");
         } else if (formValues.employeeId) {
             payload.employeeId = Number(formValues.employeeId); // Convert to number
+            console.log("Setting employeeId to:", payload.employeeId);
         }
 
-        console.log("Payload after processing:", payload);
+        console.log("Final payload before API call:", payload);
 
         // Send to server
         accountMutation.mutate(payload);

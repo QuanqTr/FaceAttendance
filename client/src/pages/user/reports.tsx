@@ -31,7 +31,7 @@ import {
     TrendingUp,
     TrendingDown,
     BarChart3,
-    PieChart,
+    PieChart as PieChartIcon,
     Award,
     AlertTriangle,
     Users,
@@ -40,23 +40,199 @@ import {
     Activity
 } from "lucide-react";
 
-// Chart component placeholder - you can replace with actual chart library
+// Real Chart components using SVG
+const BarChart = ({ data, className = "" }: { data: any[], className?: string }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className={`bg-gray-50 rounded-lg p-4 flex items-center justify-center ${className}`}>
+                <div className="text-center space-y-2">
+                    <BarChart3 className="h-12 w-12 text-gray-400 mx-auto" />
+                    <p className="text-sm text-gray-500">Không có dữ liệu</p>
+                </div>
+            </div>
+        );
+    }
+
+    const maxValue = Math.max(...data.map(d => d.hours || d.attendance || 1));
+    const chartHeight = 200;
+    const chartWidth = 400;
+    const barWidth = chartWidth / data.length - 4;
+
+    return (
+        <div className={`bg-white rounded-lg p-4 ${className}`}>
+            <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                {data.map((item, index) => {
+                    const barHeight = ((item.hours || item.attendance || 0) / maxValue) * (chartHeight - 40);
+                    const x = index * (barWidth + 4);
+                    const y = chartHeight - barHeight - 20;
+
+                    return (
+                        <g key={index}>
+                            <rect
+                                x={x}
+                                y={y}
+                                width={barWidth}
+                                height={barHeight}
+                                fill={item.attendance === 1 ? "#3b82f6" : "#ef4444"}
+                                rx="2"
+                                className="hover:opacity-80 transition-opacity"
+                            />
+                            <text
+                                x={x + barWidth / 2}
+                                y={chartHeight - 5}
+                                textAnchor="middle"
+                                fontSize="10"
+                                fill="#6b7280"
+                            >
+                                {item.date}
+                            </text>
+                        </g>
+                    );
+                })}
+            </svg>
+        </div>
+    );
+};
+
+const LineChart = ({ data, className = "" }: { data: any[], className?: string }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className={`bg-gray-50 rounded-lg p-4 flex items-center justify-center ${className}`}>
+                <div className="text-center space-y-2">
+                    <Activity className="h-12 w-12 text-gray-400 mx-auto" />
+                    <p className="text-sm text-gray-500">Không có dữ liệu</p>
+                </div>
+            </div>
+        );
+    }
+
+    const maxValue = Math.max(...data.map(d => d.hours || 1));
+    const chartHeight = 150;
+    const chartWidth = 400;
+    const stepX = chartWidth / (data.length - 1);
+
+    const points = data.map((item, index) => {
+        const x = index * stepX;
+        const y = chartHeight - ((item.hours || 0) / maxValue) * (chartHeight - 20) - 10;
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className={`bg-white rounded-lg p-4 ${className}`}>
+            <svg width="100%" height={chartHeight + 40} viewBox={`0 0 ${chartWidth} ${chartHeight + 40}`}>
+                <polyline
+                    points={points}
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="2"
+                    className="drop-shadow-sm"
+                />
+                {data.map((item, index) => {
+                    const x = index * stepX;
+                    const y = chartHeight - ((item.hours || 0) / maxValue) * (chartHeight - 20) - 10;
+
+                    return (
+                        <g key={index}>
+                            <circle
+                                cx={x}
+                                cy={y}
+                                r="4"
+                                fill="#10b981"
+                                className="hover:r-6 transition-all"
+                            />
+                            <text
+                                x={x}
+                                y={chartHeight + 25}
+                                textAnchor="middle"
+                                fontSize="10"
+                                fill="#6b7280"
+                            >
+                                {item.date}
+                            </text>
+                        </g>
+                    );
+                })}
+            </svg>
+        </div>
+    );
+};
+
+const PieChart = ({ data, className = "" }: { data: any[], className?: string }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className={`bg-gray-50 rounded-lg p-4 flex items-center justify-center ${className}`}>
+                <div className="text-center space-y-2">
+                    <PieChartIcon className="h-12 w-12 text-gray-400 mx-auto" />
+                    <p className="text-sm text-gray-500">Không có dữ liệu</p>
+                </div>
+            </div>
+        );
+    }
+
+    const total = data.reduce((sum, item) => sum + (item.value || 0), 0);
+    const radius = 60;
+    const centerX = 80;
+    const centerY = 80;
+    const colors = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"];
+
+    let currentAngle = 0;
+
+    return (
+        <div className={`bg-white rounded-lg p-4 ${className}`}>
+            <div className="flex items-center space-x-4">
+                <svg width="160" height="160" viewBox="0 0 160 160">
+                    {data.map((item, index) => {
+                        const angle = (item.value / total) * 360;
+                        const startAngle = currentAngle;
+                        const endAngle = currentAngle + angle;
+
+                        const x1 = centerX + radius * Math.cos((startAngle * Math.PI) / 180);
+                        const y1 = centerY + radius * Math.sin((startAngle * Math.PI) / 180);
+                        const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180);
+                        const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180);
+
+                        const largeArcFlag = angle > 180 ? 1 : 0;
+
+                        const pathData = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+
+                        currentAngle += angle;
+
+                        return (
+                            <path
+                                key={index}
+                                d={pathData}
+                                fill={colors[index % colors.length]}
+                                className="hover:opacity-80 transition-opacity"
+                            />
+                        );
+                    })}
+                </svg>
+                <div className="space-y-2">
+                    {data.map((item, index) => (
+                        <div key={index} className="flex items-center space-x-2 text-sm">
+                            <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: colors[index % colors.length] }}
+                            />
+                            <span>{item.label}: {item.value}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Chart component selector
 const SimpleChart = ({ data, type = "bar", className = "" }: {
     data: any[],
     type?: "bar" | "line" | "pie",
     className?: string
 }) => {
-    return (
-        <div className={`bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg p-4 flex items-center justify-center ${className}`}>
-            <div className="text-center space-y-2">
-                {type === "bar" && <BarChart3 className="h-12 w-12 text-blue-500 mx-auto" />}
-                {type === "line" && <Activity className="h-12 w-12 text-green-500 mx-auto" />}
-                {type === "pie" && <PieChart className="h-12 w-12 text-purple-500 mx-auto" />}
-                <p className="text-sm text-gray-600">Biểu đồ {type === "bar" ? "cột" : type === "line" ? "đường" : "tròn"}</p>
-                <p className="text-xs text-gray-500">{data.length} điểm dữ liệu</p>
-            </div>
-        </div>
-    );
+    if (type === "bar") return <BarChart data={data} className={className} />;
+    if (type === "line") return <LineChart data={data} className={className} />;
+    if (type === "pie") return <PieChart data={data} className={className} />;
+    return <BarChart data={data} className={className} />;
 };
 
 export default function UserReportsPage() {
@@ -372,7 +548,7 @@ export default function UserReportsPage() {
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="flex items-center">
-                                        <PieChart className="mr-2 h-5 w-5 text-purple-600" />
+                                        <PieChartIcon className="mr-2 h-5 w-5 text-purple-600" />
                                         Phân tích hiệu suất
                                     </CardTitle>
                                 </CardHeader>
@@ -535,6 +711,21 @@ export default function UserReportsPage() {
                                                     <Badge variant="outline" className="bg-white">
                                                         {Math.round(performanceMetrics.productivityScore)}/100
                                                     </Badge>
+                                                </div>
+
+                                                {/* Performance Pie Chart */}
+                                                <div className="mt-4">
+                                                    <h5 className="text-sm font-medium mb-2">Phân tích tình trạng chấm công</h5>
+                                                    <SimpleChart
+                                                        data={[
+                                                            { label: "Có mặt", value: attendanceStats?.present || 20 },
+                                                            { label: "Muộn", value: attendanceStats?.late || 3 },
+                                                            { label: "Vắng mặt", value: attendanceStats?.absent || 2 },
+                                                            { label: "Nghỉ phép", value: attendanceStats?.onLeave || 5 }
+                                                        ]}
+                                                        type="pie"
+                                                        className="h-48"
+                                                    />
                                                 </div>
                                             </div>
                                         )}

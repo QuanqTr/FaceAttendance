@@ -104,23 +104,99 @@ export const createUser = async (req: Request, res: Response) => {
 // Update user
 export const updateUser = async (req: Request, res: Response) => {
     try {
+        console.log(`[UpdateUser] Starting update for user ID: ${req.params.id}`);
+        console.log(`[UpdateUser] Request body:`, req.body);
+
         const userId = parseInt(req.params.id);
         const updateData = req.body;
 
         if (isNaN(userId)) {
+            console.log(`[UpdateUser] Invalid user ID: ${req.params.id}`);
             return res.status(400).json({ error: 'Invalid user ID' });
         }
 
-        // Remove password from update data if present (use separate endpoint for password)
-        delete updateData.password;
+        // Validate user exists
+        const existingUser = await storage.getUser(userId);
+        if (!existingUser) {
+            console.log(`[UpdateUser] User not found: ${userId}`);
+            return res.status(404).json({ error: 'User not found' });
+        }
 
-        // This would need a proper updateUser method in storage
+        console.log(`[UpdateUser] Found existing user:`, {
+            id: existingUser.id,
+            username: existingUser.username,
+            role: existingUser.role,
+            employeeId: existingUser.employeeId
+        });
+
+        // Prepare update data - handle password separately if provided
+        const userUpdateData: any = {};
+
+        if (updateData.username) {
+            // Check if username is changing and if new username already exists
+            if (updateData.username !== existingUser.username) {
+                const userWithSameUsername = await storage.getUserByUsername(updateData.username);
+                if (userWithSameUsername && userWithSameUsername.id !== userId) {
+                    console.log(`[UpdateUser] Username already exists: ${updateData.username}`);
+                    return res.status(400).json({ error: 'Username already exists' });
+                }
+            }
+            userUpdateData.username = updateData.username;
+        }
+
+        if (updateData.role) {
+            userUpdateData.role = updateData.role;
+        }
+
+        if (updateData.employeeId !== undefined) {
+            if (updateData.employeeId === null) {
+                userUpdateData.employeeId = null;
+                userUpdateData.fullName = existingUser.fullName; // Keep existing name
+            } else {
+                // Validate employee exists
+                const employee = await storage.getEmployee(updateData.employeeId);
+                if (!employee) {
+                    console.log(`[UpdateUser] Employee not found: ${updateData.employeeId}`);
+                    return res.status(400).json({ error: 'Employee not found' });
+                }
+                userUpdateData.employeeId = updateData.employeeId;
+                userUpdateData.fullName = `${employee.lastName} ${employee.firstName}`;
+            }
+        }
+
+        // Handle password separately if provided
+        if (updateData.password && updateData.password.trim() !== "") {
+            const hashedPassword = await hashPassword(updateData.password);
+            userUpdateData.password = hashedPassword;
+        }
+
+        console.log(`[UpdateUser] Update data prepared:`, userUpdateData);
+
+        // Update user in database
+        const updatedUser = await storage.updateUser(userId, userUpdateData);
+
+        if (!updatedUser) {
+            console.log(`[UpdateUser] Failed to update user ${userId}`);
+            return res.status(500).json({ error: 'Failed to update user' });
+        }
+
+        console.log(`[UpdateUser] User updated successfully:`, {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            role: updatedUser.role,
+            employeeId: updatedUser.employeeId
+        });
+
+        // Remove password from response
+        const { password, ...userWithoutPassword } = updatedUser;
+
         res.json({
             success: true,
+            data: userWithoutPassword,
             message: 'User updated successfully'
         });
     } catch (error) {
-        console.error('Error updating user:', error);
+        console.error('[UpdateUser] Error updating user:', error);
         res.status(500).json({ error: 'Failed to update user' });
     }
 };

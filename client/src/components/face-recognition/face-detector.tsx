@@ -67,7 +67,7 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
   const lastSuccessfulDetectionTimeRef = useRef<number>(0);
   const successBoxOpacityRef = useRef<number>(0);
 
-  // Thêm state để lưu thông tin người được nhận diện
+  // Thêm state để lưu trữ thông tin người được nhận diện
   const [recognizedPerson, setRecognizedPerson] = useState<RecognizedPerson | null>(null);
 
   // Thêm biến để kiểm soát việc nhận diện
@@ -1043,14 +1043,15 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
         if (bestMatch.length > 0) {
           const bestMatchResult = bestMatch[0];
-          const threshold = 0.6; // 60% confidence threshold
+          const distanceThreshold = 0.4; // Distance phải < 0.4 để nhận diện thành công, >= 0.4 thì không nhận diện được
 
           if (bestMatchResult) {
-            console.log(`🔍 Final result: ${bestMatchResult.name} with ${(bestMatchResult.confidence * 100).toFixed(1)}% confidence (threshold: ${(threshold * 100)}%)`);
+            console.log(`🔍 Final result: ${bestMatchResult.name} with distance ${bestMatchResult.distance.toFixed(4)} (threshold: <${distanceThreshold})`);
 
-            // Chỉ hiển thị kết quả khi độ tin cậy > 60%
-            if (bestMatchResult.confidence > threshold) {
-              console.log(`✅ Face recognized: ${bestMatchResult.name} (${(bestMatchResult.confidence * 100).toFixed(1)}%)`);
+            // Kiểm tra distance để quyết định kết quả
+            if (bestMatchResult.distance < distanceThreshold) {
+              // Distance nhỏ hơn 0.4 - nhận diện thành công
+              console.log(`✅ Face recognized: ${bestMatchResult.name} (distance: ${bestMatchResult.distance.toFixed(4)})`);
 
               setRecognizedPerson({
                 name: bestMatchResult.name,
@@ -1069,33 +1070,54 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
                 });
               }
             } else {
-              console.log(`❌ Face not recognized: confidence ${(bestMatchResult.confidence * 100).toFixed(1)}% below threshold ${(threshold * 100)}%`);
-              setRecognizedPerson(null);
-            }
-          }
-
-          // Vẽ kết quả
-          const resizedDetections = faceapi.resizeResults(detections, displaySize);
-
-          // Double check canvas and context are still available before drawing
-          if (canvasRef.current && ctx) {
-            resizedDetections.forEach((detection, i) => {
-              if (i >= bestMatch.length) return;
-
-              const matchInfo = bestMatch[i];
-              if (!matchInfo || matchInfo.confidence <= threshold) return;
-
-              const box = detection.detection.box;
-              const drawBox = new faceapi.draw.DrawBox(box, {
-                label: `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`,
-                boxColor: 'green'
+              // Distance >= 0.4 - không nhận diện được
+              console.log(`❌ Face not recognized: distance ${bestMatchResult.distance.toFixed(4)} >= ${distanceThreshold}`);
+              setRecognizedPerson({
+                name: "Không nhận diện được",
+                employeeId: undefined,
+                confidence: 0
               });
 
-              // Ensure canvas element is not null before drawing
-              if (canvasRef.current) {
-                drawBox.draw(canvasRef.current);
+              // Gọi callback với null để thông báo không nhận diện được
+              if (onFaceRecognized && bestMatchResult.detection.descriptor) {
+                const descriptorString = Array.from(bestMatchResult.detection.descriptor).toString();
+                onFaceRecognized(descriptorString, null);
               }
-            });
+            }
+
+            // Vẽ kết quả
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+            // Double check canvas and context are still available before drawing
+            if (canvasRef.current && ctx) {
+              resizedDetections.forEach((detection, i) => {
+                if (i >= bestMatch.length) return;
+
+                const matchInfo = bestMatch[i];
+                if (!matchInfo) return;
+
+                // Chỉ vẽ khung khi nhận diện thành công
+                if (matchInfo.distance < distanceThreshold) {
+                  const box = detection.detection.box;
+                  const label = `${matchInfo.name} (${Math.round(matchInfo.confidence * 100)}%)`;
+                  const boxColor = 'green';
+
+                  const drawBox = new faceapi.draw.DrawBox(box, {
+                    label: label,
+                    boxColor: boxColor
+                  });
+
+                  // Ensure canvas element is not null before drawing
+                  if (canvasRef.current) {
+                    drawBox.draw(canvasRef.current);
+                  }
+                }
+                // Không vẽ gì khi không nhận diện được (distance >= threshold)
+              });
+            }
+          } else {
+            console.log("❌ No valid matches found");
+            setRecognizedPerson(null);
           }
         } else {
           console.log("❌ No valid matches found");
@@ -1284,9 +1306,20 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
         {/* Hiển thị thông tin người được nhận diện */}
         {recognizedPerson && (
-          <div className="absolute top-4 left-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
-            <div className="font-semibold">Đã nhận diện: {recognizedPerson.name}</div>
-            <div className="text-sm">Độ tin cậy: {Math.round(recognizedPerson.confidence * 100)}%</div>
+          <div className={`absolute top-4 left-4 px-4 py-2 rounded-lg shadow-lg text-white ${recognizedPerson.name === "Không nhận diện được"
+            ? "bg-red-500"
+            : recognizedPerson.employeeId
+              ? "bg-green-500"
+              : "bg-orange-500"
+            }`}>
+            <div className="font-semibold">
+              {recognizedPerson.name === "Không nhận diện được"
+                ? "❌ Không nhận diện được khuôn mặt"
+                : `✅ Đã nhận diện: ${recognizedPerson.name}`}
+            </div>
+            {recognizedPerson.employeeId && (
+              <div className="text-sm">Độ tin cậy: {Math.round(recognizedPerson.confidence * 100)}%</div>
+            )}
           </div>
         )}
       </div>

@@ -19,7 +19,6 @@ import {
     FileText,
     DollarSign,
     Settings,
-    Bell,
     CheckCircle,
     Clock3,
     XCircle,
@@ -113,50 +112,6 @@ export default function UserDashboard() {
         enabled: !!user?.employeeId,
     });
 
-    // Query to get recent announcements
-    const {
-        data: announcements,
-        isLoading: isAnnouncementsLoading,
-    } = useQuery({
-        queryKey: ["/api/announcements"],
-        queryFn: async () => {
-            const response = await fetch("/api/announcements?limit=3", {
-                credentials: "include",
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch announcements: ${response.statusText}`);
-            }
-
-            return await response.json();
-        },
-    });
-
-    // Query to get pending leave requests
-    const {
-        data: leaveRequests,
-        isLoading: isLeaveRequestsLoading,
-    } = useQuery({
-        queryKey: ["/api/leave-requests/pending", user?.employeeId],
-        queryFn: async () => {
-            if (!user?.employeeId) return [];
-
-            const response = await fetch(
-                `/api/leave-requests/employee/${user.employeeId}?status=pending`,
-                {
-                    credentials: "include",
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch leave requests: ${response.statusText}`);
-            }
-
-            return await response.json();
-        },
-        enabled: !!user?.employeeId,
-    });
-
     // Query to get attendance stats
     const {
         data: attendanceStats,
@@ -185,6 +140,31 @@ export default function UserDashboard() {
         enabled: !!user?.employeeId,
     });
 
+    // Query to get pending leave requests
+    const {
+        data: leaveRequests,
+        isLoading: isLeaveRequestsLoading,
+    } = useQuery({
+        queryKey: ["/api/leave-requests/pending", user?.employeeId],
+        queryFn: async () => {
+            if (!user?.employeeId) return [];
+
+            const response = await fetch(
+                `/api/leave-requests/employee/${user.employeeId}?status=pending`,
+                {
+                    credentials: "include",
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch leave requests: ${response.statusText}`);
+            }
+
+            return await response.json();
+        },
+        enabled: !!user?.employeeId,
+    });
+
     // Format currency
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('vi-VN', {
@@ -194,8 +174,7 @@ export default function UserDashboard() {
     };
 
     // Check if all data is loading
-    const isLoading = isEmployeeLoading || isAttendanceLoading || isAnnouncementsLoading ||
-        isLeaveRequestsLoading || isStatsLoading;
+    const isLoading = isEmployeeLoading || isAttendanceLoading || isStatsLoading || isLeaveRequestsLoading;
 
     if (isLoading) {
         return (
@@ -455,60 +434,10 @@ export default function UserDashboard() {
                     </Card>
                 </div>
 
-                {/* Quick Actions and Announcements */}
-                <div className="grid gap-6 md:grid-cols-2">
-                    {/* Announcement Section */}
-                    <Card className="md:col-span-1">
-                        <CardHeader>
-                            <CardTitle className="flex items-center">
-                                <Bell className="mr-2 h-5 w-5 text-blue-600" />
-                                📢 Thông báo công ty
-                            </CardTitle>
-                            <CardDescription>
-                                Các thông báo mới nhất từ công ty
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <ScrollArea className="h-[300px]">
-                                <div className="space-y-4">
-                                    {announcements && announcements.length > 0 ? (
-                                        announcements.map((announcement: any) => (
-                                            <div key={announcement.id} className="p-3 border rounded-lg hover:bg-gray-50 transition-colors">
-                                                <div className="flex items-start space-x-3">
-                                                    <div className="flex-shrink-0">
-                                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                                            <Bell className="h-4 w-4 text-blue-600" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h4 className="text-sm font-medium text-gray-900 mb-1">
-                                                            {announcement.title}
-                                                        </h4>
-                                                        <p className="text-sm text-gray-600 mb-2">
-                                                            {announcement.content}
-                                                        </p>
-                                                        <div className="flex items-center text-xs text-gray-500">
-                                                            <span>{announcement.author}</span>
-                                                            <span className="mx-1">•</span>
-                                                            <span>{format(new Date(announcement.createdAt), "dd/MM/yyyy")}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-center py-16 text-gray-500">
-                                            <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                                            <p className="text-sm">Chưa có thông báo mới</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </ScrollArea>
-                        </CardContent>
-                    </Card>
-
+                {/* Quick Actions */}
+                <div className="grid gap-6">
                     {/* Quick Links Section - Updated với giao diện mới */}
-                    <Card className="md:col-span-1">
+                    <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center">
                                 <ChevronRight className="mr-2 h-5 w-5 text-green-600" />

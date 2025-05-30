@@ -517,11 +517,24 @@ export function AttendanceRecognition() {
         let errorMessage = error.message || "Could not process face data";
         let errorTitle = "Recognition Failed";
 
+        // Lấy thông tin chi tiết từ response nếu có
+        const errorResponse = error.response?.data || error.data || {};
+        const errorDetails = errorResponse.details || {};
+
         // Xử lý các loại lỗi cụ thể
-        if (errorMessage.includes("Bạn đã check-in trước đó")) {
+        if (errorMessage.includes("Bạn đã check-in")) {
           errorTitle = "Check-in Failed";
-          errorMessage = "Bạn đã check-in trước đó. Vui lòng check-out trước khi check-in lại.";
-        } else if (errorMessage.includes("Vui lòng đợi ít nhất 1 phút")) {
+          // Sử dụng thông tin từ API response nếu có
+          if (errorDetails.lastActionTime) {
+            errorMessage = `Bạn đã check-in lúc ${errorDetails.lastActionTime}. Vui lòng check-out trước khi check-in lại.`;
+          } else {
+            errorMessage = "Bạn đã check-in trước đó. Vui lòng check-out trước khi check-in lại.";
+          }
+        } else if (errorMessage.includes("Vui lòng đợi") && errorDetails.timeLimitSeconds) {
+          // Xử lý trường hợp time limit với thời gian cụ thể
+          errorTitle = "Check-in Too Fast";
+          errorMessage = `Vui lòng đợi ${errorDetails.timeLimitSeconds} giây trước khi check-in lại.`;
+        } else if (errorMessage.includes("Vui lòng đợi")) {
           errorTitle = "Check-in Failed";
           errorMessage = "Vui lòng đợi ít nhất 1 phút trước khi check-in lại.";
         } else if (errorMessage.includes("Face descriptor is required")) {
@@ -660,14 +673,30 @@ export function AttendanceRecognition() {
         let errorMessage = error.message || "Could not process face data";
         let errorTitle = "Recognition Failed";
 
+        // Lấy thông tin chi tiết từ response nếu có
+        const errorResponse = error.response?.data || error.data || {};
+        const errorDetails = errorResponse.details || {};
+
         // Xử lý các loại lỗi cụ thể
         if (errorMessage.includes("Bạn chưa check-in hôm nay")) {
           errorTitle = "Check-out Failed";
           errorMessage = "Bạn chưa check-in hôm nay. Vui lòng check-in trước khi check-out.";
+        } else if (errorMessage.includes("Bạn đã check-out")) {
+          errorTitle = "Check-out Failed";
+          // Sử dụng thông tin từ API response nếu có
+          if (errorDetails.lastActionTime) {
+            errorMessage = `Bạn đã check-out lúc ${errorDetails.lastActionTime}. Vui lòng check-in trước khi check-out lại.`;
+          } else {
+            errorMessage = "Bạn đã check-out trước đó. Vui lòng check-in trước khi check-out lại.";
+          }
         } else if (errorMessage.includes("Không có check-in nào cần check-out")) {
           errorTitle = "Check-out Failed";
           errorMessage = "Không có check-in nào cần check-out. Vui lòng check-in trước.";
-        } else if (errorMessage.includes("Vui lòng đợi ít nhất 1 phút")) {
+        } else if (errorMessage.includes("Vui lòng đợi") && errorDetails.timeLimitSeconds) {
+          // Xử lý trường hợp time limit với thời gian cụ thể
+          errorTitle = "Check-out Too Fast";
+          errorMessage = `Vui lòng đợi ${errorDetails.timeLimitSeconds} giây trước khi check-out lại.`;
+        } else if (errorMessage.includes("Vui lòng đợi")) {
           errorTitle = "Check-out Failed";
           errorMessage = "Vui lòng đợi ít nhất 1 phút trước khi check-out lại.";
         } else if (errorMessage.includes("Face descriptor is required")) {

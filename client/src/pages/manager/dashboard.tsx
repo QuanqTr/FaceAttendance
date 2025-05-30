@@ -23,7 +23,12 @@ import {
   Award,
   BarChart3,
   FileText,
-  Settings
+  Settings,
+  UserPlus,
+  ClipboardList,
+  Calendar as CalendarIcon,
+  PieChart,
+  Shield
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -258,38 +263,38 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-4">
                   <Button
                     variant="outline"
-                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    className="h-20 flex flex-col items-center justify-center space-y-2 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200"
                     onClick={() => navigate('/manager/employees')}
                   >
                     <Users className="h-6 w-6 text-blue-500" />
-                    <span className="text-sm">View Team</span>
+                    <span className="text-sm font-medium">View Team</span>
                   </Button>
 
                   <Button
                     variant="outline"
-                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    className="h-20 flex flex-col items-center justify-center space-y-2 hover:bg-green-50 hover:border-green-300 transition-all duration-200"
                     onClick={() => navigate('/manager/reports')}
                   >
                     <BarChart3 className="h-6 w-6 text-green-500" />
-                    <span className="text-sm">Reports</span>
+                    <span className="text-sm font-medium">Reports</span>
                   </Button>
 
                   <Button
                     variant="outline"
-                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    className="h-20 flex flex-col items-center justify-center space-y-2 hover:bg-orange-50 hover:border-orange-300 transition-all duration-200"
                     onClick={() => navigate('/manager/leave-requests')}
                   >
                     <FileText className="h-6 w-6 text-orange-500" />
-                    <span className="text-sm">Leave Requests</span>
+                    <span className="text-sm font-medium">Leave Requests</span>
                   </Button>
 
                   <Button
                     variant="outline"
-                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    className="h-20 flex flex-col items-center justify-center space-y-2 hover:bg-purple-50 hover:border-purple-300 transition-all duration-200"
                     onClick={() => navigate('/manager/settings')}
                   >
                     <Settings className="h-6 w-6 text-purple-500" />
-                    <span className="text-sm">Settings</span>
+                    <span className="text-sm font-medium">Settings</span>
                   </Button>
                 </div>
               </CardContent>
@@ -297,47 +302,107 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Activities */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Clock className="mr-2 h-5 w-5" />
-              Recent Activities
+        {/* Enhanced Quick Access Section */}
+        <Card className="bg-white shadow-lg border-0">
+          <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-t-lg">
+            <CardTitle className="flex items-center text-lg">
+              <Clock className="mr-2 h-6 w-6" />
+              Truy cập nhanh - Quản lý nhóm
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4 p-3 bg-blue-50 rounded-lg">
-                <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <CheckCircle className="h-4 w-4 text-white" />
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Team Management */}
+              <div
+                className="group p-4 border border-blue-200 rounded-lg hover:bg-blue-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/employees')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-blue-100 rounded-full mr-3 group-hover:bg-blue-200 transition-colors">
+                    <Users className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <span className="font-semibold text-blue-700">Quản lý nhân viên</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">John Doe checked in</p>
-                  <p className="text-xs text-gray-500">8:30 AM - On time</p>
-                </div>
-                <Badge variant="secondary" className="bg-green-100 text-green-800">Present</Badge>
+                <p className="text-sm text-gray-600 leading-relaxed">Xem danh sách, thông tin và trạng thái chấm công của nhóm</p>
               </div>
 
-              <div className="flex items-center space-x-4 p-3 bg-orange-50 rounded-lg">
-                <div className="h-8 w-8 bg-orange-500 rounded-full flex items-center justify-center">
-                  <AlertTriangle className="h-4 w-4 text-white" />
+              {/* Attendance Tracking */}
+              <div
+                className="group p-4 border border-green-200 rounded-lg hover:bg-green-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/attendance')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-green-100 rounded-full mr-3 group-hover:bg-green-200 transition-colors">
+                    <UserCheck className="h-5 w-5 text-green-600" />
+                  </div>
+                  <span className="font-semibold text-green-700">Theo dõi chấm công</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Jane Smith - Late arrival</p>
-                  <p className="text-xs text-gray-500">9:15 AM - 15 minutes late</p>
-                </div>
-                <Badge variant="secondary" className="bg-orange-100 text-orange-800">Late</Badge>
+                <p className="text-sm text-gray-600 leading-relaxed">Kiểm tra ai đã đến, đi muộn, vắng mặt hôm nay</p>
               </div>
 
-              <div className="flex items-center space-x-4 p-3 bg-blue-50 rounded-lg">
-                <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <FileText className="h-4 w-4 text-white" />
+              {/* Leave Requests */}
+              <div
+                className="group p-4 border border-orange-200 rounded-lg hover:bg-orange-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/leave-requests')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-orange-100 rounded-full mr-3 group-hover:bg-orange-200 transition-colors">
+                    <CalendarIcon className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <span className="font-semibold text-orange-700">Duyệt nghỉ phép</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">New leave request from Mike Johnson</p>
-                  <p className="text-xs text-gray-500">Vacation - June 15-20</p>
+                <p className="text-sm text-gray-600 leading-relaxed">Xét duyệt các đơn xin nghỉ phép của nhân viên</p>
+              </div>
+
+              {/* Reports */}
+              <div
+                className="group p-4 border border-purple-200 rounded-lg hover:bg-purple-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/reports')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-purple-100 rounded-full mr-3 group-hover:bg-purple-200 transition-colors">
+                    <BarChart3 className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <span className="font-semibold text-purple-700">Báo cáo chi tiết</span>
                 </div>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-800">Pending</Badge>
+                <p className="text-sm text-gray-600 leading-relaxed">Xuất báo cáo chấm công, thống kê hiệu suất nhóm</p>
+              </div>
+
+              {/* Performance Analytics */}
+              <div
+                className="group p-4 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/analytics')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-indigo-100 rounded-full mr-3 group-hover:bg-indigo-200 transition-colors">
+                    <PieChart className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <span className="font-semibold text-indigo-700">Phân tích hiệu suất</span>
+                </div>
+                <p className="text-sm text-gray-600 leading-relaxed">Xem biểu đồ, xu hướng và KPI của phòng ban</p>
+              </div>
+
+              {/* Department Settings */}
+              <div
+                className="group p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105"
+                onClick={() => navigate('/manager/settings')}
+              >
+                <div className="flex items-center mb-3">
+                  <div className="p-2 bg-gray-100 rounded-full mr-3 group-hover:bg-gray-200 transition-colors">
+                    <Settings className="h-5 w-5 text-gray-600" />
+                  </div>
+                  <span className="font-semibold text-gray-700">Cài đặt phòng ban</span>
+                </div>
+                <p className="text-sm text-gray-600 leading-relaxed">Thiết lập quy định, giờ làm việc cho phòng ban</p>
+              </div>
+            </div>
+
+            {/* Quick Stats Footer */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Đang quản lý: <span className="font-semibold text-blue-600">{departmentInfo?.totalEmployees || 0} nhân viên</span></span>
+                <span>Hôm nay: <span className="font-semibold text-green-600">{dailyStats?.present || 0} có mặt</span></span>
+                <span>Chờ duyệt: <span className="font-semibold text-orange-600">{pendingCounts?.total || 0} đơn</span></span>
               </div>
             </div>
           </CardContent>
