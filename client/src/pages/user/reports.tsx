@@ -55,41 +55,54 @@ const BarChart = ({ data, className = "" }: { data: any[], className?: string })
 
     const maxValue = Math.max(...data.map(d => d.hours || d.attendance || 1));
     const chartHeight = 200;
-    const chartWidth = 400;
-    const barWidth = chartWidth / data.length - 4;
+    const chartWidth = 600;
+    const barWidth = Math.max(8, (chartWidth - 80) / data.length - 2);
+    const chartPadding = 40;
 
     return (
         <div className={`bg-white rounded-lg p-4 ${className}`}>
-            <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
-                {data.map((item, index) => {
-                    const barHeight = ((item.hours || item.attendance || 0) / maxValue) * (chartHeight - 40);
-                    const x = index * (barWidth + 4);
-                    const y = chartHeight - barHeight - 20;
+            <div className="overflow-x-auto">
+                <svg width="100%" height={chartHeight + 60} viewBox={`0 0 ${chartWidth} ${chartHeight + 60}`} className="min-w-full">
+                    {data.map((item, index) => {
+                        const barHeight = ((item.hours || item.attendance || 0) / maxValue) * (chartHeight - 40);
+                        const x = chartPadding + index * (barWidth + 2);
+                        const y = chartHeight - barHeight - 30;
 
-                    return (
-                        <g key={index}>
-                            <rect
-                                x={x}
-                                y={y}
-                                width={barWidth}
-                                height={barHeight}
-                                fill={item.attendance === 1 ? "#3b82f6" : "#ef4444"}
-                                rx="2"
-                                className="hover:opacity-80 transition-opacity"
-                            />
-                            <text
-                                x={x + barWidth / 2}
-                                y={chartHeight - 5}
-                                textAnchor="middle"
-                                fontSize="10"
-                                fill="#6b7280"
-                            >
-                                {item.date}
-                            </text>
-                        </g>
-                    );
-                })}
-            </svg>
+                        const showLabel = index % Math.max(1, Math.floor(data.length / 8)) === 0 || index === data.length - 1;
+
+                        return (
+                            <g key={index}>
+                                <rect
+                                    x={x}
+                                    y={y}
+                                    width={barWidth}
+                                    height={barHeight}
+                                    fill={item.attendance === 1 ? "#3b82f6" : "#ef4444"}
+                                    rx="2"
+                                    className="hover:opacity-80 transition-opacity"
+                                />
+                                {showLabel && (
+                                    <text
+                                        x={x + barWidth / 2}
+                                        y={chartHeight + 15}
+                                        textAnchor="middle"
+                                        fontSize="8"
+                                        fill="#6b7280"
+                                        transform={`rotate(-45, ${x + barWidth / 2}, ${chartHeight + 15})`}
+                                    >
+                                        {item.date}
+                                    </text>
+                                )}
+                                <title>{`${item.date}: ${item.hours ? `${item.hours.toFixed(1)}h` : (item.attendance ? 'Có mặt' : 'Vắng mặt')}`}</title>
+                            </g>
+                        );
+                    })}
+
+                    <text x="10" y="20" fontSize="8" fill="#6b7280">Giờ</text>
+                    <text x="10" y={chartHeight - 10} fontSize="8" fill="#6b7280">0</text>
+                    <text x="10" y="40" fontSize="8" fill="#6b7280">{maxValue.toFixed(0)}</text>
+                </svg>
+            </div>
         </div>
     );
 };
@@ -107,52 +120,82 @@ const LineChart = ({ data, className = "" }: { data: any[], className?: string }
     }
 
     const maxValue = Math.max(...data.map(d => d.hours || 1));
-    const chartHeight = 150;
-    const chartWidth = 400;
-    const stepX = chartWidth / (data.length - 1);
+    const minValue = Math.min(...data.map(d => d.hours || 0));
+    const chartHeight = 180;
+    const chartWidth = 600;
+    const chartPadding = 40;
+    const stepX = (chartWidth - chartPadding * 2) / (data.length - 1);
 
     const points = data.map((item, index) => {
-        const x = index * stepX;
-        const y = chartHeight - ((item.hours || 0) / maxValue) * (chartHeight - 20) - 10;
+        const x = chartPadding + index * stepX;
+        const y = chartHeight - ((item.hours || 0 - minValue) / (maxValue - minValue)) * (chartHeight - 60) - 30;
         return `${x},${y}`;
     }).join(' ');
 
     return (
         <div className={`bg-white rounded-lg p-4 ${className}`}>
-            <svg width="100%" height={chartHeight + 40} viewBox={`0 0 ${chartWidth} ${chartHeight + 40}`}>
-                <polyline
-                    points={points}
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="2"
-                    className="drop-shadow-sm"
-                />
-                {data.map((item, index) => {
-                    const x = index * stepX;
-                    const y = chartHeight - ((item.hours || 0) / maxValue) * (chartHeight - 20) - 10;
-
-                    return (
-                        <g key={index}>
-                            <circle
-                                cx={x}
-                                cy={y}
-                                r="4"
-                                fill="#10b981"
-                                className="hover:r-6 transition-all"
+            <div className="overflow-x-auto">
+                <svg width="100%" height={chartHeight + 60} viewBox={`0 0 ${chartWidth} ${chartHeight + 60}`} className="min-w-full">
+                    {Array.from({ length: 5 }, (_, i) => {
+                        const y = 30 + (i * (chartHeight - 60) / 4);
+                        return (
+                            <line
+                                key={i}
+                                x1={chartPadding}
+                                y1={y}
+                                x2={chartWidth - chartPadding}
+                                y2={y}
+                                stroke="#f3f4f6"
+                                strokeWidth="1"
                             />
-                            <text
-                                x={x}
-                                y={chartHeight + 25}
-                                textAnchor="middle"
-                                fontSize="10"
-                                fill="#6b7280"
-                            >
-                                {item.date}
-                            </text>
-                        </g>
-                    );
-                })}
-            </svg>
+                        );
+                    })}
+
+                    <polyline
+                        points={points}
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="2"
+                        className="drop-shadow-sm"
+                    />
+
+                    {data.map((item, index) => {
+                        const x = chartPadding + index * stepX;
+                        const y = chartHeight - ((item.hours || 0 - minValue) / (maxValue - minValue)) * (chartHeight - 60) - 30;
+
+                        const showLabel = index % Math.max(1, Math.floor(data.length / 6)) === 0 || index === data.length - 1;
+
+                        return (
+                            <g key={index}>
+                                <circle
+                                    cx={x}
+                                    cy={y}
+                                    r="3"
+                                    fill="#10b981"
+                                    className="hover:r-5 transition-all"
+                                />
+                                {showLabel && (
+                                    <text
+                                        x={x}
+                                        y={chartHeight + 15}
+                                        textAnchor="middle"
+                                        fontSize="8"
+                                        fill="#6b7280"
+                                        transform={`rotate(-45, ${x}, ${chartHeight + 15})`}
+                                    >
+                                        {item.date}
+                                    </text>
+                                )}
+                                <title>{`${item.date}: ${(item.hours || 0).toFixed(1)}h`}</title>
+                            </g>
+                        );
+                    })}
+
+                    <text x="10" y="25" fontSize="8" fill="#6b7280">Giờ</text>
+                    <text x="10" y={chartHeight - 15} fontSize="8" fill="#6b7280">{minValue.toFixed(1)}</text>
+                    <text x="10" y="35" fontSize="8" fill="#6b7280">{maxValue.toFixed(1)}</text>
+                </svg>
+            </div>
         </div>
     );
 };
@@ -170,17 +213,17 @@ const PieChart = ({ data, className = "" }: { data: any[], className?: string })
     }
 
     const total = data.reduce((sum, item) => sum + (item.value || 0), 0);
-    const radius = 60;
-    const centerX = 80;
-    const centerY = 80;
+    const radius = 70;
+    const centerX = 90;
+    const centerY = 90;
     const colors = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"];
 
     let currentAngle = 0;
 
     return (
         <div className={`bg-white rounded-lg p-4 ${className}`}>
-            <div className="flex items-center space-x-4">
-                <svg width="160" height="160" viewBox="0 0 160 160">
+            <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
+                <svg width="180" height="180" viewBox="0 0 180 180" className="flex-shrink-0">
                     {data.map((item, index) => {
                         const angle = (item.value / total) * 360;
                         const startAngle = currentAngle;
@@ -203,20 +246,32 @@ const PieChart = ({ data, className = "" }: { data: any[], className?: string })
                                 d={pathData}
                                 fill={colors[index % colors.length]}
                                 className="hover:opacity-80 transition-opacity"
-                            />
+                            >
+                                <title>{`${item.label}: ${item.value} (${((item.value / total) * 100).toFixed(1)}%)`}</title>
+                            </path>
                         );
                     })}
                 </svg>
-                <div className="space-y-2">
-                    {data.map((item, index) => (
-                        <div key={index} className="flex items-center space-x-2 text-sm">
-                            <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: colors[index % colors.length] }}
-                            />
-                            <span>{item.label}: {item.value}</span>
-                        </div>
-                    ))}
+                <div className="flex-1 min-w-0">
+                    <div className="grid grid-cols-1 gap-2">
+                        {data.map((item, index) => (
+                            <div key={index} className="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-2">
+                                <div className="flex items-center space-x-2 min-w-0">
+                                    <div
+                                        className="w-3 h-3 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: colors[index % colors.length] }}
+                                    />
+                                    <span className="truncate">{item.label}</span>
+                                </div>
+                                <div className="flex items-center space-x-2 text-right">
+                                    <span className="font-medium">{item.value}</span>
+                                    <span className="text-xs text-gray-500">
+                                        ({((item.value / total) * 100).toFixed(1)}%)
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
@@ -359,7 +414,7 @@ export default function UserReportsPage() {
                 description="Xem báo cáo và thống kê chấm công cá nhân của bạn"
             />
 
-            <div className="p-4 md:p-6 space-y-6">
+            <div className="p-4 md:p-6 space-y-6 max-w-full overflow-x-hidden">
                 {/* Filters Section */}
                 <Card>
                     <CardHeader>
@@ -372,7 +427,7 @@ export default function UserReportsPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
                                 <label className="text-sm font-medium">Tháng</label>
                                 <Select
@@ -436,20 +491,20 @@ export default function UserReportsPage() {
                 </Card>
 
                 {/* Overview Stats */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <Card className="border-l-4 border-l-green-500">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Ngày có mặt</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-600 truncate">Ngày có mặt</p>
                                     <p className="text-2xl font-bold text-green-600">
                                         {attendanceStats?.present + attendanceStats?.late || 0}
                                     </p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-500 truncate">
                                         /{attendanceStats?.workingDays || 0} ngày làm việc
                                     </p>
                                 </div>
-                                <div className="p-3 bg-green-100 rounded-full">
+                                <div className="p-3 bg-green-100 rounded-full flex-shrink-0">
                                     <Calendar className="h-6 w-6 text-green-600" />
                                 </div>
                             </div>
@@ -459,16 +514,16 @@ export default function UserReportsPage() {
                     <Card className="border-l-4 border-l-blue-500">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Tổng giờ làm</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-600 truncate">Tổng giờ làm</p>
                                     <p className="text-2xl font-bold text-blue-600">
                                         {attendanceStats?.totalHours || 0}h
                                     </p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-500 truncate">
                                         +{attendanceStats?.overtimeHours || 0}h tăng ca
                                     </p>
                                 </div>
-                                <div className="p-3 bg-blue-100 rounded-full">
+                                <div className="p-3 bg-blue-100 rounded-full flex-shrink-0">
                                     <Clock className="h-6 w-6 text-blue-600" />
                                 </div>
                             </div>
@@ -478,23 +533,23 @@ export default function UserReportsPage() {
                     <Card className="border-l-4 border-l-purple-500">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Tỷ lệ chấm công</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-600 truncate">Tỷ lệ chấm công</p>
                                     <p className="text-2xl font-bold text-purple-600">
                                         {attendanceStats?.attendanceRate || 0}%
                                     </p>
                                     <div className="flex items-center mt-1">
                                         {(attendanceStats?.attendanceRate || 0) >= 90 ? (
-                                            <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                                            <TrendingUp className="h-3 w-3 text-green-500 mr-1 flex-shrink-0" />
                                         ) : (
-                                            <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                                            <TrendingDown className="h-3 w-3 text-red-500 mr-1 flex-shrink-0" />
                                         )}
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-gray-500 truncate">
                                             {(attendanceStats?.attendanceRate || 0) >= 90 ? 'Tốt' : 'Cần cải thiện'}
                                         </p>
                                     </div>
                                 </div>
-                                <div className="p-3 bg-purple-100 rounded-full">
+                                <div className="p-3 bg-purple-100 rounded-full flex-shrink-0">
                                     <Award className="h-6 w-6 text-purple-600" />
                                 </div>
                             </div>
@@ -504,16 +559,16 @@ export default function UserReportsPage() {
                     <Card className="border-l-4 border-l-orange-500">
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Điểm đúng giờ</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-600 truncate">Điểm đúng giờ</p>
                                     <p className="text-2xl font-bold text-orange-600">
                                         {attendanceStats?.punctualityRate || 0}%
                                     </p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-500 truncate">
                                         {attendanceStats?.late || 0} lần muộn
                                     </p>
                                 </div>
-                                <div className="p-3 bg-orange-100 rounded-full">
+                                <div className="p-3 bg-orange-100 rounded-full flex-shrink-0">
                                     <AlertTriangle className="h-6 w-6 text-orange-600" />
                                 </div>
                             </div>
@@ -530,27 +585,35 @@ export default function UserReportsPage() {
                     </TabsList>
 
                     <TabsContent value="overview" className="space-y-6">
-                        <div className="grid gap-6 md:grid-cols-2">
+                        <div className="grid gap-6 lg:grid-cols-2">
                             {/* Attendance Chart */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="flex items-center">
+                                    <CardTitle className="flex items-center text-base">
                                         <BarChart3 className="mr-2 h-5 w-5 text-blue-600" />
                                         Biểu đồ chấm công tháng
                                     </CardTitle>
+                                    <CardDescription className="text-sm">
+                                        Hiển thị tình trạng chấm công theo từng ngày trong tháng
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <SimpleChart data={chartData} type="bar" className="h-64" />
+                                    <div className="h-80 w-full">
+                                        <SimpleChart data={chartData} type="bar" className="h-full w-full" />
+                                    </div>
                                 </CardContent>
                             </Card>
 
                             {/* Performance Breakdown */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle className="flex items-center">
+                                    <CardTitle className="flex items-center text-base">
                                         <PieChartIcon className="mr-2 h-5 w-5 text-purple-600" />
                                         Phân tích hiệu suất
                                     </CardTitle>
+                                    <CardDescription className="text-sm">
+                                        Đánh giá toàn diện về hiệu suất làm việc
+                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {performanceMetrics && (
@@ -600,11 +663,11 @@ export default function UserReportsPage() {
                             <CardHeader>
                                 <CardTitle>Chi tiết chấm công tháng {selectedMonth}/{selectedYear}</CardTitle>
                                 <CardDescription>
-                                    Thông tin chi tiết về chấm công và giờ làm việc
+                                    Thông tin chi tiết về chấm công và giờ làm việc theo từng ngày
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid gap-4 md:grid-cols-3">
+                                <div className="grid gap-4 md:grid-cols-3 mb-6">
                                     <div className="space-y-2">
                                         <h4 className="font-medium text-green-700">Thống kê tích cực</h4>
                                         <div className="space-y-1 text-sm">
@@ -670,8 +733,14 @@ export default function UserReportsPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-6">
-                                    <SimpleChart data={chartData} type="line" className="h-48" />
+                                <div className="border-t pt-4">
+                                    <h4 className="font-medium mb-3 flex items-center">
+                                        <Activity className="mr-2 h-4 w-4 text-green-600" />
+                                        Biểu đồ giờ làm việc theo ngày
+                                    </h4>
+                                    <div className="h-64 w-full bg-gray-50 rounded-lg p-2">
+                                        <SimpleChart data={chartData} type="line" className="h-full w-full" />
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -689,7 +758,7 @@ export default function UserReportsPage() {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid gap-6 md:grid-cols-2">
+                                <div className="grid gap-6 lg:grid-cols-2">
                                     <div className="space-y-4">
                                         <h4 className="font-medium">Điểm số hiệu suất</h4>
                                         {performanceMetrics && (
@@ -711,21 +780,6 @@ export default function UserReportsPage() {
                                                     <Badge variant="outline" className="bg-white">
                                                         {Math.round(performanceMetrics.productivityScore)}/100
                                                     </Badge>
-                                                </div>
-
-                                                {/* Performance Pie Chart */}
-                                                <div className="mt-4">
-                                                    <h5 className="text-sm font-medium mb-2">Phân tích tình trạng chấm công</h5>
-                                                    <SimpleChart
-                                                        data={[
-                                                            { label: "Có mặt", value: attendanceStats?.present || 20 },
-                                                            { label: "Muộn", value: attendanceStats?.late || 3 },
-                                                            { label: "Vắng mặt", value: attendanceStats?.absent || 2 },
-                                                            { label: "Nghỉ phép", value: attendanceStats?.onLeave || 5 }
-                                                        ]}
-                                                        type="pie"
-                                                        className="h-48"
-                                                    />
                                                 </div>
                                             </div>
                                         )}
@@ -759,6 +813,26 @@ export default function UserReportsPage() {
                                                 </div>
                                             )}
                                         </div>
+                                    </div>
+                                </div>
+
+                                {/* Performance Pie Chart - Full width */}
+                                <div className="mt-6 pt-6 border-t">
+                                    <h4 className="font-medium mb-4 flex items-center">
+                                        <PieChartIcon className="mr-2 h-4 w-4 text-purple-600" />
+                                        Phân tích tình trạng chấm công
+                                    </h4>
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <SimpleChart
+                                            data={[
+                                                { label: "Có mặt", value: attendanceStats?.present || 20 },
+                                                { label: "Muộn", value: attendanceStats?.late || 3 },
+                                                { label: "Vắng mặt", value: attendanceStats?.absent || 2 },
+                                                { label: "Nghỉ phép", value: attendanceStats?.onLeave || 5 }
+                                            ]}
+                                            type="pie"
+                                            className="w-full"
+                                        />
                                     </div>
                                 </div>
                             </CardContent>

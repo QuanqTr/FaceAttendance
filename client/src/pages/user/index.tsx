@@ -284,10 +284,7 @@ export default function UserDashboard() {
                         </CardContent>
                         <CardFooter>
                             <Button variant="outline" className="w-full" asChild>
-                                <Link href="/face-recognition-live">
-                                    <Fingerprint className="mr-2 h-4 w-4" />
-                                    Điểm danh
-                                </Link>
+
                             </Button>
                         </CardFooter>
                     </Card>
