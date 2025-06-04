@@ -233,7 +233,7 @@ export default function LeaveRequestDetailsPage() {
     const handleBack = () => {
         // Determine where to navigate back to based on user role
         if (isManager) {
-            navigate("/manager/leave-requests");
+            navigate("/leave-requests");
         } else {
             navigate("/leave-requests");
         }

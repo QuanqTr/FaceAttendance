@@ -152,6 +152,14 @@ export function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink
+                  href="/manager/attendance"
+                  icon={<ClipboardList className="h-5 w-5" />}
+                  isActive={isActive('/manager/attendance')}
+                >
+                  {t('common.attendance')}
+                </SidebarLink>
+
+                <SidebarLink
                   href="/manager/employees"
                   icon={<Users2 className="h-5 w-5" />}
                   isActive={isActive('/manager/employees')}
@@ -173,14 +181,6 @@ export function Sidebar() {
                   isActive={isActive('/manager/reports')}
                 >
                   {t('common.reports')}
-                </SidebarLink>
-
-                <SidebarLink
-                  href="/manager/attendance"
-                  icon={<ClipboardList className="h-5 w-5" />}
-                  isActive={isActive('/manager/attendance')}
-                >
-                  {t('common.attendance')}
                 </SidebarLink>
 
 

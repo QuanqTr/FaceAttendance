@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Eye, Pencil, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Employee } from "@shared/schema";
+import { formatEmployeeName } from "@/lib/name-utils";
 
 type EmployeeWithAttendance = {
   employee: Employee;
@@ -166,7 +167,7 @@ export function EmployeeTable() {
                         </div>
                         <div>
                           <p className="text-sm font-medium">
-                            {item.employee.lastName} {item.employee.firstName}
+                            {formatEmployeeName(item.employee)}
                           </p>
                           <p className="text-xs text-muted-foreground">{item.employee.employeeId}</p>
                         </div>

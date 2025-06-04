@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { RecognitionStatusType } from "@/components/dashboard/attendance-recognition";
 import * as faceapi from 'face-api.js';
 import { Button } from "@/components/ui/button";
+import { formatEmployeeName } from "@/lib/name-utils";
 import {
   Select,
   SelectContent,
@@ -983,9 +984,9 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
               // Kiểm tra descriptor có hợp lệ không
               if (Array.isArray(descriptor) && descriptor.length === 128) {
-                console.log(`✅ Loaded face descriptor for ${emp.firstName} ${emp.lastName} (ID: ${emp.id})`);
+                console.log(`✅ Loaded face descriptor for ${formatEmployeeName(emp)} (ID: ${emp.id})`);
                 return {
-                  name: `${emp.firstName} ${emp.lastName}`,
+                  name: formatEmployeeName(emp),
                   employeeId: emp.id,
                   descriptor: new Float32Array(descriptor)
                 };

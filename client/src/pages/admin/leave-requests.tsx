@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function LeaveRequestsPage() {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(5);
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");

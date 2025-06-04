@@ -3,14 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { format, subDays, addDays, parseISO } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
-import { AttendanceRecognition } from "@/components/dashboard/attendance-recognition";
-import { AttendanceLog } from "@/components/attendance/attendance-log";
 import { WorkHoursLog } from "@/components/attendance/work-hours-log";
-import { AttendanceTabs } from "@/components/attendance/attendance-tabs";
 import type { WorkHoursRecord } from "@/components/attendance/work-hours-log";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -23,54 +20,22 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
-import { useI18nToast } from "@/hooks/use-i18n-toast";
-import { useAuth } from "@/hooks/use-auth";
 
-type AttendanceRecord = {
-  id: number;
-  employeeId: number;
-  employeeName: string;
-  departmentName: string;
-  date: string;
-  timeIn?: string;
-  timeOut?: string;
-  status: 'present' | 'absent' | 'late';
-};
+import { cn } from "@/lib/utils";
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+
 
 export default function Attendance() {
   const { t } = useTranslation();
-  const toast = useI18nToast();
   const [date, setDate] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("record");
-  const { user } = useAuth();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const formattedDate = format(date, "yyyy-MM-dd");
 
-  const { data: attendanceRecords, isLoading: isLoadingAttendance } = useQuery<AttendanceRecord[]>({
-    queryKey: ["/api/attendance/daily", formattedDate],
-    queryFn: async () => {
-      const res = await fetch(`/api/attendance/daily?date=${formattedDate}`);
-      if (!res.ok) throw new Error("Failed to fetch attendance records");
 
-      const data = await res.json();
-
-      // Transform the data to match the AttendanceRecord type
-      return data.map((item: any, index: number) => ({
-        // Ensure each record has a unique ID by combining employee ID with index
-        id: item.attendance?.id || (item.employee.id * 1000 + index),
-        employeeId: item.employee.id,
-        employeeName: `${item.employee.lastName} ${item.employee.firstName}`,
-        departmentName: item.employee.departmentId, // In a real app, this would fetch the department name
-        date: formattedDate,
-        timeIn: item.attendance?.type === 'in' ? new Date(item.attendance?.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-        timeOut: item.attendance?.type === 'out' ? new Date(item.attendance?.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-        status: item.attendance?.status || 'absent',
-      }));
-    }
-  });
 
   // Fetch work hours data
   const { data: workHoursData, isLoading: isLoadingWorkHours } = useQuery<WorkHoursRecord[]>({
@@ -82,6 +47,8 @@ export default function Attendance() {
     }
   });
 
+
+
   const handlePreviousDay = () => {
     setDate(subDays(date, 1));
   };
@@ -92,17 +59,6 @@ export default function Attendance() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-  };
-
-  const filteredRecords = attendanceRecords?.filter(record =>
-    record.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    record.departmentName.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
-
-  const exportAttendance = () => {
-    // In a real app, this would trigger a CSV/Excel export
-    console.log("Exporting attendance data");
-    toast.success(t('common.success'), t('reports.exportSuccess'));
   };
 
   return (
@@ -155,9 +111,12 @@ export default function Attendance() {
         </div>
 
         <div className="space-y-6">
+          {/* Filters */}
+
+          {/* Work Hours Log */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-xl">{t('attendance.dailyAttendance')}</CardTitle>
+              <CardTitle className="text-xl">{t('attendance.workHoursStatistics')}</CardTitle>
             </CardHeader>
             <CardContent>
               <WorkHoursLog

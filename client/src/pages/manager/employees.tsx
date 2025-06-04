@@ -414,7 +414,7 @@ export default function Employees() {
                               </div>
                             </td>
                             <td className="p-4 text-gray-900">{employee.position || 'No position'}</td>
-                            <td className="p-4 text-gray-900">{employee.department?.name || 'No department'}</td>
+                            <td className="p-4 text-gray-900">{employee.department && employee.department.name ? employee.department.name : 'No department'}</td>
                             <td className="p-4">
                               <Badge
                                 variant={employee.status === 'active' ? 'default' :

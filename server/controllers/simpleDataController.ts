@@ -15,7 +15,7 @@ export const getWorkHoursData = async (req: Request, res: Response) => {
         const query = `
             SELECT 
                 wh.employee_id,
-                e.first_name || ' ' || e.last_name as employee_name,
+                e.last_name || ' ' || e.first_name as employee_name, -- Vietnamese format
                 wh.regular_hours,
                 wh.ot_hours as overtime_hours,
                 wh.first_checkin as checkin_time,
@@ -401,7 +401,7 @@ export const checkEmployeeManagerStructure = async (req: Request, res: Response)
         const potentialManagers = await pool.query(`
             SELECT 
                 e.id as employee_id,
-                e.first_name || ' ' || e.last_name as employee_name,
+                e.last_name || ' ' || e.first_name as employee_name, -- Vietnamese format
                 u.username,
                 u.role
             FROM employees e

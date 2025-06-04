@@ -68,7 +68,9 @@
         "previous": "Trước",
         "export": "Xuất file",
         "notSpecified": "Không xác định",
-        "notProvided": "Không cung cấp"
+        "notProvided": "Không cung cấp",
+        "exportSuccess": "Xuất file thành công",
+        "exportFailed": "Xuất file thất bại"
     },
     "user": {
         "dashboard": {
@@ -352,6 +354,11 @@
         "title": "Nhân viên",
         "addNew": "Thêm nhân viên mới",
         "employeeId": "Mã nhân viên",
+        "faceRegistered": "Đã đăng ký khuôn mặt",
+        "uploadNotes": "Lưu ý: Khi đăng ký khuôn mặt, ảnh sẽ được sử dụng để nhận diện khuôn mặt. Hãy chắc chắn rằng khuôn mặt của bạn được chụp rõ nét và không bị che khuất.",
+        "selectImage": "Chọn ảnh",
+        "uploadNotes": "Lưu ý: Khi đăng ký khuôn mặt, ảnh sẽ được sử dụng để nhận diện khuôn mặt. Hãy chắc chắn rằng khuôn mặt của bạn được chụp rõ nét và không bị che khuất.",
+        "fullName": "Họ và tên",
         "name": "Tên",
         "email": "Email",
         "phone": "Điện thoại",
@@ -468,7 +475,13 @@
         "resetFaceData": "Xóa dữ liệu khuôn mặt",
         "confirmResetFace": "Bạn có chắc chắn muốn xóa dữ liệu khuôn mặt của nhân viên này không? Hành động này không thể hoàn tác.",
         "faceRegistration": "Đăng ký khuôn mặt",
-        "uploadFaceHint": "Vui lòng chọn ảnh có khuôn mặt rõ nét, nhìn thẳng"
+        "uploadFaceHint": "Vui lòng chọn ảnh có khuôn mặt rõ nét, nhìn thẳng",
+        "information": "Thông tin",
+        "attendance": "Điểm danh",
+        "workHours": "Giờ làm việc",
+        "uploadNewAvatar": "Tải lên ảnh đại diện mới",
+        "liveRegistration": "Đăng ký trực tiếp",
+        "currentAvatar": "Ảnh đại diện hiện tại"
     },
     "attendance": {
         "title": "Điểm danh",
@@ -479,6 +492,7 @@
         "status": "Trạng thái",
         "present": "Đi làm",
         "absent": "Vắng mặt",
+        "early_leave": "Về sớm",
         "late": "Đi muộn",
         "leave": "Nghỉ phép",
         "weekend": "Ngày cuối tuần",
@@ -511,7 +525,9 @@
         "presentDay": "Ngày có đi làm",
         "nonWorkDay": "Ngày không đi làm",
         "attendanceCalendar": "Lịch điểm danh",
-        "attendanceDetails": "Chi tiết điểm danh"
+        "attendanceDetails": "Chi tiết điểm danh",
+        "workHoursStatistics": "Thống kê giờ làm việc",
+        "dailyWorkHours": "Giờ làm việc hàng ngày"
     },
     "leaveRequests": {
         "title": "Đơn nghỉ phép",

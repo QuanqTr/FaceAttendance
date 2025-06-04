@@ -10,6 +10,8 @@ import { attendanceSummaryRoutes } from "./attendanceSummaryRoutes.js";
 import { userRoutes } from "./userRoutes.js";
 import { statisticsRoutes } from "./statisticsRoutes.js";
 import { managerRoutes } from "./managerRoutes.js";
+import { managerStatsRoutes } from "./managerStatsRoutes.js";
+import { managerReportsRoutes } from "./managerReportsRoutes.js";
 import { advancedFaceRoutes } from "./advancedFaceRoutes.js";
 import { workHoursRoutes } from "./workHoursRoutes.js";
 import { adminRoutes } from "./adminRoutes.js";
@@ -60,6 +62,8 @@ export function registerRoutes(app: Express) {
 
     // Manager functions
     managerRoutes(app);
+    managerStatsRoutes(app);
+    managerReportsRoutes(app);
 
     // Admin functions
     adminRoutes(app);

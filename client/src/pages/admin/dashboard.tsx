@@ -1,61 +1,57 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
-import { StatsCard } from "@/components/dashboard/stats-card";
-import { WeeklyAttendanceChart } from "@/components/dashboard/weekly-attendance-chart";
 import { useAuth } from "@/hooks/use-auth";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, AreaChart, Area } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, Line } from 'recharts';
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, Users, Clock, Calendar, AlertTriangle, Building2, UserCheck, UserX, Timer, FileText, Settings, BarChart3, PieChart as PieChartIcon, UserPlus, ClipboardList } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Users, Clock, Calendar, Building2, UserCheck, UserX, Timer, Settings, BarChart3, UserPlus, ClipboardList, Database } from "lucide-react";
+import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 export default function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isCreatingData, setIsCreatingData] = useState(false);
 
-  // Sample data for when real data is not available
-  const sampleDailySummary = {
-    present: 142,
-    absent: 8,
-    late: 5,
-    total: 155
-  };
 
-  const sampleWeeklyStats = [
-    { date: '2024-01-15', present: 145, late: 8, absent: 7 },
-    { date: '2024-01-16', present: 142, late: 6, absent: 12 },
-    { date: '2024-01-17', present: 149, late: 4, absent: 6 },
-    { date: '2024-01-18', present: 147, late: 7, absent: 8 },
-    { date: '2024-01-19', present: 151, late: 3, absent: 4 },
-    { date: '2024-01-20', present: 138, late: 9, absent: 13 },
-    { date: '2024-01-21', present: 144, late: 5, absent: 11 }
-  ];
 
-  const sampleDepartmentStats = [
-    { name: 'Kỹ thuật', employeeCount: 45, presentPercentage: 92 },
-    { name: 'Kinh doanh', employeeCount: 32, presentPercentage: 89 },
-    { name: 'Marketing', employeeCount: 28, presentPercentage: 95 },
-    { name: 'Nhân sự', employeeCount: 15, presentPercentage: 87 },
-    { name: 'Kế toán', employeeCount: 12, presentPercentage: 100 },
-    { name: 'Hành chính', employeeCount: 23, presentPercentage: 91 }
-  ];
+
 
   // Fetch daily attendance summary
   const { data: dailySummary, isLoading: isSummaryLoading } = useQuery({
     queryKey: ["/api/stats/daily"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/stats/daily");
-      return res.data;
-    }
+      try {
+        const res = await apiRequest("GET", "/api/stats/daily");
+        console.log("API Response for daily stats:", res.data);
+        return res.data;
+      } catch (error) {
+        console.warn("Failed to fetch daily stats:", error);
+        return null;
+      }
+    },
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: true
   });
 
   // Fetch weekly stats
   const { data: weeklyStats, isLoading: weeklyStatsLoading } = useQuery({
     queryKey: ["/api/stats/weekly"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/stats/weekly");
-      return res.data;
+      try {
+        const res = await apiRequest("GET", "/api/stats/weekly");
+        return res.data;
+      } catch (error) {
+        console.warn("Failed to fetch weekly stats, using sample data");
+        return null;
+      }
     }
   });
 
@@ -63,27 +59,67 @@ export default function Dashboard() {
   const { data: departmentStats, isLoading: departmentStatsLoading } = useQuery({
     queryKey: ["/api/stats/departments"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/stats/departments");
-      return res.data;
+      try {
+        const res = await apiRequest("GET", "/api/stats/departments");
+        return res.data;
+      } catch (error) {
+        console.warn("Failed to fetch department stats, using sample data");
+        return null;
+      }
     }
   });
 
-  // Use sample data when real data is not available
-  const currentDailySummary = dailySummary || sampleDailySummary;
-  const currentWeeklyStats = weeklyStats && weeklyStats.length > 0 ? weeklyStats : sampleWeeklyStats;
-  const currentDepartmentStats = departmentStats && departmentStats.length > 0 ? departmentStats : sampleDepartmentStats;
+  // Use real data only, no fallback to sample data
+  const currentDailySummary = dailySummary || { present: 0, absent: 0, late: 0, total: 0 };
+  const currentWeeklyStats = weeklyStats || [];
+  const currentDepartmentStats = departmentStats || [];
 
-  // Monthly trends data
-  const monthlyTrends = [
-    { month: 'T1', present: 85, absent: 10, late: 5 },
-    { month: 'T2', present: 88, absent: 8, late: 4 },
-    { month: 'T3', present: 92, absent: 5, late: 3 },
-    { month: 'T4', present: 90, absent: 7, late: 3 },
-    { month: 'T5', present: 87, absent: 9, late: 4 },
-    { month: 'T6', present: 93, absent: 4, late: 3 },
-  ];
+
+
+  // Fetch monthly trends
+  const { data: monthlyTrends, isLoading: monthlyTrendsLoading } = useQuery({
+    queryKey: ["/api/stats/monthly"],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", "/api/stats/monthly");
+        return res.data;
+      } catch (error) {
+        console.warn("Failed to fetch monthly trends, returning empty data");
+        return [];
+      }
+    }
+  });
 
   const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#f97316'];
+
+  // Function to create sample data (development only)
+  const createSampleData = async () => {
+    if (process.env.NODE_ENV !== 'development') return;
+
+    setIsCreatingData(true);
+    try {
+      await apiRequest("POST", "/api/stats/create-sample-data");
+
+      // Refresh all queries
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/daily"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/weekly"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/departments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/monthly"] });
+
+      toast({
+        title: "Thành công",
+        description: "Đã tạo dữ liệu mẫu thành công",
+      });
+    } catch (error) {
+      toast({
+        title: "Lỗi",
+        description: "Không thể tạo dữ liệu mẫu",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingData(false);
+    }
+  };
 
   const StatCardSkeleton = () => (
     <Card className="border-l-4 border-l-gray-300">
@@ -124,42 +160,42 @@ export default function Dashboard() {
       title: "Chấm công hôm nay",
       description: "Xem danh sách nhân viên đã/chưa chấm công",
       color: "blue",
-      action: () => console.log("Navigate to attendance")
+      action: () => setLocation("/attendance")
     },
     {
       icon: UserPlus,
       title: "Thêm nhân viên",
       description: "Đăng ký nhân viên mới vào hệ thống",
       color: "green",
-      action: () => console.log("Navigate to add employee")
+      action: () => setLocation("/employees/new")
     },
     {
       icon: Building2,
       title: "Quản lý phòng ban",
       description: "Thêm, sửa, xóa thông tin phòng ban",
       color: "purple",
-      action: () => console.log("Navigate to departments")
+      action: () => setLocation("/departments")
     },
     {
       icon: ClipboardList,
       title: "Báo cáo tháng",
       description: "Xuất báo cáo chấm công chi tiết",
       color: "orange",
-      action: () => console.log("Generate report")
+      action: () => setLocation("/reports")
     },
     {
       icon: BarChart3,
       title: "Thống kê chi tiết",
       description: "Xem các biểu đồ và thống kê nâng cao",
       color: "indigo",
-      action: () => console.log("Navigate to detailed stats")
+      action: () => setLocation("/reports")
     },
     {
       icon: Settings,
       title: "Cài đặt hệ thống",
       description: "Thiết lập giờ làm việc, nghỉ lễ",
       color: "gray",
-      action: () => console.log("Navigate to settings")
+      action: () => setLocation("/settings")
     }
   ];
 
@@ -177,10 +213,24 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-gray-50/50">
-      <Header
-        title="📊 Tổng quan hệ thống"
-        description="Thống kê và theo dõi chấm công toàn công ty"
-      />
+      <div className="flex items-center justify-between p-4 md:p-6 border-b bg-white">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">📊 Tổng quan hệ thống</h1>
+          <p className="text-gray-600">Thống kê và theo dõi chấm công toàn công ty</p>
+        </div>
+        {process.env.NODE_ENV === 'development' && (
+          <Button
+            onClick={createSampleData}
+            disabled={isCreatingData}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Database className="h-4 w-4" />
+            {isCreatingData ? "Đang tạo..." : "Tạo dữ liệu mẫu"}
+          </Button>
+        )}
+      </div>
 
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-6 space-y-8">
         {/* Enhanced Stats Cards */}
@@ -204,10 +254,19 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="text-3xl font-bold text-blue-600 mb-1">
                     {currentDailySummary?.present || 0}
+                    {!dailySummary && currentDailySummary.total === 0 && (
+                      <span className="text-sm text-gray-500 ml-2">(chưa có dữ liệu)</span>
+                    )}
                   </div>
                   <div className="flex items-center">
-                    <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                    <p className="text-xs text-green-600">+12% so với hôm qua</p>
+                    {dailySummary ? (
+                      <>
+                        <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                        <p className="text-xs text-green-600">Dữ liệu thực tế</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-500">Chưa có dữ liệu chấm công hôm nay</p>
+                    )}
                   </div>
                   <div className="mt-2 bg-blue-50 rounded-lg p-2">
                     <p className="text-xs text-blue-700">
@@ -227,10 +286,19 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="text-3xl font-bold text-red-600 mb-1">
                     {currentDailySummary?.absent || 0}
+                    {!dailySummary && currentDailySummary.total === 0 && (
+                      <span className="text-sm text-gray-500 ml-2">(chưa có dữ liệu)</span>
+                    )}
                   </div>
                   <div className="flex items-center">
-                    <TrendingDown className="h-3 w-3 text-green-500 mr-1" />
-                    <p className="text-xs text-green-600">-8% so với hôm qua</p>
+                    {dailySummary ? (
+                      <>
+                        <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                        <p className="text-xs text-red-600">Dữ liệu thực tế</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-500">Chưa có dữ liệu chấm công hôm nay</p>
+                    )}
                   </div>
                   <div className="mt-2 bg-red-50 rounded-lg p-2">
                     <p className="text-xs text-red-700">
@@ -250,10 +318,19 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="text-3xl font-bold text-yellow-600 mb-1">
                     {currentDailySummary?.late || 0}
+                    {!dailySummary && currentDailySummary.total === 0 && (
+                      <span className="text-sm text-gray-500 ml-2">(chưa có dữ liệu)</span>
+                    )}
                   </div>
                   <div className="flex items-center">
-                    <TrendingDown className="h-3 w-3 text-green-500 mr-1" />
-                    <p className="text-xs text-green-600">-2% so với hôm qua</p>
+                    {dailySummary ? (
+                      <>
+                        <Clock className="h-3 w-3 text-yellow-500 mr-1" />
+                        <p className="text-xs text-yellow-600">Dữ liệu thực tế</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-500">Chưa có dữ liệu chấm công hôm nay</p>
+                    )}
                   </div>
                   <div className="mt-2 bg-yellow-50 rounded-lg p-2">
                     <p className="text-xs text-yellow-700">
@@ -273,14 +350,20 @@ export default function Dashboard() {
                 <CardContent>
                   <div className="text-3xl font-bold text-green-600 mb-1">
                     {currentDailySummary?.total || 0}
+                    {!dailySummary && currentDailySummary.total === 0 && (
+                      <span className="text-sm text-gray-500 ml-2">(chưa có dữ liệu)</span>
+                    )}
                   </div>
                   <div className="flex items-center">
-                    <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                    <p className="text-xs text-green-600">+1 tháng này</p>
+                    <Users className="h-3 w-3 text-green-500 mr-1" />
+                    <p className="text-xs text-green-600">Tổng số nhân viên</p>
                   </div>
                   <div className="mt-2 bg-green-50 rounded-lg p-2">
                     <p className="text-xs text-green-700">
-                      Hoạt động: {currentDailySummary?.total || 0} nhân viên
+                      {dailySummary ?
+                        `Hoạt động: ${currentDailySummary?.present || 0} / ${currentDailySummary?.total || 0}` :
+                        "Chưa có dữ liệu chấm công hôm nay"
+                      }
                     </p>
                   </div>
                 </CardContent>
@@ -332,39 +415,44 @@ export default function Dashboard() {
                 <CardTitle className="flex items-center">
                   <TrendingUp className="mr-2 h-5 w-5 text-blue-600" />
                   Xu hướng chấm công tuần
-                  {(!weeklyStats || weeklyStats.length === 0) && (
-                    <span className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                      Dữ liệu mẫu
-                    </span>
-                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={currentWeeklyStats} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                      <defs>
-                        <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Area
-                        type="monotone"
-                        dataKey="present"
-                        stroke="#3b82f6"
-                        fillOpacity={1}
-                        fill="url(#colorPresent)"
-                        name="Có mặt"
-                      />
-                      <Line type="monotone" dataKey="late" stroke="#f59e0b" name="Đi muộn" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                {currentWeeklyStats.length === 0 ? (
+                  <div className="h-[300px] flex items-center justify-center">
+                    <div className="text-center">
+                      <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500 text-lg font-medium">Không có dữ liệu</p>
+                      <p className="text-gray-400 text-sm">Chưa có dữ liệu chấm công tuần để hiển thị</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={currentWeeklyStats} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                        <defs>
+                          <linearGradient id="colorPresent" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area
+                          type="monotone"
+                          dataKey="present"
+                          stroke="#3b82f6"
+                          fillOpacity={1}
+                          fill="url(#colorPresent)"
+                          name="Có mặt"
+                        />
+                        <Line type="monotone" dataKey="late" stroke="#f59e0b" name="Đi muộn" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -378,66 +466,47 @@ export default function Dashboard() {
                 <CardTitle className="flex items-center">
                   <Building2 className="mr-2 h-5 w-5 text-purple-600" />
                   Phân bố theo phòng ban
-                  {(!departmentStats || departmentStats.length === 0) && (
-                    <span className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                      Dữ liệu mẫu
-                    </span>
-                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={currentDepartmentStats}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="presentPercentage"
-                      >
-                        {currentDepartmentStats.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: any) => [`${value}%`, 'Tỷ lệ có mặt']} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                {currentDepartmentStats.length === 0 ? (
+                  <div className="h-[300px] flex items-center justify-center">
+                    <div className="text-center">
+                      <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500 text-lg font-medium">Không có dữ liệu</p>
+                      <p className="text-gray-400 text-sm">Chưa có dữ liệu phòng ban để hiển thị</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={currentDepartmentStats}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ departmentName, percent }: any) => `${departmentName}: ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="presentPercentage"
+                        >
+                          {currentDepartmentStats.map((_: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any) => [`${value}%`, 'Tỷ lệ có mặt']} />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Monthly Trends */}
-        <Card className="hover:shadow-lg transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Calendar className="mr-2 h-5 w-5 text-green-600" />
-              Xu hướng 6 tháng gần đây
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyTrends} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="present" fill="#3b82f6" name="Có mặt" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="late" fill="#f59e0b" name="Đi muộn" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="absent" fill="#ef4444" name="Vắng mặt" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+       
       </main>
     </div>
   );

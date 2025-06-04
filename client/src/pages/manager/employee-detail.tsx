@@ -14,6 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
+import { formatEmployeeName, getEmployeeInitials } from "@/lib/name-utils";
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,6 +30,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { format } from "date-fns";
+import { vi } from "date-fns/locale";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,9 +52,9 @@ import { FaceRegistration } from "@/components/face-recognition/face-registratio
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import faceapi, { initFaceAPI } from "@/lib/faceapi";
-import { EmployeeWorkHours } from "@/components/employee/employee-work-hours";
-import { AttendanceTable } from "@/components/attendance/attendance-table";
-import { MonthlyAttendanceCalendar } from "@/components/attendance/monthly-attendance-calendar";
+import { EmployeeAttendanceHistory } from "@/components/manager/employee-attendance-history";
+
+
 
 export default function EmployeeDetail() {
   const [, params] = useRoute<{ id: string }>("/manager/employees/:id");
@@ -119,19 +121,7 @@ export default function EmployeeDetail() {
     enabled: !!employee?.departmentId,
   });
 
-  const isValidDate = date instanceof Date && !isNaN(date.getTime());
-  const { data: workHoursData, isLoading: workHoursLoading, error: workHoursError } = useQuery({
-    queryKey: isValidDate ? [`/api/work-hours/employee/${employeeId}`, format(date, 'yyyy-MM')] : [],
-    queryFn: async () => {
-      if (!employeeId || !isValidDate) return [];
-      const startDate = format(new Date(date.getFullYear(), date.getMonth(), 1), 'yyyy-MM-dd');
-      const endDate = format(new Date(date.getFullYear(), date.getMonth() + 1, 0), 'yyyy-MM-dd');
-      const res = await fetch(`/api/work-hours/employee/${employeeId}?startDate=${startDate}&endDate=${endDate}`);
-      if (!res.ok) throw new Error('Failed to fetch work hours');
-      return await res.json();
-    },
-    enabled: !!employeeId && isValidDate,
-  });
+
 
   // Use manager API for delete
   const deleteEmployeeMutation = useMutation({
@@ -196,9 +186,7 @@ export default function EmployeeDetail() {
     }
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
+
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -314,7 +302,7 @@ export default function EmployeeDetail() {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <Header title={`${employee.firstName} ${employee.lastName}`} />
+      <Header title={formatEmployeeName(employee)} />
       <main className="flex-1 overflow-y-auto pb-16 md:pb-0 px-4 md:px-6 py-4">
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Header Actions */}
@@ -343,7 +331,7 @@ export default function EmployeeDetail() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>{t('employees.deleteEmployee')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      {t('employees.deleteEmployeeConfirm', { name: `${employee.firstName} ${employee.lastName}` })}
+                      {t('employees.deleteEmployeeConfirm', { name: formatEmployeeName(employee) })}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -368,11 +356,10 @@ export default function EmployeeDetail() {
           </div>
 
           <Tabs defaultValue="info" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="info">{t('employees.information')}</TabsTrigger>
               <TabsTrigger value="face">{t('employees.faceRecognition')}</TabsTrigger>
               <TabsTrigger value="attendance">{t('employees.attendance')}</TabsTrigger>
-              <TabsTrigger value="hours">{t('employees.workHours')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="info" className="space-y-6">
@@ -382,12 +369,12 @@ export default function EmployeeDetail() {
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16">
                       <AvatarFallback className="text-lg">
-                        {getInitials(employee.firstName, employee.lastName)}
+                        {getEmployeeInitials(employee)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="space-y-1">
                       <CardTitle className="text-2xl">
-                        {`${employee.firstName} ${employee.lastName}`}
+                        {formatEmployeeName(employee)}
                       </CardTitle>
                       <CardDescription>
                         {employee.position} • {department?.name || t('employees.noDepartment')}
@@ -407,7 +394,7 @@ export default function EmployeeDetail() {
                         {t('employees.fullName')}
                       </Label>
                       <p className="text-sm text-muted-foreground">
-                        {`${employee.firstName} ${employee.lastName}`}
+                        {formatEmployeeName(employee)}
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -449,7 +436,7 @@ export default function EmployeeDetail() {
                         {t('employees.joinDate')}
                       </Label>
                       <p className="text-sm text-muted-foreground">
-                        {employee.joinDate ? format(new Date(employee.joinDate), 'PPP') : t('common.notSet')}
+                        {employee.joinDate ? format(new Date(employee.joinDate), 'dd/MM/yyyy') : t('common.notSet')}
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -492,7 +479,7 @@ export default function EmployeeDetail() {
                       <div className="flex items-center gap-4">
                         <Avatar className="h-20 w-20">
                           <AvatarFallback className="text-xl">
-                            {getInitials(employee.firstName, employee.lastName)}
+                            {getEmployeeInitials(employee)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-2">
@@ -569,7 +556,7 @@ export default function EmployeeDetail() {
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
                       <span className="text-sm font-medium min-w-[120px] text-center">
-                        {format(date, 'MMMM yyyy')}
+                        {format(date, 'MMMM yyyy', { locale: vi })}
                       </span>
                       <Button variant="outline" size="sm" onClick={handleNextMonth}>
                         <ChevronRight className="h-4 w-4" />
@@ -578,56 +565,15 @@ export default function EmployeeDetail() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <MonthlyAttendanceCalendar
-                    employeeId={employeeId}
+                  <EmployeeAttendanceHistory
+                    employeeId={employeeId.toString()}
                     month={date}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('employees.attendanceDetails')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <AttendanceTable
-                    employeeId={employeeId}
-                    startDate={format(new Date(date.getFullYear(), date.getMonth(), 1), 'yyyy-MM-dd')}
-                    endDate={format(new Date(date.getFullYear(), date.getMonth() + 1, 0), 'yyyy-MM-dd')}
                   />
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="hours" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>{t('employees.workHours')}</span>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={handlePreviousMonth}>
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <span className="text-sm font-medium min-w-[120px] text-center">
-                        {format(date, 'MMMM yyyy')}
-                      </span>
-                      <Button variant="outline" size="sm" onClick={handleNextMonth}>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <EmployeeWorkHours
-                    employeeId={employeeId}
-                    month={date}
-                    workHoursData={workHoursData}
-                    isLoading={workHoursLoading}
-                    error={workHoursError}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+
           </Tabs>
         </div>
       </main>

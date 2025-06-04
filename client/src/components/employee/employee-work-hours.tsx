@@ -204,8 +204,12 @@ export function EmployeeWorkHours({ employeeId }: EmployeeWorkHoursProps) {
                 ...rows.map(row => row.join(","))
             ].join("\n");
 
+            // Add BOM for UTF-8 to ensure proper Vietnamese character display in Excel
+            const BOM = '\uFEFF';
+            const csvWithBOM = BOM + csvContent;
+
             // Create a download link
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { storage } from "../models/storage.js";
 import { Pool } from 'pg';
+import { formatEmployeeName } from "../utils/name-utils";
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -49,7 +50,7 @@ export const getMonthlyAttendanceReport = async (req: Request, res: Response) =>
             SELECT 
                 asu.id,
                 asu.employee_id as "employeeId",
-                e.first_name || ' ' || e.last_name as "employeeName",
+                e.last_name || ' ' || e.first_name as "employeeName", -- Vietnamese format
                 e.position,
                 d.name as "departmentName",
                 asu.month,
@@ -178,7 +179,7 @@ export const getTopPerformers = async (req: Request, res: Response) => {
         const query = `
             SELECT 
                 asu.employee_id as "employeeId",
-                e.first_name || ' ' || e.last_name as "employeeName",
+                e.last_name || ' ' || e.first_name as "employeeName", -- Vietnamese format
                 e.position,
                 d.name as "departmentName",
                 asu.total_hours as "totalHours",

@@ -38,7 +38,7 @@ app.get('*', (req, res) => {
         if (err) {
             // If client build doesn't exist, show development message
             res.status(404).json({
-                message: "🚀 Face Timekeeping API Server",
+                message: "Face Timekeeping API Server",
                 version: "2.0.0",
                 status: "running",
                 note: "Client build not found. Run 'npm run build' in client directory or access API endpoints directly.",

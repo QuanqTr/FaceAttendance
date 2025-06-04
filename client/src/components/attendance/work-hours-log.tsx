@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar as CalendarIcon, Download, Loader2, Search, Filter, Calendar } from "lucide-react";
+import { Calendar as CalendarIcon, Download, Loader2, Search, Filter, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +53,8 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(10);
 
     // Filter records based on search query and status
     const filteredRecords = records.filter((record) => {
@@ -64,6 +66,23 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
 
         return nameMatch && statusMatch;
     });
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
+
+    // Reset to first page when filters change
+    const handleSearchChange = (value: string) => {
+        setSearchQuery(value);
+        setCurrentPage(1);
+    };
+
+    const handleStatusFilterChange = (value: string) => {
+        setStatusFilter(value);
+        setCurrentPage(1);
+    };
 
     // Helper function to safely format dates
     const safeFormatDate = (dateString: string | null | undefined, formatStr: string = 'HH:mm') => {
@@ -127,13 +146,28 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                 ];
             });
 
+            // Escape CSV values and handle Vietnamese characters
+            const escapeCSVValue = (value: any) => {
+                if (value === null || value === undefined) return '';
+                const stringValue = String(value);
+                // If value contains comma, newline, or quotes, wrap in quotes and escape internal quotes
+                if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+                    return `"${stringValue.replace(/"/g, '""')}"`;
+                }
+                return stringValue;
+            };
+
             const csvContent = [
-                headers.join(","),
-                ...rows.map(row => row.join(","))
+                headers.map(escapeCSVValue).join(","),
+                ...rows.map(row => row.map(escapeCSVValue).join(","))
             ].join("\n");
 
+            // Add BOM for UTF-8 to ensure proper Vietnamese character display in Excel
+            const BOM = '\uFEFF';
+            const csvWithBOM = BOM + csvContent;
+
             // Create a download link
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);
@@ -194,7 +228,7 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                                     placeholder={t('attendance.searchEmployees')}
                                     className="pl-8"
                                     value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onChange={(e) => handleSearchChange(e.target.value)}
                                 />
                             </div>
 
@@ -225,7 +259,7 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                             <div className="flex items-center">
                                 <Select
                                     value={statusFilter}
-                                    onValueChange={setStatusFilter}
+                                    onValueChange={handleStatusFilterChange}
                                 >
                                     <SelectTrigger className="w-[180px]">
                                         <SelectValue placeholder={t('common.filter')} />
@@ -284,7 +318,7 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            filteredRecords.map((record, index) => {
+                            paginatedRecords.map((record, index) => {
                                 const statusInfo = getStatusInfo(record.status);
                                 return (
                                     <TableRow key={`${record.employeeId}-${index}`}>
@@ -315,6 +349,38 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                     </TableBody>
                 </Table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 px-2">
+                    <div className="text-sm text-muted-foreground">
+                        {t('common.showing')} {startIndex + 1}-{Math.min(endIndex, filteredRecords.length)} {t('common.of')} {filteredRecords.length} {t('attendance.workHoursRecords')}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage === 1}
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                            {t('common.previous')}
+                        </Button>
+                        <div className="text-sm text-muted-foreground">
+                            {t('common.page')} {currentPage} {t('common.of')} {totalPages}
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage === totalPages}
+                        >
+                            {t('common.next')}
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
-} 
+}

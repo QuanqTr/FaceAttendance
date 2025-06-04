@@ -80,7 +80,7 @@ export const getDailyWorkHours = async (req: Request, res: Response) => {
         const workHoursData = await db.execute(sql`
             SELECT 
                 wh.employee_id,
-                e.first_name || ' ' || e.last_name as employee_name,
+                e.last_name || ' ' || e.first_name as employee_name, -- Vietnamese format
                 wh.regular_hours,
                 wh.ot_hours as overtime_hours,
                 wh.first_checkin as checkin_time,
@@ -89,7 +89,7 @@ export const getDailyWorkHours = async (req: Request, res: Response) => {
             FROM work_hours wh
             JOIN employees e ON wh.employee_id = e.id
             WHERE wh.work_date = ${date}
-            ORDER BY e.first_name, e.last_name
+            ORDER BY e.last_name, e.first_name -- Vietnamese format
         `);
 
         const results = workHoursData.rows.map((row: any) => ({

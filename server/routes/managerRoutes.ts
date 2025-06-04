@@ -32,7 +32,8 @@ import {
     debugWorkHours,
     getManagerProfile,
     updateManagerProfile,
-    changeManagerPassword
+    changeManagerPassword,
+    getManagerDepartmentIds
 } from "../controllers/managerController";
 import nodemailer from 'nodemailer';
 
@@ -483,6 +484,77 @@ export function managerRoutes(app: Express) {
     app.get("/api/manager/attendance", ensureAuthenticated, ensureManager, getManagerAttendance);
     app.get("/api/manager/work-hours", ensureAuthenticated, ensureManager, getManagerWorkHours);
 
+    // Employee work hours history
+    app.get("/api/manager/employees/:employeeId/work-hours", ensureAuthenticated, ensureManager, async (req, res) => {
+        try {
+            const { employeeId } = req.params;
+            const { startDate, endDate } = req.query;
+
+            if (!startDate || !endDate) {
+                return res.status(400).json({ error: "startDate and endDate are required" });
+            }
+
+            console.log(`🔍 Fetching work hours for employee ${employeeId} from ${startDate} to ${endDate}`);
+
+            // Check if manager has access to this employee
+            const managerId = (req.user as any)?.id;
+            const managerDepartmentIds = await getManagerDepartmentIds(managerId);
+
+            console.log(`👤 Manager ${managerId} manages departments: [${managerDepartmentIds.join(', ')}]`);
+
+            // Verify employee belongs to manager's departments
+            const { pool } = await import("../db");
+            const employeeCheck = await pool.query(
+                'SELECT id, department_id FROM employees WHERE id = $1 AND department_id = ANY($2)',
+                [employeeId, managerDepartmentIds]
+            );
+
+            if (employeeCheck.rows.length === 0) {
+                console.log(`❌ Employee ${employeeId} not found in manager's departments`);
+                return res.status(403).json({ error: 'Access denied to employee outside your departments' });
+            }
+
+            console.log(`✅ Employee ${employeeId} belongs to department ${employeeCheck.rows[0].department_id}`);
+
+            const query = `
+                SELECT
+                    id,
+                    work_date as "date",
+                    first_checkin as "checkIn",
+                    last_checkout as "checkOut",
+                    COALESCE(regular_hours::numeric, 0) as "regularHours",
+                    COALESCE(ot_hours::numeric, 0) as "overtimeHours",
+                    (COALESCE(regular_hours::numeric, 0) + COALESCE(ot_hours::numeric, 0)) as "totalHours",
+                    CASE
+                        WHEN first_checkin IS NOT NULL AND first_checkin::time > '08:30:00'
+                        THEN EXTRACT(EPOCH FROM (first_checkin::time - '08:30:00'::time))/60
+                        ELSE 0
+                    END as "lateMinutes",
+                    CASE
+                        WHEN last_checkout IS NOT NULL AND last_checkout::time < '17:00:00'
+                        THEN EXTRACT(EPOCH FROM ('17:00:00'::time - last_checkout::time))/60
+                        ELSE 0
+                    END as "earlyMinutes",
+                    status,
+                    work_date as "createdAt"
+                FROM work_hours
+                WHERE employee_id = $1
+                    AND work_date >= $2
+                    AND work_date <= $3
+                ORDER BY work_date DESC
+            `;
+
+            const result = await pool.query(query, [employeeId, startDate, endDate]);
+
+            console.log(`📊 Found ${result.rows.length} work hours records for employee ${employeeId}`);
+
+            res.json(result.rows);
+        } catch (error) {
+            console.error('Error fetching employee work hours:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    });
+
     // Debug endpoints for testing
     app.get("/api/manager/debug/time-logs", ensureAuthenticated, ensureManager, debugTimeLogs);
     app.get("/api/manager/debug/work-hours", ensureAuthenticated, ensureManager, debugWorkHours);
@@ -678,6 +750,67 @@ export function managerRoutes(app: Express) {
         app.get("/api/test/manager/debug-work-hours", (req, res, next) => {
             req.user = { id: 3, role: 'manager', employeeId: 5 } as any; // Mock user
             debugWorkHours(req, res);
+        });
+
+        // Test manager employee work hours endpoint without auth
+        app.get("/api/test/manager/employees/:employeeId/work-hours", async (req, res) => {
+            try {
+                // Mock manager user
+                req.user = { id: 3, role: 'manager', employeeId: 5 } as any;
+
+                const { employeeId } = req.params;
+                const { startDate, endDate } = req.query;
+
+                console.log(`🧪 TEST: Fetching work hours for employee ${employeeId} from ${startDate} to ${endDate}`);
+
+                // Use default date range if not provided
+                const defaultStartDate = startDate || '2025-01-01';
+                const defaultEndDate = endDate || '2025-12-31';
+
+                const { pool } = await import("../db");
+
+                // First check if employee exists
+                const employeeCheck = await pool.query('SELECT id, first_name, last_name, department_id FROM employees WHERE id = $1', [employeeId]);
+
+                if (employeeCheck.rows.length === 0) {
+                    return res.status(404).json({ error: 'Employee not found', employeeId });
+                }
+
+                console.log(`👤 Employee found:`, employeeCheck.rows[0]);
+
+                // Check work hours data
+                const workHoursQuery = `
+                    SELECT
+                        id,
+                        work_date as "date",
+                        first_checkin as "checkIn",
+                        last_checkout as "checkOut",
+                        COALESCE(regular_hours::numeric, 0) as "regularHours",
+                        COALESCE(ot_hours::numeric, 0) as "overtimeHours",
+                        (COALESCE(regular_hours::numeric, 0) + COALESCE(ot_hours::numeric, 0)) as "totalHours",
+                        status
+                    FROM work_hours
+                    WHERE employee_id = $1
+                        AND work_date >= $2
+                        AND work_date <= $3
+                    ORDER BY work_date DESC
+                `;
+
+                const result = await pool.query(workHoursQuery, [employeeId, defaultStartDate, defaultEndDate]);
+
+                console.log(`📊 Found ${result.rows.length} work hours records for employee ${employeeId}`);
+
+                res.json({
+                    success: true,
+                    employee: employeeCheck.rows[0],
+                    workHours: result.rows,
+                    count: result.rows.length,
+                    dateRange: { startDate: defaultStartDate, endDate: defaultEndDate }
+                });
+            } catch (error) {
+                console.error('❌ Test endpoint error:', error);
+                res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+            }
         });
 
         // Simple work_hours analysis

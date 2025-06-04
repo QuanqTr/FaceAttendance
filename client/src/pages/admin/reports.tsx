@@ -225,17 +225,33 @@ const Reports: React.FC = () => {
     return value && !isNaN(value) ? value : 0;
   };
 
-  // Export to CSV function
+  // Export to CSV function with proper UTF-8 encoding for Vietnamese
   const exportToCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) return;
 
     const headers = Object.keys(data[0]);
+
+    // Escape CSV values and handle Vietnamese characters
+    const escapeCSVValue = (value: any) => {
+      if (value === null || value === undefined) return '';
+      const stringValue = String(value);
+      // If value contains comma, newline, or quotes, wrap in quotes and escape internal quotes
+      if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
     const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(field => row[field]).join(','))
+      headers.map(escapeCSVValue).join(','),
+      ...data.map(row => headers.map(field => escapeCSVValue(row[field])).join(','))
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Add BOM for UTF-8 to ensure proper Vietnamese character display in Excel
+    const BOM = '\uFEFF';
+    const csvWithBOM = BOM + csvContent;
+
+    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -362,12 +378,10 @@ const Reports: React.FC = () => {
 
         {/* Tabs for different views */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">📈 Tổng quan</TabsTrigger>
-            <TabsTrigger value="trends">📊 Xu hướng</TabsTrigger>
-            <TabsTrigger value="charts">📈 Biểu đồ</TabsTrigger>
-            <TabsTrigger value="attendance">📋 Chấm công</TabsTrigger>
             <TabsTrigger value="penalties">⚠️ Phân tích phạt</TabsTrigger>
+            <TabsTrigger value="charts">📈 Biểu đồ</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -533,122 +547,7 @@ const Reports: React.FC = () => {
             </div>
           </TabsContent>
 
-          {/* Trends Tab */}
-          <TabsContent value="trends" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Monthly Trends */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <TrendingUp className="mr-2 h-5 w-5 text-blue-600" />
-                    Xu hướng giờ làm năm {currentYear}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {attendanceTrends && (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={attendanceTrends}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" tickFormatter={(value) => `T${value}`} />
-                        <YAxis />
-                        <Tooltip
-                          formatter={(value, name) => [
-                            name === 'totalHours' ? formatHours(Number(value)) : value,
-                            name === 'totalHours' ? 'Tổng giờ' :
-                              name === 'avgHours' ? 'Trung bình' :
-                                name === 'totalOvertime' ? 'Tăng ca' : name
-                          ]}
-                          labelFormatter={(value) => `Tháng ${value}`}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="totalHours"
-                          stackId="1"
-                          stroke="#8884d8"
-                          fill="#8884d8"
-                          fillOpacity={0.6}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="totalOvertime"
-                          stackId="2"
-                          stroke="#82ca9d"
-                          fill="#82ca9d"
-                          fillOpacity={0.6}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
 
-              {/* Penalty Trends */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <TrendingDown className="mr-2 h-5 w-5 text-red-600" />
-                    Xu hướng vi phạm năm {currentYear}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {attendanceTrends && (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={attendanceTrends}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" tickFormatter={(value) => `T${value}`} />
-                        <YAxis />
-                        <Tooltip
-                          formatter={(value) => [formatCurrency(Number(value)), 'Tiền phạt']}
-                          labelFormatter={(value) => `Tháng ${value}`}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="totalPenalties"
-                          stroke="#ef4444"
-                          strokeWidth={3}
-                          dot={{ fill: '#ef4444', strokeWidth: 2 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Comparative Analysis */}
-            <Card>
-              <CardHeader>
-                <CardTitle>📊 Phân tích so sánh các tháng</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {attendanceTrends && (
-                  <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={attendanceTrends} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" tickFormatter={(value) => `Tháng ${value}`} />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value, name) => [
-                          name === 'avgHours' ? formatHours(Number(value)) :
-                            name === 'totalLeaveDays' ? `${value} ngày` :
-                              name === 'employeeCount' ? `${value} người` :
-                                value,
-                          name === 'avgHours' ? 'Giờ TB/người' :
-                            name === 'totalLeaveDays' ? 'Ngày nghỉ' :
-                              name === 'employeeCount' ? 'Số nhân viên' :
-                                name
-                        ]}
-                      />
-                      <Legend />
-                      <Bar dataKey="employeeCount" fill="#8884d8" name="Số nhân viên" />
-                      <Bar dataKey="avgHours" fill="#82ca9d" name="Giờ TB/người" />
-                      <Bar dataKey="totalLeaveDays" fill="#ffc658" name="Ngày nghỉ" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Charts Tab */}
           <TabsContent value="charts" className="space-y-6">
@@ -777,153 +676,7 @@ const Reports: React.FC = () => {
             </div>
           </TabsContent>
 
-          {/* Attendance Records Tab */}
-          <TabsContent value="attendance" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-semibold">Chi tiết chấm công tháng {currentMonth}/{currentYear}</h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  Hiển thị {filteredAttendanceRecords?.length || 0} bản ghi
-                  {searchTerm && ` (lọc: "${searchTerm}")`}
-                  {selectedDepartment !== 'all' && ` - Phòng ban: ${departmentStats?.find(d => d.departmentId.toString() === selectedDepartment)?.departmentName}`}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => exportToCSV(filteredAttendanceRecords || [], `cham-cong-${currentMonth}-${currentYear}`)}
-                  className="flex items-center gap-2"
-                  variant="outline"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Xuất Excel
-                </Button>
-                <Button
-                  onClick={() => exportToCSV(filteredAttendanceRecords || [], `cham-cong-${currentMonth}-${currentYear}`)}
-                  className="flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Xuất CSV
-                </Button>
-              </div>
-            </div>
 
-            {/* Summary Cards */}
-            {filteredAttendanceRecords && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {filteredAttendanceRecords.length}
-                    </div>
-                    <p className="text-sm text-gray-600">Tổng bản ghi</p>
-                  </CardContent>
-                </Card>
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-green-600">
-                      {formatHours(filteredAttendanceRecords.reduce((sum, record) => sum + (record.totalHours || 0), 0))}
-                    </div>
-                    <p className="text-sm text-gray-600">Tổng giờ làm</p>
-                  </CardContent>
-                </Card>
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {formatHours(filteredAttendanceRecords.reduce((sum, record) => sum + (record.overtimeHours || 0), 0))}
-                    </div>
-                    <p className="text-sm text-gray-600">Tổng tăng ca</p>
-                  </CardContent>
-                </Card>
-                <Card className="text-center">
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-red-600">
-                      {formatCurrency(filteredAttendanceRecords.reduce((sum, record) => sum + (record.penaltyAmount || 0), 0))}
-                    </div>
-                    <p className="text-sm text-gray-600">Tổng phạt</p>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">Nhân viên</TableHead>
-                        <TableHead>Phòng ban</TableHead>
-                        <TableHead>Chức vụ</TableHead>
-                        <TableHead className="text-right">Giờ làm</TableHead>
-                        <TableHead className="text-right">Tăng ca</TableHead>
-                        <TableHead className="text-right">Nghỉ phép</TableHead>
-                        <TableHead className="text-right">Đi muộn</TableHead>
-                        <TableHead className="text-right">Về sớm</TableHead>
-                        <TableHead className="text-right">Tiền phạt</TableHead>
-                        <TableHead className="text-center">Đánh giá</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAttendanceRecords?.map((record) => (
-                        <TableRow key={record.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium">
-                            <div>
-                              <p className="font-semibold">{record.employeeName}</p>
-                              <p className="text-xs text-gray-500">ID: {record.employeeId}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{record.departmentName}</Badge>
-                          </TableCell>
-                          <TableCell>{record.position}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatHours(record.totalHours)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={record.overtimeHours > 0 ? "text-orange-600 font-medium" : ""}>
-                              {formatHours(record.overtimeHours)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">{record.leaveDays} ngày</TableCell>
-                          <TableCell className="text-right">
-                            <span className={record.lateMinutes > 0 ? "text-red-500 font-medium" : ""}>
-                              {record.lateMinutes} phút
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={record.earlyMinutes > 0 ? "text-red-500 font-medium" : ""}>
-                              {record.earlyMinutes} phút
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={record.penaltyAmount > 0 ? "text-red-600 font-medium" : "text-green-600"}>
-                              {formatCurrency(record.penaltyAmount)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {record.penaltyAmount === 0 && record.lateMinutes === 0 ? (
-                              <Badge className="bg-green-100 text-green-800">Xuất sắc</Badge>
-                            ) : record.penaltyAmount > 0 ? (
-                              <Badge variant="destructive">Cần cải thiện</Badge>
-                            ) : (
-                              <Badge variant="secondary">Bình thường</Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {(!filteredAttendanceRecords || filteredAttendanceRecords.length === 0) && (
-                        <TableRow>
-                          <TableCell colSpan={10} className="text-center py-8 text-gray-500">
-                            {searchTerm ? 'Không tìm thấy nhân viên nào phù hợp' : 'Không có dữ liệu chấm công cho tháng này'}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Penalties Tab */}
           <TabsContent value="penalties" className="space-y-4">
@@ -938,15 +691,15 @@ const Reports: React.FC = () => {
                   className="flex items-center gap-2"
                   variant="outline"
                 >
-                  <AlertTriangle className="h-4 w-4" />
-                  Xuất báo cáo vi phạm
+                  <Download className="h-4 w-4" />
+                  Xuất báo cáo
                 </Button>
               </div>
             </div>
 
             {/* Penalty Statistics */}
             {penaltyAnalysis && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card className="bg-red-50 border-red-200">
                   <CardContent className="p-4 text-center">
                     <div className="text-2xl font-bold text-red-600">
@@ -973,24 +726,15 @@ const Reports: React.FC = () => {
                     <p className="text-sm text-yellow-700">Phút về sớm tổng</p>
                   </CardContent>
                 </Card>
-
-                <Card className="bg-red-50 border-red-200">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-2xl font-bold text-red-600">
-                      {formatCurrency(penaltyAnalysis.reduce((sum, p) => sum + p.penaltyAmount, 0))}
-                    </div>
-                    <p className="text-sm text-red-700">Tổng tiền phạt</p>
-                  </CardContent>
-                </Card>
               </div>
             )}
 
             {/* Penalty Level Summary */}
             {penaltyAnalysis && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                {['Không phạt', 'Phạt nhẹ', 'Phạt trung bình', 'Phạt nặng'].map((level, index) => {
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                {['Không phạt', 'Phạt nhẹ', 'Phạt trung bình'].map((level, index) => {
                   const count = penaltyAnalysis.filter(p => p.penaltyLevel === level).length;
-                  const colors = ['green', 'yellow', 'orange', 'red'];
+                  const colors = ['green', 'yellow', 'orange'];
                   const color = colors[index];
 
                   return (

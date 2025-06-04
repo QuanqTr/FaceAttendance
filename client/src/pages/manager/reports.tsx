@@ -97,7 +97,14 @@ const Reports: React.FC = () => {
   const { t } = useTranslation();
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const { user } = useAuth();
+
+  // Reset page when search term changes
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
   const [, navigate] = useLocation();
 
   if (!user || user.role !== "manager") {
@@ -129,135 +136,96 @@ const Reports: React.FC = () => {
     return value && !isNaN(value) ? value : 0;
   };
 
-  // API calls - department-specific
+  // API calls - department-specific (using new manager reports API)
   const { data: overallStats, isLoading: isOverallLoading, refetch: refetchOverall } = useQuery<DepartmentOverallStats>({
-    queryKey: ["/api/manager/stats/department-overall", formatDateParam(selectedMonth)],
+    queryKey: ["/api/manager/reports/overall-stats", formatDateParam(selectedMonth)],
     queryFn: async () => {
-      try {
-        console.log('🔍 Calling manager department stats API...');
-        const res = await fetch(`/api/manager/stats/department-overall?month=${formatDateParam(selectedMonth)}`);
-        console.log('📡 API Response Status:', res.status);
-        if (!res.ok) {
-          console.error('❌ API Error:', res.status, res.statusText);
-          throw new Error("Failed to fetch");
-        }
-        const data = await res.json();
-        console.log('✅ API Success - Manager Department Stats:', data);
-        return data;
-      } catch (error) {
-        console.error("❌ API Error - Using Mock Data:", error);
-        // Mock data for department
-        const mockData = {
-          totalEmployees: 15,
-          totalHours: 2400,
-          avgHoursPerEmployee: 160,
-          totalOvertimeHours: 240,
-          avgOvertimePerEmployee: 16,
-          totalLeaveDays: 25,
-          avgLeaveDaysPerEmployee: 1.67,
-          totalLateMinutes: 180,
-          avgLateMinutesPerEmployee: 12,
-          totalPenaltyAmount: 500000,
-          avgPenaltyPerEmployee: 33333,
-          activeEmployees: 14,
-          absentEmployees: 1
-        };
-        console.log('🔄 Using Mock Data instead:', mockData);
-        return mockData;
-      }
+      const params = new URLSearchParams({
+        month: selectedMonth.getMonth() + 1,
+        year: selectedMonth.getFullYear(),
+        startDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).toISOString(),
+        endDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).toISOString()
+      });
+      const res = await fetch(`/api/manager/reports/overall-stats?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return await res.json();
     }
   });
 
   const { data: attendanceRecords, isLoading: isAttendanceLoading, refetch: refetchAttendance } = useQuery<DepartmentAttendanceRecord[]>({
-    queryKey: ["/api/manager/stats/attendance-records", formatDateParam(selectedMonth)],
+    queryKey: ["/api/manager/reports/attendance-records", formatDateParam(selectedMonth)],
     queryFn: async () => {
-      try {
-        const res = await fetch(`/api/manager/stats/attendance-records?month=${formatDateParam(selectedMonth)}`);
-        if (!res.ok) throw new Error("Failed to fetch");
-        return await res.json();
-      } catch (error) {
-        console.error("API Error:", error);
-        // Mock attendance records for department
-        return [
-          { id: 1, employeeId: 1, employeeName: "John Doe", position: "Senior Developer", month: selectedMonth.getMonth() + 1, year: selectedMonth.getFullYear(), totalHours: 168, overtimeHours: 20, leaveDays: 2, earlyMinutes: 0, lateMinutes: 15, penaltyAmount: 50000, createdAt: new Date().toISOString() },
-          { id: 2, employeeId: 2, employeeName: "Jane Smith", position: "Frontend Developer", month: selectedMonth.getMonth() + 1, year: selectedMonth.getFullYear(), totalHours: 152, overtimeHours: 12, leaveDays: 3, earlyMinutes: 5, lateMinutes: 25, penaltyAmount: 75000, createdAt: new Date().toISOString() },
-          { id: 3, employeeId: 3, employeeName: "Mike Johnson", position: "Backend Developer", month: selectedMonth.getMonth() + 1, year: selectedMonth.getFullYear(), totalHours: 160, overtimeHours: 18, leaveDays: 1, earlyMinutes: 0, lateMinutes: 10, penaltyAmount: 25000, createdAt: new Date().toISOString() },
-          { id: 4, employeeId: 4, employeeName: "Sarah Wilson", position: "UI/UX Designer", month: selectedMonth.getMonth() + 1, year: selectedMonth.getFullYear(), totalHours: 155, overtimeHours: 15, leaveDays: 2, earlyMinutes: 10, lateMinutes: 20, penaltyAmount: 60000, createdAt: new Date().toISOString() }
-        ];
-      }
+      const params = new URLSearchParams({
+        month: selectedMonth.getMonth() + 1,
+        year: selectedMonth.getFullYear(),
+        startDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).toISOString(),
+        endDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).toISOString()
+      });
+      const res = await fetch(`/api/manager/reports/attendance-records?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return await res.json();
     }
   });
 
   const { data: topPerformers, isLoading: isTopLoading, refetch: refetchTop } = useQuery<TopPerformer[]>({
-    queryKey: ["/api/manager/stats/top-performers", formatDateParam(selectedMonth)],
+    queryKey: ["/api/manager/reports/top-performers", formatDateParam(selectedMonth)],
     queryFn: async () => {
-      try {
-        const res = await fetch(`/api/manager/stats/top-performers?month=${formatDateParam(selectedMonth)}`);
-        if (!res.ok) throw new Error("Failed to fetch");
-        return await res.json();
-      } catch (error) {
-        console.error("API Error:", error);
-        // Mock top performers for department
-        return [
-          { employeeId: 1, employeeName: "John Doe", position: "Senior Developer", totalHours: 168, overtimeHours: 20, lateMinutes: 15, penaltyAmount: 50000 },
-          { employeeId: 3, employeeName: "Mike Johnson", position: "Backend Developer", totalHours: 160, overtimeHours: 18, lateMinutes: 10, penaltyAmount: 25000 },
-          { employeeId: 4, employeeName: "Sarah Wilson", position: "UI/UX Designer", totalHours: 155, overtimeHours: 15, lateMinutes: 20, penaltyAmount: 60000 }
-        ];
-      }
+      const params = new URLSearchParams({
+        month: selectedMonth.getMonth() + 1,
+        year: selectedMonth.getFullYear(),
+        startDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).toISOString(),
+        endDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).toISOString()
+      });
+      const res = await fetch(`/api/manager/reports/top-performers?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return await res.json();
     }
   });
 
   const { data: penaltyAnalysis, isLoading: isPenaltyLoading, refetch: refetchPenalty } = useQuery<PenaltyAnalysis[]>({
-    queryKey: ["/api/manager/stats/penalty-analysis", formatDateParam(selectedMonth)],
+    queryKey: ["/api/manager/reports/penalty-analysis", formatDateParam(selectedMonth)],
     queryFn: async () => {
-      try {
-        const res = await fetch(`/api/manager/stats/penalty-analysis?month=${formatDateParam(selectedMonth)}`);
-        if (!res.ok) throw new Error("Failed to fetch");
-        return await res.json();
-      } catch (error) {
-        console.error("API Error:", error);
-        // Mock penalty analysis for department
-        return [
-          { employeeId: 1, employeeName: "John Doe", position: "Senior Developer", lateMinutes: 15, earlyMinutes: 0, penaltyAmount: 50000, penaltyLevel: "Phạt nhẹ" },
-          { employeeId: 2, employeeName: "Jane Smith", position: "Frontend Developer", lateMinutes: 25, earlyMinutes: 5, penaltyAmount: 75000, penaltyLevel: "Phạt trung bình" },
-          { employeeId: 3, employeeName: "Mike Johnson", position: "Backend Developer", lateMinutes: 10, earlyMinutes: 0, penaltyAmount: 25000, penaltyLevel: "Phạt nhẹ" },
-          { employeeId: 4, employeeName: "Sarah Wilson", position: "UI/UX Designer", lateMinutes: 20, earlyMinutes: 10, penaltyAmount: 60000, penaltyLevel: "Phạt trung bình" }
-        ];
-      }
+      const params = new URLSearchParams({
+        month: selectedMonth.getMonth() + 1,
+        year: selectedMonth.getFullYear(),
+        startDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).toISOString(),
+        endDate: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).toISOString()
+      });
+      const res = await fetch(`/api/manager/reports/penalty-analysis?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return await res.json();
     }
   });
 
-  const { data: attendanceTrends, isLoading: isTrendsLoading, refetch: refetchTrends } = useQuery<AttendanceTrend[]>({
-    queryKey: ["/api/manager/stats/attendance-trends", currentYear],
-    queryFn: async () => {
-      try {
-        const res = await fetch(`/api/manager/stats/attendance-trends?year=${currentYear}`);
-        if (!res.ok) throw new Error("Failed to fetch");
-        return await res.json();
-      } catch (error) {
-        console.error("API Error:", error);
-        // Mock attendance trends for department
-        return [
-          { month: 1, employeeCount: 15, totalHours: 2400, avgHours: 160, totalOvertime: 240, totalLeaveDays: 25, totalPenalties: 500000 },
-          { month: 2, employeeCount: 15, totalHours: 2280, avgHours: 152, totalOvertime: 220, totalLeaveDays: 30, totalPenalties: 450000 },
-          { month: 3, employeeCount: 15, totalHours: 2520, avgHours: 168, totalOvertime: 280, totalLeaveDays: 20, totalPenalties: 400000 },
-          { month: 4, employeeCount: 15, totalHours: 2400, avgHours: 160, totalOvertime: 240, totalLeaveDays: 25, totalPenalties: 500000 }
-        ];
-      }
-    }
-  });
 
-  // Export functions
+
+  // Export functions with proper UTF-8 encoding for Vietnamese
   const exportToCSV = (data: any[], filename: string) => {
     if (!data || data.length === 0) return;
 
     const headers = Object.keys(data[0]);
+
+    // Escape CSV values and handle Vietnamese characters
+    const escapeCSVValue = (value: any) => {
+      if (value === null || value === undefined) return '';
+      const stringValue = String(value);
+      // If value contains comma, newline, or quotes, wrap in quotes and escape internal quotes
+      if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
     const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(field => row[field]).join(','))
+      headers.map(escapeCSVValue).join(','),
+      ...data.map(row => headers.map(field => escapeCSVValue(row[field])).join(','))
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Add BOM for UTF-8 to ensure proper Vietnamese character display in Excel
+    const BOM = '\uFEFF';
+    const csvWithBOM = BOM + csvContent;
+
+    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
@@ -274,24 +242,11 @@ const Reports: React.FC = () => {
     refetchAttendance();
     refetchTop();
     refetchPenalty();
-    refetchTrends();
   };
 
-  // Filter attendance records based on search term
-  const filteredAttendanceRecords = attendanceRecords?.filter(record => {
-    const matchesSearch = !searchTerm ||
-      record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.position.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  }) || [];
-
-  // Filter penalty analysis based on search term
-  const filteredPenaltyAnalysis = penaltyAnalysis?.filter(record => {
-    const matchesSearch = !searchTerm ||
-      record.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.position.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  }) || [];
+  // No need for client-side filtering since API handles search and pagination
+  const filteredAttendanceRecords = attendanceRecords || [];
+  const filteredPenaltyAnalysis = penaltyAnalysis || [];
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -312,7 +267,7 @@ const Reports: React.FC = () => {
                 placeholder="Tìm kiếm nhân viên..."
                 className="pl-8"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
 
@@ -357,14 +312,12 @@ const Reports: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs for different views - GIỐNG HỆT ADMIN */}
+        {/* Tabs for different views - GIỐNG ADMIN */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">📈 Tổng quan</TabsTrigger>
-            <TabsTrigger value="trends">📊 Xu hướng</TabsTrigger>
-            <TabsTrigger value="charts">📈 Biểu đồ</TabsTrigger>
-            <TabsTrigger value="attendance">📋 Chấm công</TabsTrigger>
             <TabsTrigger value="penalties">⚠️ Phân tích phạt</TabsTrigger>
+            <TabsTrigger value="charts">📈 Biểu đồ</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab - GIỐNG ADMIN */}
@@ -530,66 +483,6 @@ const Reports: React.FC = () => {
             </div>
           </TabsContent>
 
-          {/* Trends Tab - GIỐNG ADMIN */}
-          <TabsContent value="trends" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Monthly Trends */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <TrendingUp className="mr-2 h-5 w-5 text-blue-600" />
-                    Xu hướng giờ làm phòng ban năm {currentYear}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {attendanceTrends && (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart
-                        data={attendanceTrends}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="totalHours" stroke="#8884d8" name="Tổng giờ làm" />
-                        <Line type="monotone" dataKey="totalOvertime" stroke="#82ca9d" name="Tăng ca" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Penalty Trends */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <AlertTriangle className="mr-2 h-5 w-5 text-red-600" />
-                    Xu hướng phạt phòng ban
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {attendanceTrends && (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={attendanceTrends}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="totalPenalties" fill="#ef4444" name="Tổng phạt (VND)" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
           {/* Charts Tab - GIỐNG ADMIN */}
           <TabsContent value="charts" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -601,11 +494,18 @@ const Reports: React.FC = () => {
                 <CardContent>
                   {attendanceRecords && (
                     <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={attendanceRecords}>
+                      <BarChart data={attendanceRecords.map((record, index) => ({
+                        ...record,
+                        index: `NV${index + 1}`
+                      }))}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="employeeName" />
+                        <XAxis dataKey="index" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip formatter={(value, name, props) => [
+                          value,
+                          name,
+                          `${props.payload.employeeName} (${props.payload.position})`
+                        ]} />
                         <Legend />
                         <Bar dataKey="totalHours" fill="#8884d8" name="Giờ làm" />
                         <Bar dataKey="overtimeHours" fill="#82ca9d" name="Tăng ca" />
@@ -646,67 +546,42 @@ const Reports: React.FC = () => {
             </div>
           </TabsContent>
 
-          {/* Attendance Tab - GIỐNG ADMIN */}
-          <TabsContent value="attendance" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Chi tiết chấm công phòng ban</CardTitle>
-                <CardDescription>
-                  Bảng chi tiết chấm công nhân viên phòng ban tháng {format(selectedMonth, 'MM/yyyy')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="text-left p-4 font-medium">Nhân viên</th>
-                        <th className="text-left p-4 font-medium">Chức vụ</th>
-                        <th className="text-left p-4 font-medium">Giờ làm</th>
-                        <th className="text-left p-4 font-medium">Tăng ca</th>
-                        <th className="text-left p-4 font-medium">Nghỉ phép</th>
-                        <th className="text-left p-4 font-medium">Đi muộn</th>
-                        <th className="text-left p-4 font-medium">Phạt</th>
-                        <th className="text-left p-4 font-medium">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAttendanceRecords.map((record) => (
-                        <tr key={record.id} className="border-b hover:bg-gray-50">
-                          <td className="p-4 font-medium">{record.employeeName}</td>
-                          <td className="p-4">{record.position}</td>
-                          <td className="p-4">{formatHours(record.totalHours)}</td>
-                          <td className="p-4">{formatHours(record.overtimeHours)}</td>
-                          <td className="p-4">{record.leaveDays} ngày</td>
-                          <td className="p-4">{record.lateMinutes} phút</td>
-                          <td className="p-4">{formatCurrency(record.penaltyAmount)}</td>
-                          <td className="p-4">
-                            <Button variant="outline" size="sm">
-                              Chi tiết
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredAttendanceRecords.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      Không có dữ liệu chấm công cho kỳ này
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Penalties Tab - GIỐNG ADMIN */}
           <TabsContent value="penalties" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Phân tích phạt chi tiết phòng ban</CardTitle>
-                <CardDescription>
-                  Chi tiết vi phạm và mức phạt của nhân viên phòng ban
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Phân tích phạt chi tiết phòng ban</CardTitle>
+                  <CardDescription>
+                    Chi tiết vi phạm và mức phạt của nhân viên phòng ban
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={() => {
+                    // Export penalty analysis to CSV
+                    const csvContent = [
+                      ['Tên nhân viên', 'Chức vụ', 'Đi muộn (phút)', 'Về sớm (phút)', 'Mức phạt (VNĐ)', 'Loại phạt'],
+                      ...filteredPenaltyAnalysis.map(record => [
+                        record.employeeName,
+                        record.position,
+                        record.lateMinutes,
+                        record.earlyMinutes,
+                        record.penaltyAmount.toLocaleString('vi-VN'),
+                        record.penaltyLevel
+                      ])
+                    ].map(row => row.join(',')).join('\n');
+
+                    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `phan-tich-phat-phong-ban-${format(selectedMonth, 'yyyy-MM', { locale: vi })}.csv`;
+                    link.click();
+                  }}
+                  variant="outline"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Xuất báo cáo
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">

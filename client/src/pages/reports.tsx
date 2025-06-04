@@ -287,17 +287,33 @@ const Reports: React.FC = () => {
         return value && !isNaN(value) ? value : 0;
     };
 
-    // Export to CSV function
+    // Export to CSV function with proper UTF-8 encoding for Vietnamese
     const exportToCSV = (data: any[], filename: string) => {
         if (!data || data.length === 0) return;
 
         const headers = Object.keys(data[0]);
+
+        // Escape CSV values and handle Vietnamese characters
+        const escapeCSVValue = (value: any) => {
+            if (value === null || value === undefined) return '';
+            const stringValue = String(value);
+            // If value contains comma, newline, or quotes, wrap in quotes and escape internal quotes
+            if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+        };
+
         const csvContent = [
-            headers.join(','),
-            ...data.map(row => headers.map(field => row[field]).join(','))
+            headers.map(escapeCSVValue).join(','),
+            ...data.map(row => headers.map(field => escapeCSVValue(row[field])).join(','))
         ].join('\n');
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        // Add BOM for UTF-8 to ensure proper Vietnamese character display in Excel
+        const BOM = '\uFEFF';
+        const csvWithBOM = BOM + csvContent;
+
+        const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);

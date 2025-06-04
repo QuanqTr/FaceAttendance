@@ -15,9 +15,9 @@ async function startServer(): Promise<Server> {
     // Start the server
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
-        log(`🚀 Server running on port ${PORT}`);
-        log(`💚 Health check: http://localhost:${PORT}/api/health`);
-        log(`🔧 Test all endpoints at: http://localhost:${PORT}/api/*`);
+        log(`Server running on port ${PORT}`);
+        log(`Health check: http://localhost:${PORT}/api/health`);
+        log(`Test all endpoints at: http://localhost:${PORT}/api/*`);
     });
 
     return server;

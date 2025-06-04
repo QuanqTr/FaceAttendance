@@ -61,7 +61,7 @@ export default function AccountsPage() {
 
     // Estado para paginação e filtragem
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(100);
+    const [limit, setLimit] = useState(10);
     const [searchTerm, setSearchTerm] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [accountToDelete, setAccountToDelete] = useState<number | null>(null);
@@ -409,11 +409,11 @@ export default function AccountsPage() {
                                     <div className="flex items-center gap-2">
                                         <span className="text-sm text-muted-foreground">{t('common.rowsPerPage')}:</span>
                                         <Select
-                                            value={limit ? limit.toString() : "100"}
-                                            onValueChange={(value) => setLimit(Number(value) || 100)}
+                                            value={limit ? limit.toString() : "10"}
+                                            onValueChange={(value) => setLimit(Number(value) || 10)}
                                         >
                                             <SelectTrigger className="w-[80px]">
-                                                <SelectValue placeholder="100" />
+                                                <SelectValue placeholder="10" />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="10">10</SelectItem>

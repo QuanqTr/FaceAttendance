@@ -63,7 +63,9 @@
         "previous": "Previous",
         "export": "Export",
         "notSpecified": "Not specified",
-        "notProvided": "Not provided"
+        "notProvided": "Not provided",
+        "exportSuccess": "Export successful",
+        "exportFailed": "Export failed"
     },
     "user": {
         "dashboard": {
@@ -496,8 +498,32 @@
         "todayAttendance": "Today's Attendance",
         "recordAttendance": "Record Attendance",
         "workHours": "Work Hours",
-        "leave": "Nghỉ phép",
-        "weekend": "Weekend"
+        "leave": "Leave",
+        "weekend": "Weekend",
+        "searchEmployees": "Search employees...",
+        "regularHours": "Regular Hours",
+        "overtimeHours": "Overtime Hours",
+        "totalHours": "Total Hours",
+        "clockIn": "Clock In",
+        "clockOut": "Clock Out",
+        "department": "Department",
+        "all": "All",
+        "employee": "Employee",
+        "searchByName": "Search by name...",
+        "attendanceRecords": "Attendance Records",
+        "noAttendanceRecordsFound": "No attendance records found",
+        "noAttendanceRecordsForDay": "No attendance records found for this day.",
+        "export": "Export",
+        "fileDownloaded": "File downloaded successfully",
+        "noRecordsInThisMonth": "No attendance records found for this month.",
+        "workHoursRecords": "Work hours records",
+        "monthlyAttendance": "Monthly Attendance",
+        "presentDay": "Present day",
+        "nonWorkDay": "Non-work day",
+        "attendanceCalendar": "Attendance Calendar",
+        "attendanceDetails": "Attendance Details",
+        "workHoursStatistics": "Work Hours Statistics",
+        "dailyWorkHours": "Daily Work Hours"
     },
     "leaveRequests": {
         "title": "Leave Requests",

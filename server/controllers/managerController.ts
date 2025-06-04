@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { storage } from "../models/storage";
 import { pool } from "../db.js";
+import { formatEmployeeName } from "../utils/name-utils";
 
 // Helper function to get manager's department IDs (supports multiple departments)
 export const getManagerDepartmentIds = async (userId: number): Promise<number[]> => {
@@ -175,7 +176,7 @@ export const getManagerEmployees = async (req: Request, res: Response) => {
             // Add additional info for frontend
             const enhancedEmployees = result.employees.map(emp => ({
                 ...emp,
-                fullName: `${emp.firstName} ${emp.lastName}`,
+                fullName: formatEmployeeName(emp), // Vietnamese format: lastName firstName
                 departmentName: emp.departmentName || 'Unknown Department'
             }));
 

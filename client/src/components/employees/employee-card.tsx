@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { useI18nToast } from "@/hooks/use-i18n-toast";
+import { formatEmployeeName, getEmployeeInitials } from "@/lib/name-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -105,19 +106,17 @@ export function EmployeeCard({ employee }: EmployeeCardProps) {
     }
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase() || 'N/A';
-  };
+
 
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow">
       <div className="p-6 flex flex-col items-center">
         <Avatar className="h-20 w-20 mb-4">
           <AvatarFallback className="bg-primary text-primary-foreground">
-            {getInitials(employee.firstName, employee.lastName)}
+            {getEmployeeInitials(employee)}
           </AvatarFallback>
         </Avatar>
-        <h3 className="font-semibold text-lg">{employee.lastName} {employee.firstName}</h3>
+        <h3 className="font-semibold text-lg">{formatEmployeeName(employee)}</h3>
         <p className="text-sm text-muted-foreground mb-2">{employee.position || t('employees.noPosition')}</p>
         {getStatusBadge(employee.status)}
       </div>
