@@ -67,7 +67,16 @@ export function EmployeeAttendanceHistory({ employeeId, month }: EmployeeAttenda
   const formatTime = (timeString: string | null) => {
     if (!timeString) return '--:--';
     try {
-      return format(new Date(timeString), 'HH:mm');
+      const date = new Date(timeString);
+      if (isNaN(date.getTime())) return '--:--';
+
+      // Format time in Vietnam timezone using toLocaleTimeString
+      return date.toLocaleTimeString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch {
       return '--:--';
     }

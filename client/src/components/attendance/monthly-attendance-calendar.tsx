@@ -38,17 +38,13 @@ export function MonthlyAttendanceCalendar({
         end: endOfMonth(currentMonth)
     });
 
-    // Custom weekend detection that treats T3 and T4 as weekend days
-    // This effectively shifts the weekend pattern by 4 days
+    // Correct weekend detection for Saturday and Sunday
     const isCustomWeekend = (date: Date) => {
-        // Getting raw day of week (0 = Sunday, 6 = Saturday)
-        const realDayOfWeek = getDay(date);
+        // Getting day of week (0 = Sunday, 6 = Saturday)
+        const dayOfWeek = getDay(date);
 
-        // Shift by 4 days and wrap around within 0-6 range
-        const shiftedDay = (realDayOfWeek + 3) % 7;
-
-        // Consider days 6 and 0 (Saturday and Sunday) as weekends after shifting
-        return shiftedDay === 6 || shiftedDay === 0;
+        // Saturday (6) and Sunday (0) are weekends
+        return dayOfWeek === 0 || dayOfWeek === 6;
     };
 
     return (

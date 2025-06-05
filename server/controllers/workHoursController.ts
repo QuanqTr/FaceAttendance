@@ -177,7 +177,7 @@ export const getEmployeeWorkHours = async (req: Request, res: Response) => {
                     const regularHours = record.regularHours ? parseFloat(record.regularHours.toString()) : 0;
                     const overtimeHours = record.otHours ? parseFloat(record.otHours.toString()) : 0;
 
-                    // Chuyển đổi thời gian check-in và check-out thành chuỗi ISO
+                    // Chuyển đổi thời gian check-in và check-out thành chuỗi ISO (giữ nguyên UTC)
                     const checkinTime = record.firstCheckin
                         ? new Date(record.firstCheckin).toISOString()
                         : null;
@@ -271,25 +271,12 @@ export const getEmployeeWorkHours = async (req: Request, res: Response) => {
                 const regularHours = record.regularHours ? parseFloat(record.regularHours.toString()) : 0;
                 const overtimeHours = record.otHours ? parseFloat(record.otHours.toString()) : 0;
 
-                // Chuyển đổi thời gian check-in và check-out thành chuỗi có thể đọc được
-                const formatTimeToString = (date: Date | null): string | null => {
-                    if (!date) return null;
-
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    const seconds = String(date.getSeconds()).padStart(2, '0');
-
-                    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000Z`;
-                };
-
+                // Chuyển đổi thời gian check-in và check-out thành chuỗi ISO (giữ nguyên UTC)
                 const firstCheckin = record.firstCheckin ? new Date(record.firstCheckin) : null;
                 const lastCheckout = record.lastCheckout ? new Date(record.lastCheckout) : null;
 
-                const checkinTime = formatTimeToString(firstCheckin);
-                const checkoutTime = formatTimeToString(lastCheckout);
+                const checkinTime = firstCheckin ? firstCheckin.toISOString() : null;
+                const checkoutTime = lastCheckout ? lastCheckout.toISOString() : null;
 
                 return res.json({
                     regularHours,

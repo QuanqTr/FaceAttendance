@@ -893,14 +893,7 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
 
   // Sửa đổi hàm detectFaces để sử dụng dữ liệu từ API
   const detectFaces = async () => {
-    console.log('🔄 detectFaces called with conditions:', {
-      hasVideoRef: !!videoRef.current,
-      hasCanvasRef: !!canvasRef.current,
-      cameraActive,
-      isProcessing: isProcessingRef.current,
-      isCameraOn,
-      employeesWithFaceCount: employeesWithFace.length
-    });
+    // Removed verbose logging
 
     if (!videoRef.current || !canvasRef.current || !cameraActive || isProcessingRef.current || !isCameraOn) {
       console.log('❌ detectFaces skipped due to conditions not met');
@@ -919,7 +912,6 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
     try {
       // Kiểm tra xem có nhân viên nào có face descriptor không
       if (employeesWithFace.length === 0) {
-        console.log("❌ No employees with face descriptors found - skipping detection");
         isProcessingRef.current = false;
         return;
       }
@@ -1305,24 +1297,7 @@ export function FaceDetector({ videoRef, canvasRef, status, modelsPreloaded = fa
           </div>
         )}
 
-        {/* Hiển thị thông tin người được nhận diện */}
-        {recognizedPerson && (
-          <div className={`absolute top-4 left-4 px-4 py-2 rounded-lg shadow-lg text-white ${recognizedPerson.name === "Không nhận diện được"
-            ? "bg-red-500"
-            : recognizedPerson.employeeId
-              ? "bg-green-500"
-              : "bg-orange-500"
-            }`}>
-            <div className="font-semibold">
-              {recognizedPerson.name === "Không nhận diện được"
-                ? "❌ Không nhận diện được khuôn mặt"
-                : `✅ Đã nhận diện: ${recognizedPerson.name}`}
-            </div>
-            {recognizedPerson.employeeId && (
-              <div className="text-sm">Độ tin cậy: {Math.round(recognizedPerson.confidence * 100)}%</div>
-            )}
-          </div>
-        )}
+        
       </div>
     </div>
   );

@@ -187,15 +187,20 @@ export function AttendanceRecognition() {
 
       // Tạo recognized user với kiểm tra an toàn
       const employeeData = data.employee || {};
-      const employeeDepartment = employeeData.department || {};
+      const departmentData = data.department || {};
 
       setRecognizedUser({
         id: data.employeeId || 0,
         employeeId: employeeData.employeeId || '',
         name: employeeData.firstName && employeeData.lastName ?
           `${employeeData.firstName} ${employeeData.lastName}` : "Employee",
-        department: employeeDepartment.name || 'Unknown',
-        time: new Date(data.logTime || new Date()).toLocaleTimeString(),
+        department: departmentData.description || departmentData.name || 'Không xác định',
+        time: new Date().toLocaleTimeString('vi-VN', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }),
         attendanceType: 'checkin',
       });
 
@@ -243,6 +248,8 @@ export function AttendanceRecognition() {
       }
     },
     onSuccess: (data) => {
+      console.log("🚀 CHECKOUT MUTATION SUCCESS - Raw data:", JSON.stringify(data, null, 2));
+
       // Kiểm tra xem dữ liệu có phải là loại đặc biệt từ lỗi không
       if (data._error) {
         console.log("Check-out with warning:", data._error.message);
@@ -273,15 +280,26 @@ export function AttendanceRecognition() {
 
       // Tạo recognized user với kiểm tra an toàn
       const employeeData = data.employee || {};
-      const employeeDepartment = employeeData.department || {};
+      const departmentData = data.department || {};
+
+      console.log("🔍 CHECKOUT - Frontend received data:", JSON.stringify(data, null, 2));
+      console.log("🏢 CHECKOUT - Department data:", JSON.stringify(departmentData, null, 2));
+
+      const departmentName = departmentData.description || departmentData.name || 'Không xác định';
+      console.log("🏢 CHECKOUT - Final department name:", departmentName);
 
       setRecognizedUser({
         id: data.employeeId || 0,
         employeeId: employeeData.employeeId || '',
         name: employeeData.firstName && employeeData.lastName ?
           `${employeeData.firstName} ${employeeData.lastName}` : "Employee",
-        department: employeeDepartment.name || 'Unknown',
-        time: new Date(data.logTime || new Date()).toLocaleTimeString(),
+        department: departmentName,
+        time: new Date().toLocaleTimeString('vi-VN', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }),
         attendanceType: 'checkout',
       });
 
@@ -475,7 +493,12 @@ export function AttendanceRecognition() {
                   ? `${employeeData.first_name} ${employeeData.last_name}`
                   : 'Unknown User',
             department: employeeData.department?.name || employeeData.departmentName || 'Unknown',
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toLocaleTimeString('vi-VN', {
+              hour12: false,
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
             attendanceType: 'checkin',
           });
 
@@ -612,6 +635,7 @@ export function AttendanceRecognition() {
 
         // Kiểm tra nhiều nơi có thể chứa thông tin employee
         const employeeData = extractEmployeeData(error);
+        console.log("🔍 CHECKOUT ERROR - Extracted employee data:", JSON.stringify(employeeData, null, 2));
 
         if (employeeData) {
           // Nếu tìm thấy dữ liệu employee trong error, coi như thành công
@@ -631,7 +655,12 @@ export function AttendanceRecognition() {
                   ? `${employeeData.first_name} ${employeeData.last_name}`
                   : 'Unknown User',
             department: employeeData.department?.name || employeeData.departmentName || 'Unknown',
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toLocaleTimeString('vi-VN', {
+              hour12: false,
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
             attendanceType: 'checkout',
           });
 

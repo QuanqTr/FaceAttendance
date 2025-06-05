@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { storage } from "../models/storage";
 import { z } from "zod";
 import { calculateEuclideanDistance, parseFaceDescriptor, validateFaceDescriptor } from "../utils/faceUtils";
+import { getVietnamTime } from "../utils/timezone";
 
 // Create attendance record
 export const createAttendance = async (req: Request, res: Response) => {
@@ -46,9 +47,13 @@ export const createTimeLog = async (req: Request, res: Response) => {
 
         // If employeeId is provided directly (for manual logs), use it
         if (employeeId && !faceDescriptor) {
+            // Tạo thời gian Việt Nam
+            const vietnamTime = new Date();
+            vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
+
             const timeLogData = {
                 employeeId: parseInt(employeeId),
-                logTime: new Date(),
+                logTime: vietnamTime,
                 type,
                 source: 'manual'
             };
@@ -162,6 +167,10 @@ export const createTimeLog = async (req: Request, res: Response) => {
         // Get current time and check for existing logs
         const currentTime = new Date();
         const todayLogs = await storage.getEmployeeTimeLogs(bestMatch.id, currentTime);
+
+        // Tạo thời gian Việt Nam để lưu vào database
+        const vietnamTime = new Date();
+        vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
         console.log(`[TimeLogs] Tìm logs cho nhân viên ${bestMatch.id} ngày ${currentTime.toISOString()}`);
 
         // Sắp xếp logs theo thời gian (mới nhất trước)
@@ -223,7 +232,7 @@ export const createTimeLog = async (req: Request, res: Response) => {
                     errorMessage = `${employeeName} chưa check-in hôm nay. Vui lòng check-in trước khi check-out.`;
                     console.log(`❌ Employee ${bestMatch.id} chưa check-in, không được check-out`);
                 } else if (lastLog.type === 'checkout') {
-                    // Log cuối cùng là checkout
+                    // Log cuối cùng là checkout - KHÔNG CHO PHÉP checkout lại
                     const lastCheckoutTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
                     const timeStr = lastCheckoutTime.toTimeString().substring(0, 5); // HH:MM
 
@@ -248,29 +257,16 @@ export const createTimeLog = async (req: Request, res: Response) => {
             console.log(`✅ Employee ${bestMatch.id} được phép check-out (đã check-in lúc ${timeStr})`);
         }
 
-        // Kiểm tra time limit để tránh spam (1 phút)
-        if (lastLog) {
-            const timeDiff = currentTime.getTime() - lastLog.logTime.getTime();
-            const minutesDiff = Math.floor(timeDiff / 60000);
+        // Business logic đã đủ để prevent spam:
+        // - Không cho check-in liên tiếp
+        // - Không cho check-out liên tiếp
+        // - Phải có check-in trước khi check-out
+        // Không cần thêm time limit check
 
-            if (timeDiff < 60000) { // Ít hơn 1 phút
-                const remainingSeconds = 60 - Math.floor((timeDiff % 60000) / 1000);
-
-                console.log(`❌ Employee ${bestMatch.id} thử ${type} quá nhanh, cần đợi ${remainingSeconds} giây`);
-                return res.status(429).json({
-                    error: `Vui lòng đợi ${remainingSeconds} giây trước khi thực hiện ${type === 'checkin' ? 'check-in' : 'check-out'} tiếp.`,
-                    details: {
-                        timeLimitSeconds: remainingSeconds,
-                        message: 'Thao tác quá nhanh, vui lòng đợi'
-                    }
-                });
-            }
-        }
-
-        // Create time log
+        // Create time log - CHỈ tạo khi đã pass tất cả validation
         const timeLogData = {
             employeeId: bestMatch.id,
-            logTime: currentTime,
+            logTime: vietnamTime,
             type,
             source: 'face'
         };
@@ -284,6 +280,8 @@ export const createTimeLog = async (req: Request, res: Response) => {
         const department = employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null;
 
         console.log(`Face recognition successful for ${employee?.firstName} ${employee?.lastName}`);
+        console.log(`Employee department ID: ${employee?.departmentId}`);
+        console.log(`Department info:`, JSON.stringify(department, null, 2));
         console.log("=== TIME LOG SUCCESS ===");
 
         res.status(201).json({
@@ -392,9 +390,12 @@ export const verifyAttendance = async (req: Request, res: Response) => {
         }
 
         // Create time log
+        const vietnamTime = new Date();
+        vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
+
         const timeLog = await storage.createTimeLog({
             employeeId: employee.id,
-            logTime: new Date(),
+            logTime: vietnamTime,
             type: mode === 'check_out' ? 'checkout' : 'checkin',
             source: 'face'
         });

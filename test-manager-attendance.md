@@ -2,12 +2,17 @@
 
 ## Các Lỗi Đã Sửa
 
-Tab điểm danh nhân viên của manager không hiển thị dữ liệu do:
+### 🔧 Lỗi Manager Employee Attendance Tab:
 
 1. **Lỗi schema database** - API sử dụng sai tên cột
 2. **Thiếu kiểm tra quyền** - Không kiểm tra manager có quyền truy cập nhân viên không
 3. **Lỗi kiểu dữ liệu** - Frontend cố gắng gọi .toFixed() trên string thay vì number
 4. **Thiếu import function** - getManagerDepartmentIds không được import
+
+### 🕐 Lỗi User Attendance History Time:
+
+5. **Lỗi thời gian sai** - Thời gian không hiển thị đúng múi giờ Việt Nam
+6. **Lỗi ngày cuối tuần** - Thứ 4, Thứ 5 bị bôi xám thay vì Thứ 7, CN
 
 ## Các Thay Đổi Đã Thực Hiện
 
@@ -29,7 +34,23 @@ Tab điểm danh nhân viên của manager không hiển thị dữ liệu do:
 - Sử dụng `Number()` để đảm bảo kiểu dữ liệu đúng
 - Xử lý trường hợp null/undefined an toàn
 
-### 3. Thêm Test Endpoint
+### 3. Sửa User Attendance Time Issues
+
+- **Sửa ngày cuối tuần** (`client/src/components/attendance/monthly-attendance-calendar.tsx`):
+
+  - Thay đổi logic `isCustomWeekend` để đúng Thứ 7 (6) và CN (0)
+  - Loại bỏ logic shift sai làm Thứ 4, Thứ 5 bị bôi xám
+
+- **Sửa thời gian hiển thị** (`client/src/components/attendance/attendance-table.tsx`):
+
+  - Thêm function `formatTimeVN` để format thời gian đúng múi giờ Việt Nam
+  - Sử dụng `format(date, "HH:mm:ss")` thay vì format trực tiếp từ UTC
+
+- **Sửa backend time handling** (`server/controllers/workHoursController.ts`):
+  - Đơn giản hóa logic format thời gian
+  - Sử dụng `toISOString()` để đảm bảo tính nhất quán
+
+### 4. Thêm Test Endpoint
 
 - `/api/test/manager/employees/:employeeId/work-hours` để debug
 

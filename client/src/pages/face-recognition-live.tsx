@@ -361,7 +361,13 @@ export default function FaceRecognitionLive() {
                 name: employeeData.firstName && employeeData.lastName ?
                     `${employeeData.firstName} ${employeeData.lastName}` : "Nhân viên",
                 department: employeeDepartment.name || 'Không xác định',
-                time: new Date(data.logTime || new Date()).toLocaleTimeString(),
+                time: new Date(data.logTime || new Date()).toLocaleTimeString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }),
                 attendanceType: 'checkin',
             });
 
@@ -432,7 +438,13 @@ export default function FaceRecognitionLive() {
                 name: employeeData.firstName && employeeData.lastName ?
                     `${employeeData.firstName} ${employeeData.lastName}` : "Nhân viên",
                 department: employeeDepartment.name || 'Không xác định',
-                time: new Date(data.logTime || new Date()).toLocaleTimeString(),
+                time: new Date(data.logTime || new Date()).toLocaleTimeString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }),
                 attendanceType: 'checkout',
             });
 

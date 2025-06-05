@@ -26,6 +26,26 @@ export function AttendanceTable({
     onPageChange,
     t
 }: any) {
+    // Helper function to format time from UTC to Vietnam timezone
+    const formatTimeVN = (timeString: string | null) => {
+        if (!timeString) return "-";
+        try {
+            const date = new Date(timeString);
+            if (isNaN(date.getTime())) return "-";
+
+            // Format time in Vietnam timezone using toLocaleString
+            return date.toLocaleTimeString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        } catch (error) {
+            console.error('Error formatting time:', error);
+            return "-";
+        }
+    };
     return (
         <Card>
             <CardHeader>
@@ -102,8 +122,8 @@ export function AttendanceTable({
                             {data?.map((record: any) => (
                                 <TableRow key={record.id}>
                                     <TableCell>{format(new Date(record.date), "dd/MM/yyyy")}</TableCell>
-                                    <TableCell>{record.checkinTime ? format(new Date(record.checkinTime), "HH:mm:ss") : "-"}</TableCell>
-                                    <TableCell>{record.checkoutTime ? format(new Date(record.checkoutTime), "HH:mm:ss") : "-"}</TableCell>
+                                    <TableCell>{formatTimeVN(record.checkinTime)}</TableCell>
+                                    <TableCell>{formatTimeVN(record.checkoutTime)}</TableCell>
                                     <TableCell>{record.regularHours ? `${record.regularHours} giờ` : "-"}</TableCell>
                                     <TableCell>{record.overtimeHours ? `${record.overtimeHours} giờ` : "-"}</TableCell>
                                     <TableCell>{record.regularHours && record.overtimeHours ? `${record.regularHours + record.overtimeHours} giờ` : record.regularHours ? `${record.regularHours} giờ` : "-"}</TableCell>

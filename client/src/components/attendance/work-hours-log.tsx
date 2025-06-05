@@ -106,10 +106,13 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
             // Thử parse và format bằng Date object
             const date = new Date(dateString);
             if (!isNaN(date.getTime())) {
-                // Sử dụng getUTCHours và getUTCMinutes để tránh vấn đề múi giờ
-                const hours = String(date.getUTCHours()).padStart(2, '0');
-                const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+                // Format time in Vietnam timezone using toLocaleTimeString
+                return date.toLocaleTimeString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
             }
 
             return '--:--';

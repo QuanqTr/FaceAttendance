@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { storage } from "../models/storage";
 import { calculateEuclideanDistance, parseFaceDescriptor, validateFaceDescriptor } from "../utils/faceUtils";
+import { getVietnamTime } from "../utils/timezone";
 
 // Face recognition verify (for attendance with mode check)
 export const faceRecognitionVerify = async (req: Request, res: Response) => {
@@ -92,9 +93,12 @@ export const faceRecognitionVerify = async (req: Request, res: Response) => {
         }
 
         // Create time log
+        const vietnamTime = new Date();
+        vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
+
         const timeLog = await storage.createTimeLog({
             employeeId: employee.id,
-            logTime: new Date(),
+            logTime: vietnamTime,
             type: mode === 'check_out' ? 'checkout' : 'checkin',
             source: 'face'
         });

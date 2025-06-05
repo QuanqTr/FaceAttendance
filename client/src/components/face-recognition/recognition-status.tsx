@@ -5,6 +5,8 @@ import {
   RecognitionStatusType,
   RecognizedUser
 } from "@/components/dashboard/attendance-recognition";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 type RecognitionStatusProps = {
   status: RecognitionStatusType;
@@ -14,6 +16,20 @@ type RecognitionStatusProps = {
 };
 
 export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceType = 'checkin' }: RecognitionStatusProps) {
+  // Fetch employee data to get department info
+  const { data: employeeData } = useQuery({
+    queryKey: ['employee', recognizedUser?.id],
+    queryFn: async () => {
+      if (!recognizedUser?.id) return null;
+      const response = await apiRequest.get(`/api/employees/${recognizedUser.id}`);
+      return response.data;
+    },
+    enabled: !!recognizedUser?.id && status === 'success',
+  });
+
+  // Get department name from employee data
+  const departmentName = employeeData?.departmentName || employeeData?.department?.description || employeeData?.department?.name || 'Không xác định';
+
   return (
     <div className="bg-muted/50 rounded-lg p-4 h-full">
       <h3 className="text-md font-medium mb-3">Trạng thái nhận diện</h3>
@@ -77,13 +93,26 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <span className="text-xs text-muted-foreground">ID</span>
             <span className="text-xs font-medium">{recognizedUser?.employeeId || 'Unknown'}</span>
           </div>
-          <div className="flex justify-between mb-1">
-            <span className="text-xs text-muted-foreground">Department</span>
-            <span className="text-xs font-medium">{recognizedUser?.department || 'Unknown'}</span>
-          </div>
+    
           <div className="flex justify-between mb-1">
             <span className="text-xs text-muted-foreground">Time</span>
-            <span className="text-xs font-medium">{recognizedUser?.time || 'Unknown'}</span>
+            <span className="text-xs font-medium">{(() => {
+              if (!recognizedUser?.time) return 'Unknown';
+              // Nếu time từ recognizedUser có vẻ bị +7h, thì trừ đi
+              const timeStr = recognizedUser.time;
+              if (timeStr.includes(':')) {
+                const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+                const date = new Date();
+                date.setHours(hours - 7, minutes, seconds || 0, 0);
+                return date.toLocaleTimeString('vi-VN', {
+                  hour12: false,
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                });
+              }
+              return timeStr;
+            })()}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-xs text-muted-foreground">Status</span>
