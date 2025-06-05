@@ -8,6 +8,7 @@ import { EmailVerification } from "@/components/face-recognition/email-verificat
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useScreenshot } from "@/hooks/useScreenshot";
 import * as faceapi from 'face-api.js';
 import { format } from "date-fns";
 
@@ -55,6 +56,9 @@ export default function FaceRecognitionLive() {
     const [isScreenLocked, setIsScreenLocked] = useState(false);
     const [showUnlockVerification, setShowUnlockVerification] = useState(false);
 
+    // Screenshot hook
+    const { captureCanvas, captureVideo, isCapturing: isCapturingScreenshot } = useScreenshot();
+
     // Fetch employee's today work hours if recognized
     const { data: workHoursData } = useQuery({
         queryKey: ['workHours', recognizedUser?.id],
@@ -69,6 +73,75 @@ export default function FaceRecognitionLive() {
         },
         enabled: !!recognizedUser?.id && status === 'success',
     });
+
+    // Hàm chụp màn hình video và lưu vào Firebase
+    const captureAndSaveScreenshot = async (user: RecognizedUser, capturedBase64?: string) => {
+        if (isCapturingScreenshot) {
+            console.log("Already capturing screenshot");
+            return;
+        }
+
+        try {
+            console.log("📸 Capturing screenshot for attendance...");
+
+            let screenshotBase64 = capturedBase64;
+
+            // Nếu không có ảnh đã chụp sẵn, chụp từ video
+            if (!screenshotBase64 && videoRef.current) {
+                const screenshotResult = await captureVideo(videoRef.current, {
+                    format: 'jpeg',
+                    quality: 0.8
+                });
+
+                if (!screenshotResult) {
+                    console.error("Failed to capture screenshot from video");
+                    return;
+                }
+
+                screenshotBase64 = screenshotResult.base64;
+            }
+
+            if (!screenshotBase64) {
+                console.error("No screenshot data available");
+                return;
+            }
+
+            // Chuẩn bị dữ liệu để lưu vào Firebase
+            // Trừ 7 giờ cho thời gian Firebase
+            const adjustedTime = (() => {
+                if (!user.time || !user.time.includes(':')) return user.time;
+
+                const [hours, minutes, seconds] = user.time.split(':').map(Number);
+                const adjustedHours = (hours - 7 + 24) % 24; // Trừ 7h và xử lý trường hợp âm
+                return `${adjustedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${(seconds || 0).toString().padStart(2, '0')}`;
+            })();
+
+            const screenshotData = {
+                name: user.name,
+                time: adjustedTime,
+                base64Image: screenshotBase64,
+                employeeId: user.employeeId,
+                attendanceType: user.attendanceType
+            };
+
+            // Gửi lên server để lưu vào Firebase
+            const response = await apiRequest("POST", "/api/screenshots/attendance", screenshotData);
+
+            if (response.data.success) {
+                console.log("✅ Screenshot saved to Firebase Realtime Database successfully:", response.data.screenshotId);
+                toast({
+                    title: "Đã lưu ảnh chấm công",
+                    description: "Ảnh chấm công đã được lưu thành công",
+                    variant: "default",
+                });
+            } else {
+                console.error("❌ Failed to save screenshot to Firebase");
+            }
+
+        } catch (error) {
+            console.error("❌ Error capturing and saving screenshot:", error);
+        }
+    };
 
     // Check camera readiness
     const checkCameraReady = (logDetails = false): boolean => {
@@ -355,21 +428,31 @@ export default function FaceRecognitionLive() {
             const employeeData = data.employee || {};
             const employeeDepartment = employeeData.department || {};
 
-            setRecognizedUser({
+            const newRecognizedUser = {
                 id: data.employeeId || 0,
                 employeeId: employeeData.employeeId || '',
                 name: employeeData.firstName && employeeData.lastName ?
                     `${employeeData.firstName} ${employeeData.lastName}` : "Nhân viên",
                 department: employeeDepartment.name || 'Không xác định',
-                time: new Date(data.logTime || new Date()).toLocaleTimeString('vi-VN', {
+                time: data.logTime || new Date().toLocaleTimeString('vi-VN', {
                     timeZone: 'Asia/Ho_Chi_Minh',
                     hour12: false,
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit'
                 }),
-                attendanceType: 'checkin',
-            });
+                attendanceType: 'checkin' as const,
+            };
+
+            setRecognizedUser(newRecognizedUser);
+
+            // Chụp màn hình sau khi chấm công thành công
+            setTimeout(() => {
+                const pendingScreenshot = (window as any).pendingScreenshot;
+                captureAndSaveScreenshot(newRecognizedUser, pendingScreenshot);
+                // Xóa screenshot tạm thời
+                delete (window as any).pendingScreenshot;
+            }, 500); // Đợi một chút để UI cập nhật
 
             setIsProcessing(false);
         },
@@ -432,21 +515,31 @@ export default function FaceRecognitionLive() {
             const employeeData = data.employee || {};
             const employeeDepartment = employeeData.department || {};
 
-            setRecognizedUser({
+            const newRecognizedUser = {
                 id: data.employeeId || 0,
                 employeeId: employeeData.employeeId || '',
                 name: employeeData.firstName && employeeData.lastName ?
                     `${employeeData.firstName} ${employeeData.lastName}` : "Nhân viên",
                 department: employeeDepartment.name || 'Không xác định',
-                time: new Date(data.logTime || new Date()).toLocaleTimeString('vi-VN', {
+                time: data.logTime || new Date().toLocaleTimeString('vi-VN', {
                     timeZone: 'Asia/Ho_Chi_Minh',
                     hour12: false,
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit'
                 }),
-                attendanceType: 'checkout',
-            });
+                attendanceType: 'checkout' as const,
+            };
+
+            setRecognizedUser(newRecognizedUser);
+
+            // Chụp màn hình sau khi chấm công thành công
+            setTimeout(() => {
+                const pendingScreenshot = (window as any).pendingScreenshot;
+                captureAndSaveScreenshot(newRecognizedUser, pendingScreenshot);
+                // Xóa screenshot tạm thời
+                delete (window as any).pendingScreenshot;
+            }, 500); // Đợi một chút để UI cập nhật
 
             setIsProcessing(false);
         },
@@ -517,8 +610,28 @@ export default function FaceRecognitionLive() {
         setIsProcessing(true);
         setStatus('processing');
 
+        let capturedScreenshot: string | null = null;
+
         try {
+            // Chụ ảnh trước khi nhận diện
+            if (videoRef.current) {
+                const screenshotResult = await captureVideo(videoRef.current, {
+                    format: 'jpeg',
+                    quality: 0.8
+                });
+                if (screenshotResult) {
+                    capturedScreenshot = screenshotResult.base64;
+                    console.log("📸 Screenshot captured before face recognition");
+                }
+            }
+
             const descriptor = await captureFaceDescriptor();
+
+            // Lưu screenshot vào state để sử dụng sau khi thành công
+            if (capturedScreenshot) {
+                (window as any).pendingScreenshot = capturedScreenshot;
+            }
+
             await clockInMutation.mutateAsync(descriptor);
         } catch (error: any) {
             setStatus('error');
@@ -537,8 +650,28 @@ export default function FaceRecognitionLive() {
         setIsProcessing(true);
         setStatus('processing');
 
+        let capturedScreenshot: string | null = null;
+
         try {
+            // Chụ ảnh trước khi nhận diện
+            if (videoRef.current) {
+                const screenshotResult = await captureVideo(videoRef.current, {
+                    format: 'jpeg',
+                    quality: 0.8
+                });
+                if (screenshotResult) {
+                    capturedScreenshot = screenshotResult.base64;
+                    console.log("📸 Screenshot captured before face recognition");
+                }
+            }
+
             const descriptor = await captureFaceDescriptor();
+
+            // Lưu screenshot vào state để sử dụng sau khi thành công
+            if (capturedScreenshot) {
+                (window as any).pendingScreenshot = capturedScreenshot;
+            }
+
             await clockOutMutation.mutateAsync(descriptor);
         } catch (error: any) {
             setStatus('error');

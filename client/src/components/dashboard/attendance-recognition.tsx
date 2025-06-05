@@ -7,6 +7,7 @@ import { FaceDetector } from "@/components/face-recognition/face-detector";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useScreenshot } from "@/hooks/useScreenshot";
 import * as faceapi from 'face-api.js';
 import { format } from "date-fns";
 
@@ -33,6 +34,9 @@ export function AttendanceRecognition() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const componentMounted = useRef(true);
   const [detectedFaceDescriptor, setDetectedFaceDescriptor] = useState<string | null>(null);
+
+  // Screenshot hook
+  const { captureCanvas, isCapturing: isCapturingScreenshot } = useScreenshot();
   const [autoProcessing, setAutoProcessing] = useState(false);
 
   // Fetch employee's today work hours if recognized
@@ -87,6 +91,50 @@ export function AttendanceRecognition() {
       window.getComputedStyle(videoRef.current).display === 'none' : true;
   };
 
+  // Hàm chụp màn hình canvas và lưu vào Firebase
+  const captureAndSaveScreenshot = async (user: RecognizedUser) => {
+    if (!canvasRef.current || isCapturingScreenshot) {
+      console.log("Canvas not available or already capturing screenshot");
+      return;
+    }
+
+    try {
+      console.log("📸 Capturing screenshot for attendance...");
+
+      // Chụp màn hình canvas
+      const screenshotResult = await captureCanvas(canvasRef.current, {
+        format: 'png',
+        quality: 0.8
+      });
+
+      if (!screenshotResult) {
+        console.error("Failed to capture screenshot");
+        return;
+      }
+
+      // Chuẩn bị dữ liệu để lưu vào Firebase
+      const screenshotData = {
+        name: user.name,
+        time: user.time,
+        base64Image: screenshotResult.base64,
+        employeeId: user.employeeId,
+        attendanceType: user.attendanceType
+      };
+
+      // Gửi lên server để lưu vào Firebase
+      const response = await apiRequest("POST", "/api/screenshots/attendance", screenshotData);
+
+      if (response.data.success) {
+        console.log("✅ Screenshot saved to Firebase successfully:", response.data.screenshotId);
+      } else {
+        console.error("❌ Failed to save screenshot to Firebase");
+      }
+
+    } catch (error) {
+      console.error("❌ Error capturing and saving screenshot:", error);
+    }
+  };
+
   // Hàm trích xuất dữ liệu employee từ error object
   const extractEmployeeData = (error: any): any => {
     console.log("Extracting employee data from error object", error);
@@ -99,7 +147,7 @@ export function AttendanceRecognition() {
       error.response?.employee,
       error.employee,
 
-      // Đường dẫn trực tiếp 
+      // Đường dẫn trực tiếp
       error.response?.data,
       error.data,
 
@@ -189,7 +237,7 @@ export function AttendanceRecognition() {
       const employeeData = data.employee || {};
       const departmentData = data.department || {};
 
-      setRecognizedUser({
+      const newRecognizedUser = {
         id: data.employeeId || 0,
         employeeId: employeeData.employeeId || '',
         name: employeeData.firstName && employeeData.lastName ?
@@ -201,8 +249,15 @@ export function AttendanceRecognition() {
           minute: '2-digit',
           second: '2-digit'
         }),
-        attendanceType: 'checkin',
-      });
+        attendanceType: 'checkin' as const,
+      };
+
+      setRecognizedUser(newRecognizedUser);
+
+      // Chụp màn hình sau khi chấm công thành công
+      setTimeout(() => {
+        captureAndSaveScreenshot(newRecognizedUser);
+      }, 500); // Đợi một chút để UI cập nhật
 
       setIsProcessing(false);
     },
@@ -288,7 +343,7 @@ export function AttendanceRecognition() {
       const departmentName = departmentData.description || departmentData.name || 'Không xác định';
       console.log("🏢 CHECKOUT - Final department name:", departmentName);
 
-      setRecognizedUser({
+      const newRecognizedUser = {
         id: data.employeeId || 0,
         employeeId: employeeData.employeeId || '',
         name: employeeData.firstName && employeeData.lastName ?
@@ -300,8 +355,15 @@ export function AttendanceRecognition() {
           minute: '2-digit',
           second: '2-digit'
         }),
-        attendanceType: 'checkout',
-      });
+        attendanceType: 'checkout' as const,
+      };
+
+      setRecognizedUser(newRecognizedUser);
+
+      // Chụp màn hình sau khi chấm công thành công
+      setTimeout(() => {
+        captureAndSaveScreenshot(newRecognizedUser);
+      }, 500); // Đợi một chút để UI cập nhật
 
       setIsProcessing(false);
     },

@@ -18,6 +18,7 @@ import { adminRoutes } from "./adminRoutes.js";
 import { simpleDataRoutes } from "./simpleDataRoutes.js";
 import reportRoutes from "./reportRoutes.js";
 import { faceRoutes } from "./faceRoutes.js";
+import { screenshotRoutes } from "./screenshotRoutes.js";
 
 export function registerRoutes(app: Express) {
     // Development shutdown endpoint
@@ -84,4 +85,7 @@ export function registerRoutes(app: Express) {
 
     // Face management routes
     faceRoutes(app);
-} 
+
+    // Screenshot routes for Firebase
+    screenshotRoutes(app);
+}

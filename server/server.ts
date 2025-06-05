@@ -1,6 +1,7 @@
 import { createServer, Server } from "http";
 import { app } from "./app.js";
 import { setupVite, serveStatic, log } from "./vite";
+import { initializeFirebase } from "./services/firebaseService.js";
 
 async function startServer(): Promise<Server> {
     const server = createServer(app);

@@ -3,6 +3,7 @@ import { storage } from "../models/storage";
 import { z } from "zod";
 import { calculateEuclideanDistance, parseFaceDescriptor, validateFaceDescriptor } from "../utils/faceUtils";
 import { getVietnamTime } from "../utils/timezone";
+import { updateWorkHours, deleteWorkHoursIfInvalid } from "../services/workHoursService";
 
 // Create attendance record
 export const createAttendance = async (req: Request, res: Response) => {
@@ -48,8 +49,7 @@ export const createTimeLog = async (req: Request, res: Response) => {
         // If employeeId is provided directly (for manual logs), use it
         if (employeeId && !faceDescriptor) {
             // Tạo thời gian Việt Nam
-            const vietnamTime = new Date();
-            vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
+            const vietnamTime = getVietnamTime();
 
             const timeLogData = {
                 employeeId: parseInt(employeeId),
@@ -165,22 +165,20 @@ export const createTimeLog = async (req: Request, res: Response) => {
         }
 
         // Get current time and check for existing logs
-        const currentTime = new Date();
-        const todayLogs = await storage.getEmployeeTimeLogs(bestMatch.id, currentTime);
+        const vietnamTime = getVietnamTime();
+        const todayLogs = await storage.getEmployeeTimeLogs(bestMatch.id, vietnamTime);
 
-        // Tạo thời gian Việt Nam để lưu vào database
-        const vietnamTime = new Date();
-        vietnamTime.setHours(vietnamTime.getHours() + 7); // UTC+7
-        console.log(`[TimeLogs] Tìm logs cho nhân viên ${bestMatch.id} ngày ${currentTime.toISOString()}`);
+        console.log(`[TimeLogs] Vietnam time: ${vietnamTime.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
+        console.log(`[TimeLogs] Tìm logs cho nhân viên ${bestMatch.id} ngày ${vietnamTime.toISOString()}`);
 
         // Sắp xếp logs theo thời gian (mới nhất trước)
         const sortedLogs = todayLogs.sort((a, b) => b.logTime.getTime() - a.logTime.getTime());
 
         // Log chi tiết để debug
         if (sortedLogs.length > 0) {
-            const startOfDay = new Date(currentTime);
+            const startOfDay = new Date(vietnamTime);
             startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(currentTime);
+            const endOfDay = new Date(vietnamTime);
             endOfDay.setHours(23, 59, 59, 999);
 
             console.log(`[TimeLogs] Khoảng thời gian: ${startOfDay.toISOString()} đến ${endOfDay.toISOString()}`);
@@ -197,64 +195,47 @@ export const createTimeLog = async (req: Request, res: Response) => {
         const lastLog = sortedLogs.length > 0 ? sortedLogs[0] : null;
         const employeeName = `${bestMatch.firstName} ${bestMatch.lastName}`;
 
-        // Business logic checks
+        // Business logic checks - logic đơn giản dựa trên log cuối cùng
         if (type === 'checkin') {
-            // Kiểm tra trạng thái hiện tại
+            // Kiểm tra log cuối cùng
             if (lastLog && lastLog.type === 'checkin') {
-                // Nhân viên đã checkin rồi, không được checkin lại
-                const lastCheckinTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
-                const timeStr = lastCheckinTime.toTimeString().substring(0, 5); // HH:MM
-
-                console.log(`❌ Employee ${bestMatch.id} đã check-in lúc ${timeStr}, không được check-in lại`);
+                console.log(`❌ Employee ${bestMatch.id} đã check-in rồi, log cuối: ${lastLog.type}`);
                 return res.status(400).json({
-                    error: `${employeeName} đã check-in lúc ${timeStr}. Vui lòng check-out trước khi check-in lại.`,
+                    error: `${employeeName} đã check-in rồi. Vui lòng check-out trước khi check-in lại.`,
                     details: {
                         currentStatus: 'checked_in',
-                        lastAction: 'checkin',
-                        lastActionTime: timeStr,
                         message: 'Nhân viên hiện đang trong trạng thái đã check-in'
                     }
                 });
             }
 
-            // Cho phép checkin nếu:
-            // 1. Chưa có log nào (lần đầu checkin)
-            // 2. Log cuối cùng là checkout (đã checkout trước đó)
             console.log(`✅ Employee ${bestMatch.id} được phép check-in`);
 
         } else if (type === 'checkout') {
-            // Kiểm tra phải có checkin trước đó
-            if (!lastLog || lastLog.type !== 'checkin') {
-                let errorMessage = '';
-
-                if (!lastLog) {
-                    // Chưa có log nào trong ngày
-                    errorMessage = `${employeeName} chưa check-in hôm nay. Vui lòng check-in trước khi check-out.`;
-                    console.log(`❌ Employee ${bestMatch.id} chưa check-in, không được check-out`);
-                } else if (lastLog.type === 'checkout') {
-                    // Log cuối cùng là checkout - KHÔNG CHO PHÉP checkout lại
-                    const lastCheckoutTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
-                    const timeStr = lastCheckoutTime.toTimeString().substring(0, 5); // HH:MM
-
-                    errorMessage = `${employeeName} đã check-out lúc ${timeStr}. Vui lòng check-in trước khi check-out lại.`;
-                    console.log(`❌ Employee ${bestMatch.id} đã check-out lúc ${timeStr}, không được check-out lại`);
-                }
-
+            // Kiểm tra phải có log và log cuối cùng phải là checkin
+            if (!lastLog) {
+                console.log(`❌ Employee ${bestMatch.id} chưa có log nào trong ngày`);
                 return res.status(400).json({
-                    error: errorMessage,
+                    error: `${employeeName} chưa check-in hôm nay. Vui lòng check-in trước khi check-out.`,
                     details: {
-                        currentStatus: lastLog ? 'checked_out' : 'no_logs',
-                        lastAction: lastLog ? lastLog.type : 'none',
-                        lastActionTime: lastLog ? new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000).toTimeString().substring(0, 5) : null,
-                        message: lastLog ? 'Nhân viên hiện đang trong trạng thái đã check-out' : 'Nhân viên chưa có log nào trong ngày'
+                        currentStatus: 'no_logs',
+                        message: 'Nhân viên chưa có log nào trong ngày'
                     }
                 });
             }
 
-            // Cho phép checkout nếu log cuối cùng là checkin
-            const lastCheckinTime = new Date(lastLog.logTime.getTime() + 7 * 60 * 60 * 1000); // UTC+7
-            const timeStr = lastCheckinTime.toTimeString().substring(0, 5); // HH:MM
-            console.log(`✅ Employee ${bestMatch.id} được phép check-out (đã check-in lúc ${timeStr})`);
+            if (lastLog.type === 'checkout') {
+                console.log(`❌ Employee ${bestMatch.id} đã check-out rồi, log cuối: ${lastLog.type}`);
+                return res.status(400).json({
+                    error: `${employeeName} đã check-out rồi. Vui lòng check-in trước khi check-out lại.`,
+                    details: {
+                        currentStatus: 'checked_out',
+                        message: 'Nhân viên hiện đang trong trạng thái đã check-out'
+                    }
+                });
+            }
+
+            console.log(`✅ Employee ${bestMatch.id} được phép check-out (log cuối: ${lastLog.type})`);
         }
 
         // Business logic đã đủ để prevent spam:
@@ -275,6 +256,22 @@ export const createTimeLog = async (req: Request, res: Response) => {
         const timeLog = await storage.createTimeLog(timeLogData);
         console.log(`Time log created successfully: ID=${timeLog.id}`);
 
+        // Update work hours calculation after creating time log
+        try {
+            if (type === 'checkout') {
+                // When checkout, try to calculate and update work hours
+                await updateWorkHours(bestMatch.id, vietnamTime);
+                console.log(`[WorkHours] Updated work hours for employee ${bestMatch.id} after checkout`);
+            } else if (type === 'checkin') {
+                // When checkin, delete any invalid work hours record (in case of incomplete previous day)
+                await deleteWorkHoursIfInvalid(bestMatch.id, vietnamTime);
+                console.log(`[WorkHours] Cleaned up invalid work hours for employee ${bestMatch.id} after checkin`);
+            }
+        } catch (error) {
+            console.error(`[WorkHours] Error updating work hours for employee ${bestMatch.id}:`, error);
+            // Don't fail the attendance if work hours update fails
+        }
+
         // Get employee with department info
         const employee = await storage.getEmployee(bestMatch.id);
         const department = employee?.departmentId ? await storage.getDepartment(employee.departmentId) : null;
@@ -283,6 +280,15 @@ export const createTimeLog = async (req: Request, res: Response) => {
         console.log(`Employee department ID: ${employee?.departmentId}`);
         console.log(`Department info:`, JSON.stringify(department, null, 2));
         console.log("=== TIME LOG SUCCESS ===");
+
+        // Format thời gian Việt Nam để trả về client
+        const vietnamTimeFormatted = vietnamTime.toLocaleTimeString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
 
         res.status(201).json({
             success: true,
@@ -294,7 +300,7 @@ export const createTimeLog = async (req: Request, res: Response) => {
             },
             department,
             distance: bestDistance,
-            logTime: timeLog.logTime,
+            logTime: vietnamTimeFormatted, // Trả về thời gian đã format
             timeLog,
             message: `${type === 'checkout' ? 'Check-out' : 'Check-in'} thành công`
         });

@@ -98,19 +98,15 @@ export function RecognitionStatus({ status, recognizedUser, onRetry, attendanceT
             <span className="text-xs text-muted-foreground">Time</span>
             <span className="text-xs font-medium">{(() => {
               if (!recognizedUser?.time) return 'Unknown';
-              // Nếu time từ recognizedUser có vẻ bị +7h, thì trừ đi
               const timeStr = recognizedUser.time;
+
+              // Nếu time là string format HH:MM:SS, trừ 7 giờ
               if (timeStr.includes(':')) {
                 const [hours, minutes, seconds] = timeStr.split(':').map(Number);
-                const date = new Date();
-                date.setHours(hours - 7, minutes, seconds || 0, 0);
-                return date.toLocaleTimeString('vi-VN', {
-                  hour12: false,
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit'
-                });
+                const adjustedHours = (hours - 7 + 24) % 24; // Trừ 7h và xử lý trường hợp âm
+                return `${adjustedHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${(seconds || 0).toString().padStart(2, '0')}`;
               }
+
               return timeStr;
             })()}</span>
           </div>

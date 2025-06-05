@@ -7,10 +7,10 @@
  * @returns Date object adjusted to Vietnam timezone
  */
 export function getVietnamTime(): Date {
+    // Cách đơn giản và chính xác: thêm 7 giờ vào UTC
     const now = new Date();
-    // Add 7 hours to convert UTC to Vietnam timezone (UTC+7)
-    now.setHours(now.getHours() + 7);
-    return now;
+    const vietnamTime = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    return vietnamTime;
 }
 
 /**
@@ -20,8 +20,7 @@ export function getVietnamTime(): Date {
  */
 export function toVietnamTime(date?: Date): Date {
     const targetDate = date || new Date();
-    const vietnamTime = new Date(targetDate);
-    vietnamTime.setHours(vietnamTime.getHours() + 7);
+    const vietnamTime = new Date(targetDate.getTime() + (7 * 60 * 60 * 1000));
     return vietnamTime;
 }
 
