@@ -131,9 +131,33 @@ export default function AttendanceHistoryPage() {
         }
     };
 
+    // Transform data to adjust time display (subtract 7 hours) for this page only
+    const transformedTableData = filteredTableData.map(record => {
+        const adjustTime = (timeString: string | null) => {
+            if (!timeString) return null;
+            try {
+                const date = new Date(timeString);
+                if (isNaN(date.getTime())) return null;
+
+                // Subtract 7 hours for display
+                const adjustedTime = new Date(date.getTime() - 7 * 60 * 60 * 1000);
+                return adjustedTime.toISOString();
+            } catch (error) {
+                console.error('Error adjusting time:', error);
+                return null;
+            }
+        };
+
+        return {
+            ...record,
+            checkinTime: adjustTime(record.checkinTime),
+            checkoutTime: adjustTime(record.checkoutTime)
+        };
+    });
+
     // Table pagination (if needed)
-    const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
-    const paginatedData = filteredTableData.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+    const totalPages = Math.ceil(transformedTableData.length / itemsPerPage);
+    const paginatedData = transformedTableData.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
     const handlePageChange = (newPage: number) => {
         if (newPage > 0 && newPage <= totalPages) {

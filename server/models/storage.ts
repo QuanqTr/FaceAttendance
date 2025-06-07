@@ -51,6 +51,7 @@ export interface IStorage {
     getEmployeeByEmployeeId(employeeId: string): Promise<Employee | undefined>;
     getAllEmployees(page: number, limit: number, filters?: object): Promise<{ employees: Employee[], total: number }>;
     getEmployeesWithFaceDescriptor(): Promise<Employee[]>;
+    getEmployeesWithoutAccounts(): Promise<Employee[]>;
     createEmployee(employee: InsertEmployee): Promise<Employee>;
     updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee | undefined>;
     deleteEmployee(id: number): Promise<boolean>;
@@ -448,6 +449,35 @@ export class DatabaseStorage implements IStorage {
             return employeesWithFace;
         } catch (error) {
             console.error("Error fetching employees with face descriptors:", error);
+            return [];
+        }
+    }
+
+    async getEmployeesWithoutAccounts(): Promise<Employee[]> {
+        try {
+            // Lấy tất cả nhân viên
+            const allEmployees = await db.select().from(employees);
+
+            // Lấy tất cả users có employeeId
+            const usersWithEmployee = await db
+                .select()
+                .from(users)
+                .where(isNotNull(users.employeeId));
+
+            // Tạo Set các employeeId đã có tài khoản
+            const employeeIdsWithAccounts = new Set(
+                usersWithEmployee.map(user => user.employeeId).filter(Boolean)
+            );
+
+            // Lọc nhân viên chưa có tài khoản
+            const employeesWithoutAccounts = allEmployees.filter(
+                employee => !employeeIdsWithAccounts.has(employee.id)
+            );
+
+            console.log(`Found ${employeesWithoutAccounts.length} employees without accounts`);
+            return employeesWithoutAccounts;
+        } catch (error) {
+            console.error("Error fetching employees without accounts:", error);
             return [];
         }
     }

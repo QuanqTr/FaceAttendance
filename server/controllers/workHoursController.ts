@@ -78,7 +78,8 @@ export const getDailyWorkHours = async (req: Request, res: Response) => {
 
         // Use raw SQL to get work hours data
         const workHoursData = await db.execute(sql`
-            SELECT 
+            SELECT
+                wh.id,
                 wh.employee_id,
                 e.last_name || ' ' || e.first_name as employee_name, -- Vietnamese format
                 wh.regular_hours,
@@ -93,6 +94,7 @@ export const getDailyWorkHours = async (req: Request, res: Response) => {
         `);
 
         const results = workHoursData.rows.map((row: any) => ({
+            id: row.id,
             employeeId: row.employee_id,
             employeeName: row.employee_name,
             regularHours: parseFloat(row.regular_hours || 0),
@@ -310,4 +312,130 @@ export const getEmployeeWorkHours = async (req: Request, res: Response) => {
         console.error('Error fetching employee work hours:', error);
         res.status(500).json({ error: 'Failed to fetch work hours' });
     }
-}; 
+};
+
+// Update specific work hours record by ID
+export const updateWorkHoursById = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { regularHours, overtimeHours, checkinTime, checkoutTime, status } = req.body;
+
+        if (!id || isNaN(parseInt(id))) {
+            return res.status(400).json({
+                error: 'Valid work hours ID is required'
+            });
+        }
+
+        console.log('Updating work hours ID:', id);
+        console.log('Request body:', req.body);
+
+        // Import pool directly for raw SQL
+        const { pool } = await import('../db.js');
+
+        // Build update query dynamically based on provided fields
+        const updateFields: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        if (regularHours !== undefined) {
+            updateFields.push(`regular_hours = $${paramIndex++}`);
+            values.push(parseFloat(regularHours) || 0);
+        }
+
+        if (overtimeHours !== undefined) {
+            updateFields.push(`ot_hours = $${paramIndex++}`);
+            values.push(parseFloat(overtimeHours) || 0);
+        }
+
+        if (checkinTime !== undefined) {
+            updateFields.push(`first_checkin = $${paramIndex++}`);
+            values.push(checkinTime ? new Date(checkinTime) : null);
+        }
+
+        if (checkoutTime !== undefined) {
+            updateFields.push(`last_checkout = $${paramIndex++}`);
+            values.push(checkoutTime ? new Date(checkoutTime) : null);
+        }
+
+        if (status !== undefined) {
+            updateFields.push(`status = $${paramIndex++}`);
+            values.push(status);
+        }
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({
+                error: 'At least one field must be provided for update'
+            });
+        }
+
+        // Add ID as the last parameter
+        const idParamIndex = paramIndex;
+        values.push(parseInt(id));
+
+        const updateQuery = `
+            UPDATE work_hours
+            SET ${updateFields.join(', ')}
+            WHERE id = $${idParamIndex}
+            RETURNING *
+        `;
+
+        console.log('Update query:', updateQuery);
+        console.log('Values:', values);
+        console.log('Parameter count:', values.length);
+
+        const result = await pool.query(updateQuery, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Work hours record not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Work hours updated successfully',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error updating work hours by ID:', error);
+        res.status(500).json({ error: 'Failed to update work hours' });
+    }
+};
+
+// Delete work hours record by ID
+export const deleteWorkHoursById = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || isNaN(parseInt(id))) {
+            return res.status(400).json({
+                error: 'Valid work hours ID is required'
+            });
+        }
+
+        console.log('Deleting work hours ID:', id);
+
+        // Import pool directly for raw SQL
+        const { pool } = await import('../db.js');
+
+        const result = await pool.query(
+            'DELETE FROM work_hours WHERE id = $1 RETURNING *',
+            [parseInt(id)]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Work hours record not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Work hours deleted successfully',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error deleting work hours by ID:', error);
+        res.status(500).json({ error: 'Failed to delete work hours' });
+    }
+};

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar as CalendarIcon, Download, Loader2, Search, Filter, Calendar, ChevronLeft, ChevronRight, Edit, Trash2 } from "lucide-react";
+import { Calendar as CalendarIcon, Download, Loader2, Search, Filter, Calendar, ChevronLeft, ChevronRight, Edit, Save, X, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
@@ -28,7 +28,6 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as DateCalendar } from "@/components/ui/calendar";
-import { EditWorkHoursDialog } from "./edit-work-hours-dialog";
 import { DeleteWorkHoursDialog } from "./delete-work-hours-dialog";
 
 export type WorkHoursRecord = {
@@ -42,7 +41,7 @@ export type WorkHoursRecord = {
     status: string;
 };
 
-type WorkHoursLogProps = {
+type InlineWorkHoursLogProps = {
     records: WorkHoursRecord[];
     isLoading: boolean;
     date: Date;
@@ -51,17 +50,20 @@ type WorkHoursLogProps = {
     onRefresh?: () => void;
 };
 
-export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDateChange, onRefresh }: WorkHoursLogProps) {
-    // Component này hiển thị dữ liệu giờ làm việc lấy trực tiếp từ bảng work_hours
+export function InlineWorkHoursLog({ records, isLoading, date, showSearch = true, onDateChange, onRefresh }: InlineWorkHoursLogProps) {
     const { toast } = useToast();
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(10);
-
-    // Dialog states
-    const [editDialogOpen, setEditDialogOpen] = useState(false);
+    
+    // Editing states
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editingData, setEditingData] = useState<Partial<WorkHoursRecord>>({});
+    const [isUpdating, setIsUpdating] = useState(false);
+    
+    // Delete dialog state
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<WorkHoursRecord | null>(null);
 
@@ -104,7 +106,6 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
             }
 
             // Lấy thời gian từ chuỗi ISO trực tiếp để tránh vấn đề múi giờ
-            // Format: "2025-05-13T09:00:00.000Z" -> lấy "09:00"
             const timeMatch = dateString.match(/T(\d{2}):(\d{2})/);
             if (timeMatch) {
                 const hours = timeMatch[1];
@@ -115,7 +116,6 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
             // Thử parse và format bằng Date object
             const date = new Date(dateString);
             if (!isNaN(date.getTime())) {
-                // Format time in Vietnam timezone using toLocaleTimeString
                 return date.toLocaleTimeString('vi-VN', {
                     timeZone: 'Asia/Ho_Chi_Minh',
                     hour12: false,
@@ -128,6 +128,124 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
         } catch (error) {
             console.error("Error formatting date:", error, dateString);
             return '--:--';
+        }
+    };
+
+    // Format time for input (HH:MM)
+    const formatTimeForInput = (timeString: string | null) => {
+        if (!timeString) return "";
+        try {
+            const date = new Date(timeString);
+            return date.toLocaleTimeString('en-GB', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        } catch {
+            return "";
+        }
+    };
+
+    // Start editing a record
+    const startEditing = (record: WorkHoursRecord) => {
+        setEditingId(record.id || null);
+        setEditingData({
+            regularHours: record.regularHours,
+            overtimeHours: record.overtimeHours,
+            checkinTime: formatTimeForInput(record.checkinTime), // Convert to HH:MM format for input
+            checkoutTime: formatTimeForInput(record.checkoutTime), // Convert to HH:MM format for input
+            status: record.status
+        });
+    };
+
+    // Cancel editing
+    const cancelEditing = () => {
+        setEditingId(null);
+        setEditingData({});
+    };
+
+    // Save changes
+    const saveChanges = async () => {
+        if (!editingId) return;
+
+        setIsUpdating(true);
+        try {
+            // Convert time inputs back to full datetime strings, preserving the original date
+            const formatTimeForAPI = (timeString: string, originalDateTime: string | null) => {
+                if (!timeString) return null;
+
+                // Use the original date if available, otherwise use the selected date
+                let baseDate = date; // Use the date from props (the selected date in the calendar)
+                if (originalDateTime) {
+                    const originalDate = new Date(originalDateTime);
+                    if (!isNaN(originalDate.getTime())) {
+                        baseDate = originalDate;
+                    }
+                }
+
+                const [hours, minutes] = timeString.split(':');
+                const newDate = new Date(baseDate);
+                newDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                return newDate.toISOString();
+            };
+
+            // Find the original record to get the original datetime
+            const originalRecord = records.find(r => r.id === editingId);
+
+            const updateData = {
+                regularHours: editingData.regularHours,
+                overtimeHours: editingData.overtimeHours,
+                checkinTime: editingData.checkinTime ? formatTimeForAPI(editingData.checkinTime as string, originalRecord?.checkinTime) : null,
+                checkoutTime: editingData.checkoutTime ? formatTimeForAPI(editingData.checkoutTime as string, originalRecord?.checkoutTime) : null,
+                status: editingData.status
+            };
+
+            const response = await fetch(`/api/work-hours/${editingId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(updateData),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to update work hours');
+            }
+
+            toast({
+                title: t('common.success'),
+                description: "Cập nhật thông tin chấm công thành công",
+            });
+
+            setEditingId(null);
+            setEditingData({});
+            
+            if (onRefresh) {
+                onRefresh();
+            }
+        } catch (error) {
+            console.error('Error updating work hours:', error);
+            toast({
+                title: t('common.error'),
+                description: error instanceof Error ? error.message : "Có lỗi xảy ra khi cập nhật",
+                variant: "destructive"
+            });
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
+    // Handle delete action
+    const handleDelete = (record: WorkHoursRecord) => {
+        setSelectedRecord(record);
+        setDeleteDialogOpen(true);
+    };
+
+    // Handle success callback from delete dialog
+    const handleDeleteSuccess = () => {
+        if (onRefresh) {
+            onRefresh();
         }
     };
 
@@ -162,7 +280,6 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
             const escapeCSVValue = (value: any) => {
                 if (value === null || value === undefined) return '';
                 const stringValue = String(value);
-                // If value contains comma, newline, or quotes, wrap in quotes and escape internal quotes
                 if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
                     return `"${stringValue.replace(/"/g, '""')}"`;
                 }
@@ -225,25 +342,6 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
     const handleDateChange = (newDate: Date | undefined) => {
         if (newDate && onDateChange) {
             onDateChange(newDate);
-        }
-    };
-
-    // Handle edit action
-    const handleEdit = (record: WorkHoursRecord) => {
-        setSelectedRecord(record);
-        setEditDialogOpen(true);
-    };
-
-    // Handle delete action
-    const handleDelete = (record: WorkHoursRecord) => {
-        setSelectedRecord(record);
-        setDeleteDialogOpen(true);
-    };
-
-    // Handle success callback from dialogs
-    const handleDialogSuccess = () => {
-        if (onRefresh) {
-            onRefresh();
         }
     };
 
@@ -352,6 +450,8 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                         ) : (
                             paginatedRecords.map((record, index) => {
                                 const statusInfo = getStatusInfo(record.status);
+                                const isEditing = editingId === record.id;
+
                                 return (
                                     <TableRow key={`${record.employeeId}-${index}`}>
                                         <TableCell className="font-medium">{record.employeeName || 'N/A'}</TableCell>
@@ -359,39 +459,151 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                                             {format(new Date(date), 'dd/MM/yyyy')}
                                         </TableCell>
                                         <TableCell>
-                                            {safeFormatDate(record.checkinTime)}
+                                            {isEditing ? (
+                                                <Input
+                                                    type="time"
+                                                    value={editingData.checkinTime as string || ""}
+                                                    onChange={(e) => setEditingData(prev => ({
+                                                        ...prev,
+                                                        checkinTime: e.target.value
+                                                    }))}
+                                                    className="w-24"
+                                                />
+                                            ) : (
+                                                safeFormatDate(record.checkinTime)
+                                            )}
                                         </TableCell>
                                         <TableCell>
-                                            {safeFormatDate(record.checkoutTime)}
+                                            {isEditing ? (
+                                                <Input
+                                                    type="time"
+                                                    value={editingData.checkoutTime as string || ""}
+                                                    onChange={(e) => setEditingData(prev => ({
+                                                        ...prev,
+                                                        checkoutTime: e.target.value
+                                                    }))}
+                                                    className="w-24"
+                                                />
+                                            ) : (
+                                                safeFormatDate(record.checkoutTime)
+                                            )}
                                         </TableCell>
-                                        <TableCell>{Number(record.regularHours || 0).toFixed(2)}</TableCell>
-                                        <TableCell>{Number(record.overtimeHours || 0).toFixed(2)}</TableCell>
+                                        <TableCell>
+                                            {isEditing ? (
+                                                <Input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    max="24"
+                                                    value={editingData.regularHours?.toString() || ""}
+                                                    onChange={(e) => setEditingData(prev => ({
+                                                        ...prev,
+                                                        regularHours: parseFloat(e.target.value) || 0
+                                                    }))}
+                                                    className="w-20"
+                                                />
+                                            ) : (
+                                                Number(record.regularHours || 0).toFixed(2)
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {isEditing ? (
+                                                <Input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    max="12"
+                                                    value={editingData.overtimeHours?.toString() || ""}
+                                                    onChange={(e) => setEditingData(prev => ({
+                                                        ...prev,
+                                                        overtimeHours: parseFloat(e.target.value) || 0
+                                                    }))}
+                                                    className="w-20"
+                                                />
+                                            ) : (
+                                                Number(record.overtimeHours || 0).toFixed(2)
+                                            )}
+                                        </TableCell>
                                         <TableCell className="font-medium">
-                                            {(Number(record.regularHours || 0) + Number(record.overtimeHours || 0)).toFixed(2)}
+                                            {isEditing ? (
+                                                ((editingData.regularHours || 0) + (editingData.overtimeHours || 0)).toFixed(2)
+                                            ) : (
+                                                (Number(record.regularHours || 0) + Number(record.overtimeHours || 0)).toFixed(2)
+                                            )}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={cn("text-xs", statusInfo.color)}>
-                                                {statusInfo.label}
-                                            </Badge>
+                                            {isEditing ? (
+                                                <Select
+                                                    value={editingData.status || ""}
+                                                    onValueChange={(value) => setEditingData(prev => ({
+                                                        ...prev,
+                                                        status: value
+                                                    }))}
+                                                >
+                                                    <SelectTrigger className="w-32">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="normal">Bình thường</SelectItem>
+                                                        <SelectItem value="late">Đi muộn</SelectItem>
+                                                        <SelectItem value="early_leave">Về sớm</SelectItem>
+                                                        <SelectItem value="absent">Vắng mặt</SelectItem>
+                                                        <SelectItem value="leave">Nghỉ phép</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Badge className={cn("text-xs", statusInfo.color)}>
+                                                    {statusInfo.label}
+                                                </Badge>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleEdit(record)}
-                                                    className="h-8 w-8 p-0"
-                                                >
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleDelete(record)}
-                                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {isEditing ? (
+                                                    <>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={saveChanges}
+                                                            disabled={isUpdating}
+                                                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                        >
+                                                            {isUpdating ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Save className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={cancelEditing}
+                                                            disabled={isUpdating}
+                                                            className="h-8 w-8 p-0"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => startEditing(record)}
+                                                            className="h-8 w-8 p-0"
+                                                        >
+                                                            <Edit className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleDelete(record)}
+                                                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -434,20 +646,12 @@ export function WorkHoursLog({ records, isLoading, date, showSearch = true, onDa
                 </div>
             )}
 
-            {/* Edit Dialog */}
-            <EditWorkHoursDialog
-                open={editDialogOpen}
-                onOpenChange={setEditDialogOpen}
-                record={selectedRecord}
-                onSuccess={handleDialogSuccess}
-            />
-
             {/* Delete Dialog */}
             <DeleteWorkHoursDialog
                 open={deleteDialogOpen}
                 onOpenChange={setDeleteDialogOpen}
                 record={selectedRecord}
-                onSuccess={handleDialogSuccess}
+                onSuccess={handleDeleteSuccess}
             />
         </div>
     );

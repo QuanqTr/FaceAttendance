@@ -16,6 +16,8 @@ let firebaseApp: any;
 export async function initializeFirebase() {
     if (!firebaseApp) {
         try {
+            console.log('🚀 Initializing Firebase with NEW project: facetimekeeping');
+
             // Dynamic import firebase-admin
             if (!admin) {
                 admin = await import('firebase-admin');
@@ -24,19 +26,36 @@ export async function initializeFirebase() {
             }
 
             // Read service account key file
-            const serviceAccountPath = join(__dirname, '../../client/src/lib/faceattend-e200a-firebase-adminsdk-fbsvc-44c7631347.json');
+            const serviceAccountPath = join(__dirname, '../config/firebase-service-account.json');
+            console.log('📁 Reading Firebase config from:', serviceAccountPath);
+
             const serviceAccountKey = readFileSync(serviceAccountPath, 'utf8');
             const serviceAccount = JSON.parse(serviceAccountKey);
 
+            console.log('🔑 NEW Service account loaded:');
+            console.log('   - Project ID:', serviceAccount.project_id);
+            console.log('   - Private Key ID:', serviceAccount.private_key_id);
+            console.log('   - Client Email:', serviceAccount.client_email);
+
+            // Initialize with NEW project database URL
             firebaseApp = admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
-                databaseURL: "https://faceattend-e200a-default-rtdb.asia-southeast1.firebasedatabase.app"
+                databaseURL: "https://facetimekeeping-default-rtdb.asia-southeast1.firebasedatabase.app"
             });
 
-            console.log('✅ Firebase Admin SDK initialized successfully');
+            console.log('✅ Firebase Admin SDK initialized successfully with NEW project!');
+
+            // Test connection
+            const db = admin.database();
+            console.log('🧪 Testing Firebase connection to NEW project...');
+            await db.ref('.info/connected').once('value');
+            console.log('✅ Firebase connection test successful with NEW project!');
+
         } catch (error) {
             console.error('❌ Error initializing Firebase Admin SDK:', error);
-            throw error;
+            // Don't throw error to prevent server crash
+            console.log('⚠️ Continuing without Firebase features...');
+            return null;
         }
     }
     return firebaseApp;
@@ -64,6 +83,11 @@ export interface AttendanceScreenshot {
 // Save attendance screenshot to Realtime Database with Vietnam timezone
 export async function saveAttendanceScreenshot(data: { name: string; time: string; base64Image: string; employeeId?: string; attendanceType?: 'checkin' | 'checkout' }): Promise<string> {
     try {
+        if (!firebaseApp) {
+            console.log('⚠️ Firebase not initialized, skipping screenshot save');
+            return 'firebase-disabled';
+        }
+
         const db = await getDatabase();
         const screenshotsRef = db.ref('attendance-screenshots');
 
@@ -92,12 +116,25 @@ export async function saveAttendanceScreenshot(data: { name: string; time: strin
         // Save to Realtime Database
         await newScreenshotRef.set(screenshotData);
 
-        console.log(`✅ Attendance screenshot saved to Realtime Database with ID: ${screenshotId}`);
+        const vietnamTimeString = vietnamTime.toLocaleString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        console.log(`✅ Attendance screenshot saved to Realtime Database with ID: ${screenshotId} at Vietnam time: ${vietnamTimeString}`);
         return screenshotId;
 
     } catch (error) {
         console.error('❌ Error saving attendance screenshot to Realtime Database:', error);
-        throw error;
+        // Don't throw error to prevent breaking attendance flow
+        console.log('⚠️ Continuing without screenshot save...');
+        return 'error-fallback';
     }
 }
 

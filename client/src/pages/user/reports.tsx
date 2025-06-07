@@ -358,23 +358,47 @@ export default function UserReportsPage() {
         enabled: !!user?.employeeId,
     });
 
-    // Mock data for charts
+    // Query to get daily attendance data for charts
+    const {
+        data: dailyAttendanceData,
+        isLoading: isDailyLoading,
+    } = useQuery({
+        queryKey: ["/api/attendance/employee/daily", user?.employeeId, selectedMonth, selectedYear],
+        queryFn: async () => {
+            if (!user?.employeeId) return [];
+
+            const response = await fetch(
+                `/api/attendance/employee/${user.employeeId}/daily?month=${selectedMonth}&year=${selectedYear}`,
+                {
+                    credentials: "include",
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch daily attendance: ${response.statusText}`);
+            }
+
+            return await response.json();
+        },
+        enabled: !!user?.employeeId,
+    });
+
+    // Process chart data from real database
     const chartData = useMemo(() => {
-        if (!attendanceStats) return [];
+        if (!dailyAttendanceData || dailyAttendanceData.length === 0) return [];
 
-        const daysInMonth = eachDayOfInterval({
-            start: startOfMonth(new Date(selectedYear, selectedMonth - 1)),
-            end: endOfMonth(new Date(selectedYear, selectedMonth - 1))
-        });
-
-        return daysInMonth.map((day, index) => ({
-            date: format(day, 'dd/MM'),
-            attendance: Math.random() > 0.2 ? 1 : 0, // Mock attendance data
-            hours: Math.random() * 8 + 6, // Mock hours worked
+        return dailyAttendanceData.map((day: any) => ({
+            date: day.date,
+            attendance: day.attendance,
+            hours: day.hours,
+            overtimeHours: day.overtimeHours || 0,
+            status: day.status,
+            checkIn: day.checkIn,
+            checkOut: day.checkOut
         }));
-    }, [attendanceStats, selectedMonth, selectedYear]);
+    }, [dailyAttendanceData]);
 
-    const isLoading = isStatsLoading || isProfileLoading;
+    const isLoading = isStatsLoading || isProfileLoading || isDailyLoading;
 
     // Calculate performance metrics
     const performanceMetrics = useMemo(() => {
@@ -825,10 +849,10 @@ export default function UserReportsPage() {
                                     <div className="bg-gray-50 rounded-lg p-4">
                                         <SimpleChart
                                             data={[
-                                                { label: "Có mặt", value: attendanceStats?.present || 20 },
-                                                { label: "Muộn", value: attendanceStats?.late || 3 },
-                                                { label: "Vắng mặt", value: attendanceStats?.absent || 2 },
-                                                { label: "Nghỉ phép", value: attendanceStats?.onLeave || 5 }
+                                                { label: "Có mặt", value: attendanceStats?.present || 0 },
+                                                { label: "Muộn", value: attendanceStats?.late || 0 },
+                                                { label: "Vắng mặt", value: attendanceStats?.absent || 0 },
+                                                { label: "Nghỉ phép", value: attendanceStats?.onLeave || 0 }
                                             ]}
                                             type="pie"
                                             className="w-full"

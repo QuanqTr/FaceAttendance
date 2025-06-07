@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { format, subDays, addDays, parseISO } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { Header } from "@/components/layout/header";
-import { WorkHoursLog } from "@/components/attendance/work-hours-log";
-import type { WorkHoursRecord } from "@/components/attendance/work-hours-log";
+import { InlineWorkHoursLog } from "@/components/attendance/inline-work-hours-log";
+import type { WorkHoursRecord } from "@/components/attendance/inline-work-hours-log";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search, Filter } from "lucide-react";
@@ -38,7 +38,7 @@ export default function Attendance() {
 
 
   // Fetch work hours data
-  const { data: workHoursData, isLoading: isLoadingWorkHours } = useQuery<WorkHoursRecord[]>({
+  const { data: workHoursData, isLoading: isLoadingWorkHours, refetch: refetchWorkHours } = useQuery<WorkHoursRecord[]>({
     queryKey: ["/api/work-hours/daily", formattedDate],
     queryFn: async () => {
       const res = await fetch(`/api/work-hours/daily?date=${formattedDate}`);
@@ -119,11 +119,12 @@ export default function Attendance() {
               <CardTitle className="text-xl">{t('attendance.workHoursStatistics')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <WorkHoursLog
+              <InlineWorkHoursLog
                 records={workHoursData || []}
                 isLoading={isLoadingWorkHours}
                 date={date}
                 onDateChange={setDate}
+                onRefresh={() => refetchWorkHours()}
               />
             </CardContent>
           </Card>

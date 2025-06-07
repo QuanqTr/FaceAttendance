@@ -385,6 +385,66 @@ export function userRoutes(app: Express) {
         }
     });
 
+    // Get employee daily attendance data for chart (monthly view)
+    app.get("/api/attendance/employee/:employeeId/daily", ensureAuthenticated, async (req, res) => {
+        try {
+            const employeeId = parseInt(req.params.employeeId);
+            const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+            const year = parseInt(req.query.year as string) || new Date().getFullYear();
+
+            console.log(`[UserRoutes] Getting daily attendance for employee ${employeeId}, month ${month}, year ${year}`);
+
+            // Tạo ngày đầu và cuối tháng
+            const startDate = new Date(year, month - 1, 1);
+            const endDate = new Date(year, month, 0);
+
+            console.log(`[UserRoutes] Date range: ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+
+            // Lấy dữ liệu work hours cho tháng
+            const workHoursData = await db
+                .select()
+                .from(workHours)
+                .where(and(
+                    eq(workHours.employeeId, employeeId),
+                    sql`${workHours.workDate} >= ${startDate.toISOString().split('T')[0]}`,
+                    sql`${workHours.workDate} <= ${endDate.toISOString().split('T')[0]}`
+                ))
+                .orderBy(workHours.workDate);
+
+            console.log(`[UserRoutes] Found ${workHoursData.length} work hours records`);
+
+            // Tạo mảng tất cả các ngày trong tháng
+            const daysInMonth = [];
+            for (let day = 1; day <= endDate.getDate(); day++) {
+                const currentDate = new Date(year, month - 1, day);
+                const dateStr = currentDate.toISOString().split('T')[0];
+
+                // Tìm dữ liệu work hours cho ngày này
+                const dayData = workHoursData.find(wh =>
+                    wh.workDate && new Date(wh.workDate).toISOString().split('T')[0] === dateStr
+                );
+
+                daysInMonth.push({
+                    date: `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`,
+                    fullDate: dateStr,
+                    attendance: dayData ? 1 : 0, // 1 nếu có chấm công, 0 nếu không
+                    hours: dayData ? parseFloat(dayData.regularHours?.toString() || '0') : 0,
+                    overtimeHours: dayData ? parseFloat(dayData.otHours?.toString() || '0') : 0,
+                    status: dayData?.status || 'absent',
+                    checkIn: dayData?.firstCheckin || null,
+                    checkOut: dayData?.lastCheckout || null
+                });
+            }
+
+            console.log(`[UserRoutes] Returning ${daysInMonth.length} days of data`);
+
+            res.json(daysInMonth);
+        } catch (error) {
+            console.error('Error fetching daily attendance:', error);
+            res.status(500).json({ error: 'Failed to fetch daily attendance' });
+        }
+    });
+
     // Get employee leave requests - USING REAL DATABASE
     app.get("/api/leave-requests/employee/:employeeId", ensureAuthenticated, async (req, res) => {
         try {

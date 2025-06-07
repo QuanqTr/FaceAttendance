@@ -32,8 +32,9 @@ export function employeeRoutes(app: Express) {
     // Get employees without accounts
     app.get("/api/employees/without-accounts", ensureAuthenticated, async (req, res) => {
         try {
-            // This would need a method to get employees without user accounts
-            res.json([]);
+            const { storage } = await import("../models/storage");
+            const employees = await storage.getEmployeesWithoutAccounts();
+            res.json(employees);
         } catch (error) {
             console.error('Error fetching employees without accounts:', error);
             res.status(500).json({ error: 'Failed to fetch employees' });

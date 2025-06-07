@@ -11,6 +11,12 @@ export async function initializeFirebaseMiddleware() {
             console.log('🔥 Firebase initialized successfully');
         } catch (error) {
             console.error('❌ Failed to initialize Firebase:', error);
+            console.log('⚠️ Server will continue without Firebase features');
+            console.log('📸 Screenshot saving will be disabled');
+
+            // Mark as initialized to prevent retry loops
+            firebaseInitialized = true;
+
             // Don't throw error to prevent server from crashing
             // Firebase features will just be unavailable
         }
