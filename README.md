@@ -1,4 +1,4 @@
-# 🎯 Face Attendance System
+#  Face Attendance System
 
 Hệ thống chấm công bằng nhận diện khuôn mặt hiện đại với giao diện tiếng Việt, được xây dựng bằng React, Node.js và Face-API.js.
 
@@ -215,28 +215,14 @@ npm start
 4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Tạo Pull Request
 
-## 📝 License
-
-Dự án này được phân phối dưới giấy phép MIT. Xem file `LICENSE` để biết thêm chi tiết.
-
 ## 📞 Hỗ trợ
 
 Nếu bạn gặp vấn đề hoặc có câu hỏi:
 - Tạo issue trên GitHub
-- Email: support@faceattendance.com
-- Documentation: [Wiki](link-to-wiki)
-
-## 🎯 Roadmap
-
-- [ ] Mobile app (React Native)
-- [ ] Advanced analytics dashboard
-- [ ] Multi-language support
-- [ ] Integration với HR systems
-- [ ] AI-powered insights
-- [ ] Biometric alternatives (fingerprint)
+- Email: mynameisquanq@gmail.com
 
 ---
 
-**Phát triển bởi**: Face Attendance Team  
+**Phát triển bởi**: Trần Đại Quang
 **Phiên bản**: 2.0.0  
 **Cập nhật lần cuối**: Tháng 6, 2025
