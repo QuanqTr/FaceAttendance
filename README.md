@@ -170,24 +170,124 @@ npm start
 ## 📊 API Endpoints
 
 ### Authentication
-- `POST /api/auth/login` - Đăng nhập
-- `POST /api/auth/logout` - Đăng xuất
-- `GET /api/auth/me` - Thông tin user hiện tại
+- `POST /api/login` - Đăng nhập
+- `POST /api/logout` - Đăng xuất
+- `GET /api/user` - Thông tin user hiện tại
+- `POST /api/forgot-password` - Quên mật khẩu
+- `POST /api/face-auth/send-verification` - Gửi mã xác thực nhận diện khuôn mặt
+- `POST /api/face-auth/verify-code` - Xác thực mã nhận diện khuôn mặt
+
+### Employees
+- `GET /api/employees/generate-id` - Tạo ID nhân viên mới
+- `GET /api/employees` - Lấy danh sách nhân viên (có phân trang và lọc)
+- `GET /api/employeeall` - Lấy tất cả nhân viên (không phân trang)
+- `GET /api/employees/with-face-descriptor` - Lấy nhân viên có face descriptor
+- `GET /api/employees/:id` - Lấy thông tin nhân viên theo ID
+- `POST /api/employees` - Tạo nhân viên mới
+- `PUT /api/employees/:id` - Cập nhật thông tin nhân viên
+- `DELETE /api/employees/:id` - Xóa nhân viên
 
 ### Face Recognition
-- `POST /api/face-recognition` - Nhận diện khuôn mặt
-- `POST /api/face-data` - Upload dữ liệu khuôn mặt
-- `GET /api/employees/with-face` - Danh sách nhân viên có face data
+- `GET /api/employees/:id/face` - Kiểm tra trạng thái face descriptor của nhân viên
+- `PUT /api/employees/:id/face` - Cập nhật face descriptor của nhân viên
+- `DELETE /api/employees/:id/face` - Xóa face descriptor của nhân viên
+- `POST /api/employees/:id/face-profile` - Upload ảnh khuôn mặt và lưu profile
+- `GET /api/employees/:id/face-data` - Lấy dữ liệu khuôn mặt của nhân viên
+- `DELETE /api/employees/:employeeId/face-data` - Reset dữ liệu khuôn mặt của nhân viên
+- `POST /api/face-recognition` - Nhận diện khuôn mặt cho chấm công
+- `POST /api/face-recognition/verify` - Xác thực nhận diện khuôn mặt
+- `POST /api/face-registration` - Đăng ký khuôn mặt
+- `POST /api/face-recognition/log` - Ghi log nhận diện khuôn mặt
+- `GET /api/face-recognition/logs/employee/:employeeId` - Lấy log nhận diện khuôn mặt của nhân viên
 
-### Time Logs
+### Departments
+- `GET /api/departments` - Lấy tất cả phòng ban
+- `GET /api/departments/:id` - Lấy thông tin phòng ban theo ID
+- `POST /api/departments` - Tạo phòng ban mới
+- `PUT /api/departments/:id` - Cập nhật thông tin phòng ban
+- `DELETE /api/departments/:id` - Xóa phòng ban
+
+### Users/Accounts
+- `GET /api/users` - Lấy tất cả người dùng
+- `GET /api/accounts` - Lấy tất cả tài khoản (alias cho users)
+- `GET /api/users/:id` - Lấy thông tin người dùng theo ID
+- `POST /api/users` - Tạo người dùng mới
+- `PUT /api/users/:id` - Cập nhật thông tin người dùng
+- `PUT /api/users/:id/password` - Cập nhật mật khẩu người dùng
+- `PATCH /api/users/:id/password` - Cập nhật mật khẩu người dùng (alias)
+- `DELETE /api/users/:id` - Xóa người dùng
+- `GET /api/users/:id/face-profile` - Lấy profile khuôn mặt của người dùng
+- `POST /api/users/:id/face-profile` - Cập nhật profile khuôn mặt của người dùng
+- `DELETE /api/users/:id/face-profile` - Xóa profile khuôn mặt của người dùng
+
+### Leave Requests
+- `GET /api/leave-requests` - Lấy tất cả yêu cầu nghỉ phép
+- `GET /api/leave-requests/count` - Đếm số lượng yêu cầu nghỉ phép
+- `POST /api/leave-requests` - Tạo yêu cầu nghỉ phép mới
+- `GET /api/leave-requests/:id` - Lấy chi tiết yêu cầu nghỉ phép theo ID
+- `GET /api/leave-requests/employee/:employeeId` - Lấy yêu cầu nghỉ phép của nhân viên
+
+### Attendance
+- `GET /api/attendance-summary` - Lấy tổng hợp chấm công
+- `POST /api/attendance-summary/update` - Cập nhật tổng hợp chấm công
 - `POST /api/time-logs` - Tạo log chấm công
 - `GET /api/time-logs` - Lấy danh sách time logs
 - `PUT /api/time-logs/:id` - Cập nhật time log
 
+### Work Hours
+- `POST /api/work-hours` - Cập nhật giờ làm việc
+- `GET /api/work-hours/daily` - Lấy giờ làm việc hàng ngày
+- `PUT /api/work-hours/:id` - Cập nhật giờ làm việc theo ID
+- `DELETE /api/work-hours/:id` - Xóa giờ làm việc theo ID
+- `GET /api/work-hours/employee/:employeeId` - Lấy giờ làm việc của nhân viên
+
+### Manager Endpoints
+- `GET /api/manager/department-info` - Lấy thông tin phòng ban của manager
+- `GET /api/manager/departments` - Lấy phòng ban của manager
+- `GET /api/manager/pending-counts` - Đếm số lượng phê duyệt đang chờ
+- `GET /api/manager/employees` - Lấy nhân viên trong phòng ban của manager
+- `GET /api/manager/employees/:id` - Lấy thông tin nhân viên trong phòng ban
+- `POST /api/manager/employees` - Tạo nhân viên mới trong phòng ban
+- `PUT /api/manager/employees/:id` - Cập nhật nhân viên trong phòng ban
+- `DELETE /api/manager/employees/:id` - Xóa nhân viên trong phòng ban
+- `GET /api/manager/attendance` - Lấy dữ liệu chấm công của phòng ban
+
+### Statistics
+- `GET /api/stats/departments` - Thống kê chấm công theo phòng ban
+- `GET /api/stats/daily` - Thống kê hàng ngày
+- `GET /api/stats/weekly` - Thống kê hàng tuần
+- `GET /api/stats/monthly` - Xu hướng hàng tháng
+- `GET /api/manager/stats/daily` - Thống kê hàng ngày cho manager
+- `GET /api/manager/stats/weekly` - Thống kê hàng tuần cho manager
+- `GET /api/manager/stats/department` - Thống kê phòng ban cho manager
+- `GET /api/manager/stats/top-performers` - Lấy nhân viên xuất sắc nhất
+- `GET /api/manager/stats/department-overall` - Tổng quan phòng ban
+- `GET /api/manager/stats/attendance-records` - Bản ghi chấm công
+- `GET /api/manager/stats/team-performance` - Hiệu suất nhóm
+- `GET /api/manager/stats/penalty-analysis` - Phân tích phạt
+
 ### Reports
-- `GET /api/admin/reports` - Báo cáo admin
-- `GET /api/manager/reports` - Báo cáo manager
-- `GET /api/reports/export` - Xuất báo cáo
+- `POST /api/reports/export` - Xuất báo cáo
+- `GET /api/reports/attendance-summary` - Báo cáo tổng hợp chấm công
+- `GET /api/reports/statistics` - Báo cáo thống kê
+- `GET /api/reports/department-summary` - Báo cáo tổng hợp phòng ban
+- `GET /api/reports/monthly-attendance` - Báo cáo chấm công hàng tháng
+- `GET /api/reports/department-stats` - Thống kê phòng ban
+- `GET /api/reports/overall-stats` - Thống kê tổng quan
+- `GET /api/reports/top-performers` - Nhân viên xuất sắc nhất
+- `GET /api/reports/employee/:employeeId/performance` - Hiệu suất của nhân viên
+
+### Admin Endpoints
+- `GET /api/admin/company-info` - Lấy thông tin công ty
+- `PUT /api/admin/company-settings` - Cập nhật cài đặt công ty
+- `GET /api/admin/system-settings` - Lấy cài đặt hệ thống
+- `PUT /api/admin/system-settings` - Cập nhật cài đặt hệ thống
+- `GET /api/admin/notification-settings` - Lấy cài đặt thông báo
+- `PUT /api/admin/notification-settings` - Cập nhật cài đặt thông báo
+
+### Screenshots
+- `POST /api/screenshots/attendance` - Lưu ảnh chụp màn hình chấm công vào Firebase
+- `GET /api/screenshots/attendance` - Lấy ảnh chụp màn hình chấm công từ Firebase
 
 ## 🔧 Cấu hình nâng cao
 
