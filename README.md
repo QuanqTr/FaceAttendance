@@ -193,7 +193,7 @@ npm start
 
 ### Face Recognition Settings
 - Threshold độ chính xác: 0.6 (có thể điều chỉnh)
-- Model sử dụng: SSD MobileNet v1
+- Model sử dụng: tinyFaceDetector
 - Kích thước ảnh training: 150x150px
 
 ### Database Optimization
